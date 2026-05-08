@@ -12,7 +12,7 @@ import assert from 'node:assert';
   await page.click('#run-local');
   
   console.log('Alt+Clicking on a button');
-  await page.locator('button.button.primary:has-text("Publish")').click({ modifiers: ['Alt'] });
+  await page.locator('button.btn.btn--primary:has-text("Publish")').click({ modifiers: ['Alt'] });
   
   console.log('Alt+Clicking on global search input');
   await page.locator('input[data-testid="global-search"]').click({ modifiers: ['Alt'] });
