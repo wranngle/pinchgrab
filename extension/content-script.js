@@ -1142,12 +1142,13 @@
         height: min(640px, calc(100vh - 28px));
         display: grid;
         grid-template-rows: auto 1fr auto;
-        background: #ffffff;
-        border: 1px solid #c8d0dc;
-        border-radius: 8px;
-        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
-        color: #172033;
-        font: 13px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #1a1a1e;
+        border: 1px solid #464055;
+        border-left: 4px solid #ff5f00;
+        border-radius: 4px;
+        box-shadow: 0 16px 48px rgba(18, 17, 26, 0.4);
+        color: #fcfaf5;
+        font: 13px/1.45 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
         overflow: hidden;
       }
       .panel.minimized {
@@ -1165,22 +1166,23 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 8px;
-        background: #f5f7fb;
-        border-bottom: 1px solid #d8dee9;
+        padding: 12px 16px;
+        background: #12111a;
+        border-bottom: 1px solid #464055;
       }
       .title {
         min-width: 0;
         flex: 1;
         font-weight: 700;
-        color: #172033;
+        color: #ff5f00;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       .hint {
-        color: #526071;
-        font-size: 12px;
+        color: #847d9a;
+        font-size: 11px;
+        margin-top: 2px;
       }
       .body {
         display: grid;
@@ -1193,33 +1195,52 @@
         resize: none;
         border: 0;
         outline: 0;
-        padding: 10px;
-        color: #111827;
-        background: #ffffff;
-        font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        padding: 16px;
+        color: #fcfaf5;
+        background: #1a1a1e;
+        font: 11px/1.45 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      textarea:focus {
+        box-shadow: inset 0 0 0 2px rgba(255, 95, 0, 0.25);
       }
       .footer {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 8px;
-        border-top: 1px solid #d8dee9;
-        background: #f9fafc;
+        padding: 12px 16px;
+        border-top: 1px solid #464055;
+        background: #12111a;
       }
       button {
         min-height: 30px;
-        border: 1px solid #b8c2d1;
-        border-radius: 6px;
-        background: #ffffff;
-        color: #172033;
-        font: 600 12px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        padding: 0 10px;
+        border: 1px solid #6a6380;
+        border-radius: 4px;
+        background: transparent;
+        color: #fcfaf5;
+        font: 700 12px/1 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        padding: 0 12px;
         cursor: pointer;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      button:hover {
+        border-color: #ff5f00;
+      }
+      button:active {
+        transform: translateY(1px);
       }
       button.primary {
-        background: #1457d9;
-        border-color: #1457d9;
+        background: linear-gradient(180deg, #ff5f00 0%, #ef4b00 100%);
+        border: none;
         color: #ffffff;
+        box-shadow: 0 0 24px rgba(255, 95, 0, 0.25);
+      }
+      button.primary:hover {
+        transform: translateY(-1px);
+      }
+      button.primary:active {
+        transform: translateY(0);
       }
       button.icon {
         width: 30px;
@@ -1228,18 +1249,19 @@
       .status {
         min-width: 0;
         flex: 1;
-        color: #526071;
-        font-size: 12px;
+        color: #10b981;
+        font-size: 11px;
+        font-weight: 700;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
     </style>
-    <section class="panel hidden" aria-label="Selector Capture Mode">
+    <section class="panel hidden" aria-label="PinchGrab Capture">
       <div class="bar">
         <div>
-          <div class="title">Selector Capture Mode</div>
-          <div class="hint">Alt+Click any element to append one JSONL line.</div>
+          <div class="title">[PINCHGRAB]</div>
+          <div class="hint">Alt+Click elements to capture JSONL payload.</div>
         </div>
         <button class="icon" type="button" data-action="minimize" title="Minimize">_</button>
         <button class="icon" type="button" data-action="hide" title="Hide">x</button>
@@ -1250,7 +1272,7 @@
       <div class="footer">
         <button class="primary" type="button" data-action="copy">Copy all</button>
         <button type="button" data-action="clear">Clear</button>
-        <div class="status">Ready</div>
+        <div class="status">[READY]</div>
       </div>
     </section>
   `;
@@ -1265,7 +1287,7 @@
     status.textContent = message;
     window.clearTimeout(setStatus.timer);
     setStatus.timer = window.setTimeout(() => {
-      status.textContent = "Ready";
+      status.textContent = "[READY]";
     }, 1800);
   };
 
@@ -1384,6 +1406,10 @@
   document.addEventListener("click", onCaptureClick, true);
 
   window[KEY] = { destroy };
-  setStatus("Capture mode on (Alt+Click bootstrap)");
+  setStatus("[ACTIVE] Alt+Click to capture");
   if (textarea.value.trim().length > 0) showPanel();
 })(); 
+ 
+
+})(); 
+ 
