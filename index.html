@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Selector Capture Mode</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172033;
+        --muted: #526071;
+        --line: #d8dee9;
+        --panel: #ffffff;
+        --soft: #f5f7fb;
+        --blue: #1457d9;
+        --green: #12715b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #eef2f7;
+        color: var(--ink);
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+      }
+
+      .preview {
+        min-width: 0;
+        padding: 28px;
+      }
+
+      .prototype {
+        min-height: calc(100vh - 56px);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
+      }
+
+      .appbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fbfcff;
+      }
+
+      .brand {
+        font-size: 16px;
+        font-weight: 800;
+        margin-right: auto;
+      }
+
+      .search {
+        width: min(34vw, 340px);
+        height: 34px;
+        border: 1px solid #c8d0dc;
+        border-radius: 6px;
+        padding: 0 10px;
+      }
+
+      .workspace {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+      }
+
+      nav {
+        padding: 12px;
+        border-right: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .navitem {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+        margin-bottom: 6px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ink);
+        text-align: left;
+        padding: 0 10px;
+        cursor: pointer;
+      }
+
+      .navitem.active {
+        background: #dfe7f5;
+        font-weight: 700;
+      }
+
+      .content {
+        min-width: 0;
+        padding: 18px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        margin: 0 auto 0 0;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      button,
+      .button {
+        height: 34px;
+        border: 1px solid #b8c2d1;
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--ink);
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+        padding: 0 12px;
+        cursor: pointer;
+      }
+
+      .primary {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #ffffff;
+      }
+
+      .danger {
+        border-color: #c64848;
+        color: #a92121;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: #ffffff;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 24px;
+      }
+
+      .table {
+        margin-top: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 11px 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      .row:first-child {
+        border-top: 0;
+        background: var(--soft);
+        font-weight: 800;
+      }
+
+      aside {
+        min-height: 100vh;
+        border-left: 1px solid var(--line);
+        background: var(--panel);
+        padding: 18px;
+      }
+
+      .setup {
+        position: sticky;
+        top: 18px;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 20px;
+      }
+
+      p {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+
+      .bookmark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 40px;
+        margin: 8px 0 10px;
+        border-radius: 6px;
+        background: var(--green);
+        color: #ffffff;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .steps {
+        margin: 16px 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .steps li {
+        padding: 10px 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      .steps li:first-child {
+        border-top: 0;
+      }
+
+      code,
+      textarea {
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 130px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          min-height: auto;
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        nav {
+          display: flex;
+          gap: 6px;
+          overflow-x: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .navitem {
+          width: auto;
+          white-space: nowrap;
+          margin: 0;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="preview" aria-label="Prototype preview">
+        <div class="prototype">
+          <header class="appbar">
+            <div class="brand">PinchTab Prototype</div>
+            <input class="search" data-testid="global-search" placeholder="Search flows" />
+            <button class="button" data-testid="invite-user">Invite</button>
+            <button class="button primary" id="publish-flow">Publish</button>
+          </header>
+          <div class="workspace">
+            <nav aria-label="Primary">
+              <button class="navitem active" data-qa="nav-dashboard">Dashboard</button>
+              <button class="navitem" data-qa="nav-components">Components</button>
+              <button class="navitem" data-qa="nav-feedback">Feedback</button>
+              <button class="navitem" data-qa="nav-settings">Settings</button>
+            </nav>
+            <section class="content">
+              <div class="toolbar">
+                <h1>Component Review</h1>
+                <button class="button">Filter</button>
+                <button class="button danger">Archive</button>
+              </div>
+              <div class="grid">
+                <article class="metric" data-testid="component-card">
+                  <span>Open issues</span>
+                  <strong>18</strong>
+                </article>
+                <article class="metric">
+                  <span>Ready to ship</span>
+                  <strong>42</strong>
+                </article>
+                <article class="metric">
+                  <span>Missing states</span>
+                  <strong>7</strong>
+                </article>
+              </div>
+              <div class="table" role="table" aria-label="Component list">
+                <div class="row" role="row">
+                  <span>Component</span>
+                  <span>Status</span>
+                  <span>Action</span>
+                </div>
+                <div class="row" role="row">
+                  <span>Account menu</span>
+                  <span>Needs hover state</span>
+                  <button class="button">Review</button>
+                </div>
+                <div class="row" role="row">
+                  <span>Billing drawer</span>
+                  <span>Spacing squeezed</span>
+                  <button class="button">Open</button>
+                </div>
+                <div class="row" role="row">
+                  <span>Save confirmation</span>
+                  <span>Missing action</span>
+                  <button class="button primary">Fix</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <aside>
+        <div class="setup">
+          <h2>Selector Capture Mode</h2>
+          <p>Drag this bookmark to your bookmarks bar, or copy the URL and create a bookmark with this exact name.</p>
+          <a id="bookmark" class="bookmark" href="#">Selector Capture Mode</a>
+          <button id="copy-url" class="button primary" type="button">Copy bookmark URL</button>
+          <button id="run-local" class="button" type="button">Run on this page</button>
+
+          <ol class="steps">
+            <li>Open a prototype page.</li>
+            <li>Click the <strong>Selector Capture Mode</strong> bookmark once.</li>
+            <li>Alt+Click an element, then type feedback in the panel.</li>
+            <li>Alt+Click the next element. Copy all notes when done.</li>
+          </ol>
+
+          <p>Bookmark URL</p>
+          <textarea id="url-output" readonly></textarea>
+        </div>
+      </aside>
+    </main>
+
+    <script src="dist/bookmarklet-data.js"></script>
+    <script>
+      const bookmarklet = window.SELECTOR_CAPTURE_BOOKMARKLET || "";
+      const bookmark = document.getElementById("bookmark");
+      const output = document.getElementById("url-output");
+      bookmark.href = bookmarklet;
+      output.value = bookmarklet;
+
+      document.getElementById("copy-url").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(bookmarklet);
+      });
+
+      document.getElementById("run-local").addEventListener("click", () => {
+        const source = decodeURIComponent(bookmarklet.replace(/^javascript:/, ""));
+        const script = document.createElement("script");
+        script.textContent = source;
+        document.documentElement.appendChild(script);
+        script.remove();
+      });
+    </script>
+  </body>
+</html>

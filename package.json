@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "devserver": "node scripts/static-server.mjs",
+    "build:bookmarklet": "node scripts/build-bookmarklet.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "install:extension": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install-selector-capture-extension.ps1",
+    "install:bookmarklet": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install-selector-capture-bookmarklet.ps1",
+    "pinchtab:server": "npx pinchtab server --background",
+    "pinchtab:status": "npx pinchtab health"
+  },
+  "devDependencies": {
+    "pinchtab": "0.11.0",
+    "playwright": "^1.59.1"
+  }
+}

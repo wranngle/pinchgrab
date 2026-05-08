@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Selector Capture Mode",
+  "description": "Capture selector + metadata notes with Alt+Click in JSONL.",
+  "version": "1.0.0",
+  "permissions": [],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
