@@ -9,7 +9,8 @@
     "pinchtab:status": "npx pinchtab health",
     "test:schema": "node --test tests/schema.test.mjs",
     "test:replay": "node tests/replay.test.mjs",
-    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs",
+    "test:replay-auth": "node tests/replay-auth.test.mjs",
+    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs",
     "replay": "node bin/pinchgrab replay"
   },
   "bin": {

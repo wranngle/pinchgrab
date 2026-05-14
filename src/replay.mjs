@@ -24,6 +24,9 @@
 
 import { collectHeals, writeHealedLedger } from "./healing.mjs";
 
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
+
 const STRATEGIES = ["css", "xpath", "a11y"];
 
 const tryStrategy = async (adapter, strategy, entry) => {
@@ -91,6 +94,36 @@ export const parseCaptureJsonl = (raw) =>
     .filter(Boolean)
     .map((line) => JSON.parse(line));
 
+// Load a Playwright storage-state file (the JSON shape produced by
+// `BrowserContext.storageState({ path })`). Validates the file parses
+// and has the expected top-level shape, then returns the parsed object
+// for handoff to `browser.newContext({ storageState })`. Throws with a
+// descriptive message on read or shape failures so the CLI can surface
+// a useful error instead of a Playwright internal stack trace.
+export const loadAuthState = (path) => {
+  let raw;
+  try {
+    raw = readFileSync(resolvePath(path), "utf-8");
+  } catch (err) {
+    throw new Error(`--auth-state: cannot read '${path}': ${err.message}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`--auth-state: '${path}' is not valid JSON: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`--auth-state: '${path}' must be a JSON object`);
+  }
+  if (!Array.isArray(parsed.cookies) && !Array.isArray(parsed.origins)) {
+    throw new Error(
+      `--auth-state: '${path}' is missing both 'cookies' and 'origins' — not a Playwright storageState file`,
+    );
+  }
+  return parsed;
+};
+
 // Playwright page adapter. Kept here so `bin/pinchgrab` and tests share
 // the same construction shape. The Playwright dependency is loaded
 // lazily so the unit test path never pays for it.
@@ -108,3 +141,10 @@ export const playwrightAdapter = (page) => ({
     return (await loc.count()) >= 1 ? loc.first() : null;
   },
 });
+
+// Build a replay adapter that fronts an authenticated Playwright
+// session. Identical to `playwrightAdapter` from a contract standpoint;
+// the auth wiring happens at context construction time in the CLI. This
+// is exported separately so callers reading the source can trace the
+// auth path explicitly.
+export const authedPlaywrightAdapter = playwrightAdapter;
