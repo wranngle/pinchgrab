@@ -4,6 +4,8 @@ A zero-config browser utility for UI review notes.
 
 It captures one JSONL object per Alt+Click and places it directly into a scratchpad in-page.
 
+![Alt+Click on any element drops a JSONL capture into an in-page scratchpad](docs/hero.gif)
+
 ## Why this is useful
 
 You asked for "just enough to identify the exact component and styling context fast."  
