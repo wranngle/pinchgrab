@@ -7,7 +7,13 @@
     "install:bookmarklet": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install-selector-capture-bookmarklet.ps1",
     "pinchtab:server": "npx pinchtab server --background",
     "pinchtab:status": "npx pinchtab health",
-    "test:schema": "node --test tests/schema.test.mjs"
+    "test:schema": "node --test tests/schema.test.mjs",
+    "test:replay": "node tests/replay.test.mjs",
+    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs",
+    "replay": "node bin/pinchgrab replay"
+  },
+  "bin": {
+    "pinchgrab": "bin/pinchgrab"
   },
   "devDependencies": {
     "ajv": "^8.20.0",
