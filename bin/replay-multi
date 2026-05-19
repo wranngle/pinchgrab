@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+// pinchgrab cross-browser replay — drive a capture JSONL through
+// chromium/firefox/webkit and emit a per-engine summary report.
+//
+// Usage:
+//   pinchgrab-replay-multi <capture.jsonl> <url> [--browsers chromium,firefox,webkit] [--out report.md]
+//
+// Exits 0 only when every selected engine resolves every entry.
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { argv, exit, stderr, stdout } from "node:process";
+import { pathToFileURL } from "node:url";
+
+import {
+  parseCaptureJsonl,
+  playwrightRunner,
+  renderReport,
+  runMatrix,
+} from "../src/replay-multi.mjs";
+
+const usage = `pinchgrab-replay-multi — cross-browser replay matrix
+
+Usage:
+  pinchgrab-replay-multi <capture.jsonl> <url> [--browsers chromium,firefox,webkit] [--out report.md]
+`;
+
+const die = (msg, code = 2) => {
+  stderr.write(`${msg}\n`);
+  exit(code);
+};
+
+const parseArgs = (args) => {
+  const positional = [];
+  let browsers = ["chromium", "firefox", "webkit"];
+  let out = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === "--browsers") browsers = (args[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    else if (a === "--out") out = args[++i];
+    else if (a === "-h" || a === "--help") { stdout.write(usage); exit(0); }
+    else positional.push(a);
+  }
+  return { positional, browsers, out };
+};
+
+const main = async () => {
+  const { positional, browsers, out } = parseArgs(argv.slice(2));
+  const [file, url] = positional;
+  if (!file || !url) die(usage);
+
+  const entries = parseCaptureJsonl(readFileSync(resolve(file), "utf-8"));
+  const playwright = await import("playwright");
+  const runner = playwrightRunner(playwright);
+  const matrix = await runMatrix(entries, { browsers, runner, url });
+  const report = renderReport(matrix);
+
+  if (out) writeFileSync(resolve(out), report);
+  stdout.write(`${report}\n`);
+  exit(matrix.summary.failed === 0 ? 0 : 1);
+};
+
+if (import.meta.url === pathToFileURL(argv[1]).href) {
+  main().catch((err) => die(err?.stack || String(err), 1));
+}
