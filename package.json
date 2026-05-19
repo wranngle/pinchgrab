@@ -16,14 +16,16 @@
     "test:visual-diff": "node --test tests/visual-diff.test.mjs",
     "test:cross-browser": "node --test tests/cross-browser.test.mjs",
     "test:network-replay": "node --test tests/network-replay.test.mjs",
-    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs",
+    "test:annotator": "node --test tests/annotator.test.mjs",
+    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs && node --test tests/annotator.test.mjs",
     "replay": "node bin/pinchgrab replay",
     "replay:multi": "node bin/replay-multi",
     "export:playwright": "node src/export-playwright.mjs",
     "export:puppeteer": "node src/export-puppeteer.mjs",
     "export:english": "node src/export-english.mjs",
     "visual-diff": "node src/visual-diff.mjs",
-    "network-capture": "node src/network-capture.mjs"
+    "network-capture": "node src/network-capture.mjs",
+    "annotator": "node src/annotator.mjs"
   },
   "bin": {
     "pinchgrab": "bin/pinchgrab"
