@@ -2,23 +2,37 @@
 // pinchgrab CLI — entrypoint for headless operations on capture JSONL.
 //
 // Subcommands:
-//   replay <capture.jsonl> <url>   Open the URL in headless Chromium
+//   replay <capture.jsonl> <url> [--auth-state <storage.json>]
+//                                  Open the URL in headless Chromium
 //                                  and locate every captured element
 //                                  via the CSS→XPath→a11y fallback
 //                                  chain. Exits 0 only when every
 //                                  entry resolves to a unique hit.
+//                                  --auth-state loads a Playwright
+//                                  storageState file so replay runs
+//                                  against an already-logged-in page.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { parseCaptureJsonl, playwrightAdapter, replay } from "../src/replay.mjs";
+import {
+  loadAuthState,
+  parseCaptureJsonl,
+  playwrightAdapter,
+  replay,
+} from "../src/replay.mjs";
 
 const usage = `pinchgrab — replay JSONL captures against a live page
 
 Usage:
-  pinchgrab replay <capture.jsonl> <url>
+  pinchgrab replay <capture.jsonl> <url> [--auth-state <storage.json>]
+
+Flags:
+  --auth-state <path>   Playwright storageState file (cookies + origins).
+                        Loaded into the browser context before navigation
+                        so authenticated captures replay on logged-in pages.
 
 Exits 0 when every capture entry locates exactly one element on <url>;
 exits 1 otherwise. Prints a per-entry JSON summary on stdout.
@@ -29,14 +43,44 @@ const die = (msg, code = 2) => {
   exit(code);
 };
 
-const cmdReplay = async (file, url) => {
+// Pluck `--auth-state <value>` (or `--auth-state=<value>`) out of the
+// positional list. Returns `{ positional, authState }` where authState
+// is the file path or null.
+const parseReplayArgs = (args) => {
+  const positional = [];
+  let authState = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--auth-state") {
+      authState = args[++i];
+      if (!authState) die("--auth-state requires a path argument");
+    } else if (a.startsWith("--auth-state=")) {
+      authState = a.slice("--auth-state=".length);
+      if (!authState) die("--auth-state requires a path argument");
+    } else {
+      positional.push(a);
+    }
+  }
+  return { positional, authState };
+};
+
+const cmdReplay = async (rawArgs) => {
+  const { positional, authState } = parseReplayArgs(rawArgs);
+  const [file, url] = positional;
   if (!file || !url) die(usage);
+
   const raw = readFileSync(resolve(file), "utf-8");
   const entries = parseCaptureJsonl(raw);
 
+  // Validate auth state up front so a malformed file fails before we
+  // pay for a browser launch.
+  const storageState = authState ? loadAuthState(authState) : null;
+
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const contextOpts = storageState ? { storageState } : {};
+  const context = await browser.newContext(contextOpts);
+  const page = await context.newPage();
   try {
     await page.goto(url);
     const adapter = playwrightAdapter(page);
@@ -44,6 +88,7 @@ const cmdReplay = async (file, url) => {
     stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
     exit(summary.found === summary.total ? 0 : 1);
   } finally {
+    await context.close();
     await browser.close();
   }
 };
@@ -54,7 +99,7 @@ const main = async () => {
     stdout.write(usage);
     exit(0);
   }
-  if (sub === "replay") return cmdReplay(rest[0], rest[1]);
+  if (sub === "replay") return cmdReplay(rest);
   die(`unknown subcommand: ${sub}\n\n${usage}`);
 };
 
