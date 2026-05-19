@@ -16,6 +16,13 @@
 // All three return `null` when the locator fails to resolve to a unique
 // hit; any thrown error is treated as a miss and the next strategy is
 // attempted.
+//
+// When `replay()` is called with `{ healedLedgerPath }`, every entry
+// rescued by a non-css strategy is also written to the healing ledger
+// (src/healing.mjs). Primary-css hits are NOT recorded — the ledger is
+// drift signal, not a full replay log.
+
+import { collectHeals, writeHealedLedger } from "./healing.mjs";
 
 const STRATEGIES = ["css", "xpath", "a11y"];
 
@@ -60,14 +67,21 @@ export const replayEntry = async (adapter, entry, strategies = STRATEGIES) => {
   return { success: false, strategy: null, locator: null };
 };
 
-export const replay = async (adapter, entries, strategies = STRATEGIES) => {
+export const replay = async (adapter, entries, options = {}) => {
+  const { strategies = STRATEGIES, healedLedgerPath = null } = options;
   const results = [];
   for (let i = 0; i < entries.length; i++) {
     const r = await replayEntry(adapter, entries[i], strategies);
     results.push({ index: i, ...r });
   }
   const found = results.filter((r) => r.success).length;
-  return { found, total: entries.length, results };
+  const summary = { found, total: entries.length, results };
+  if (healedLedgerPath) {
+    const ledger = await collectHeals(adapter, entries);
+    const write = await writeHealedLedger(healedLedgerPath, ledger);
+    summary.healed = { path: write.path, count: write.count, entries: ledger };
+  }
+  return summary;
 };
 
 export const parseCaptureJsonl = (raw) =>
