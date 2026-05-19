@@ -1,0 +1,4 @@
+{"schema":"dom-snapshot","version":1,"sequence":1,"selector":"button[data-testid=\"cta-upgrade\"]","outerHTML":"<button data-testid=\"cta-upgrade\" class=\"btn btn--primary\">Upgrade to Pro</button>"}
+{"schema":"dom-snapshot","version":1,"sequence":2,"selector":"a#compose","outerHTML":"<a id=\"compose\" class=\"compose-v2\" href=\"/new\">New message</a>"}
+{"schema":"dom-snapshot","version":1,"sequence":3,"selector":"input#email","outerHTML":"<input id=\"email\" type=\"email\" placeholder=\"you@example.com\" value=\"hello@acme.test\" />"}
+{"schema":"dom-snapshot","version":1,"sequence":4,"selector":"::-p-aria(Save[role=\"button\"])","outerHTML":"<button class=\"save\">Save</button>"}
