@@ -11,9 +11,11 @@
     "test:replay": "node tests/replay.test.mjs",
     "test:replay-auth": "node tests/replay-auth.test.mjs",
     "test:export": "node --test tests/export.test.mjs",
-    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs",
+    "test:export-puppeteer": "node --test tests/export-puppeteer.test.mjs",
+    "test": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs",
     "replay": "node bin/pinchgrab replay",
-    "export:playwright": "node src/export-playwright.mjs"
+    "export:playwright": "node src/export-playwright.mjs",
+    "export:puppeteer": "node src/export-puppeteer.mjs"
   },
   "bin": {
     "pinchgrab": "bin/pinchgrab"
