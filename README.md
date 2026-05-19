@@ -22,6 +22,13 @@ The capture line is JSON, one object per newline (`.jsonl`), with:
 
 Every new capture is appended with a leading newline. So you can paste directly without pressing Enter first.
 
+### Schema
+
+The capture payload is formally described as a JSON Schema (draft-07) at [`docs/capture-schema.json`](docs/capture-schema.json).
+Three representative captures live at [`docs/capture-sample.jsonl`](docs/capture-sample.jsonl) and double as the validation fixture.
+Validate locally with `npm run test:schema` (uses `node --test` + `ajv`).
+The schema is intentionally `additionalProperties: true`; treat the listed properties as the canonical shape, not a closed set.
+
 ## Install (recommended: extension)
 
 ```powershell
