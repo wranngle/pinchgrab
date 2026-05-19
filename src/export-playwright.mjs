@@ -1,0 +1,197 @@
+// Capture → Playwright test exporter.
+//
+// Reads a JSONL capture file produced by selector-capture-mode.js
+// (`schema: selector-capture-entry`, version 3) and emits a ready-to-
+// paste TypeScript test file. Each capture entry becomes a single
+// `await page.locator(...).click();` line; entries grouped by page URL
+// share one `test()` block so the emitted file mirrors the browsing
+// session it was captured from.
+//
+// Selector preference, per entry: data-testid > id > primary CSS >
+// computed ARIA role + accessible name (Playwright's `getByRole`).
+// The fallback order is identical to the replay chain in src/replay.mjs
+// so the exporter cannot pick a selector the replayer would never
+// honour. Element values that look like inputs get `.fill(value)`
+// instead of `.click()`.
+//
+// Output is deterministic: identical input always produces byte-identical
+// output (no timestamps, no env-dependent paths). The emitted file is
+// pure TypeScript that compiles under `tsc --noEmit --module esnext
+// --target es2022 --moduleResolution bundler --strict` against the
+// `playwright/test` types shipped with the `playwright` package.
+//
+// Programmatic API:
+//   exportPlaywright(entries, { specName }) → string  — emit code
+//   parseCaptureJsonl(raw)                  → entries
+//   buildLocatorCall(entry)                 → { method, args, action }
+//
+// CLI:
+//   node src/export-playwright.mjs <capture.jsonl> [outdir]
+//     Writes <outdir>/<spec-name>.spec.ts and prints the path + line count.
+
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, extname, resolve } from "node:path";
+import { argv, exit, stderr, stdout } from "node:process";
+import { pathToFileURL } from "node:url";
+
+export const parseCaptureJsonl = (raw) => {
+  const out = [];
+  const lines = raw.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (err) {
+      throw new Error(`line ${i + 1}: invalid JSON — ${err.message}`);
+    }
+    if (entry?.schema !== "selector-capture-entry") {
+      throw new Error(
+        `line ${i + 1}: not a selector-capture-entry (schema=${entry?.schema ?? "missing"})`,
+      );
+    }
+    out.push(entry);
+  }
+  return out;
+};
+
+const escapeForSingleQuotedString = (value) =>
+  String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+const looksFillable = (entry) => {
+  const el = entry?.element ?? {};
+  if (el.isEditable === true) return true;
+  if (el.tag === "input" || el.tag === "textarea") {
+    const t = (el.type ?? "").toLowerCase();
+    return t !== "button" && t !== "submit" && t !== "checkbox" && t !== "radio" && t !== "file";
+  }
+  return false;
+};
+
+export const buildLocatorCall = (entry) => {
+  const sel = entry?.selectors ?? {};
+  const el = entry?.element ?? {};
+  const testId = el.testId ?? sel.dataIds ?? null;
+  const id = el.id ?? sel.id ?? null;
+  const css = sel.css ?? sel.compact ?? null;
+  const role = el?.accessibility?.computed?.computedRole ?? el.role ?? null;
+  const accessibleName = el.accessibleName ?? el?.accessibility?.computed?.explicitName ?? null;
+
+  let method;
+  let args;
+  if (testId) {
+    method = "getByTestId";
+    args = `'${escapeForSingleQuotedString(testId)}'`;
+  } else if (id) {
+    method = "locator";
+    args = `'#${escapeForSingleQuotedString(id)}'`;
+  } else if (css) {
+    method = "locator";
+    args = `'${escapeForSingleQuotedString(css)}'`;
+  } else if (role) {
+    method = "getByRole";
+    args = accessibleName
+      ? `'${escapeForSingleQuotedString(role)}', { name: '${escapeForSingleQuotedString(accessibleName)}' }`
+      : `'${escapeForSingleQuotedString(role)}'`;
+  } else {
+    throw new Error(
+      `entry sequence=${entry?.sequence ?? "?"}: no usable selector (testId/id/css/role all empty)`,
+    );
+  }
+
+  let action;
+  if (looksFillable(entry)) {
+    const value = el.value ?? el.placeholder ?? "";
+    action = `.fill('${escapeForSingleQuotedString(value)}')`;
+  } else {
+    action = `.click()`;
+  }
+
+  return { method, args, action };
+};
+
+const groupByUrl = (entries) => {
+  const groups = [];
+  let current = null;
+  for (const entry of entries) {
+    const url = entry?.page?.url ?? "about:blank";
+    if (!current || current.url !== url) {
+      current = { url, entries: [] };
+      groups.push(current);
+    }
+    current.entries.push(entry);
+  }
+  return groups;
+};
+
+const slugify = (raw) =>
+  String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "captures";
+
+export const exportPlaywright = (entries, opts = {}) => {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error("exportPlaywright: entries must be a non-empty array");
+  }
+  const specName = opts.specName ?? "captures";
+  const groups = groupByUrl(entries);
+  const lines = [];
+  lines.push(
+    "// Generated by pinchgrab export — do not edit by hand.",
+    "// Regenerate with: node src/export-playwright.mjs <capture.jsonl>",
+    "",
+    `import { test, expect } from 'playwright/test';`,
+    "",
+  );
+  for (let g = 0; g < groups.length; g += 1) {
+    const group = groups[g];
+    const title = `${specName} ${g + 1}: ${group.url}`;
+    lines.push(`test('${escapeForSingleQuotedString(title)}', async ({ page }) => {`);
+    lines.push(`  await page.goto('${escapeForSingleQuotedString(group.url)}');`);
+    for (const entry of group.entries) {
+      const call = buildLocatorCall(entry);
+      lines.push(`  await page.${call.method}(${call.args})${call.action};`);
+    }
+    lines.push(`  await expect(page).toHaveURL(/.*/);`);
+    lines.push(`});`);
+    lines.push("");
+  }
+  return lines.join("\n");
+};
+
+const usage = `pinchgrab export — emit Playwright tests from JSONL captures
+
+Usage:
+  node src/export-playwright.mjs <capture.jsonl> [outdir]
+
+Writes <outdir>/<spec-name>.spec.ts (outdir defaults to the current
+directory; spec-name derives from the capture file's basename).
+Each capture entry becomes one page.locator().click() line.
+`;
+
+const cli = async () => {
+  const [, , file, outdir = "."] = argv;
+  if (!file || file === "-h" || file === "--help") {
+    stdout.write(usage);
+    exit(file ? 0 : 2);
+  }
+  const raw = readFileSync(resolve(file), "utf-8");
+  const entries = parseCaptureJsonl(raw);
+  const specName = slugify(basename(file, extname(file)));
+  const code = exportPlaywright(entries, { specName });
+  mkdirSync(resolve(outdir), { recursive: true });
+  const outPath = resolve(outdir, `${specName}.spec.ts`);
+  writeFileSync(outPath, code, "utf-8");
+  const clickLines = code.split("\n").filter((l) => /await page\.(locator|getByTestId|getByRole)\(/.test(l));
+  stdout.write(`${outPath}\n`);
+  stdout.write(`${clickLines.length} locator call(s) for ${entries.length} capture entr${entries.length === 1 ? "y" : "ies"}\n`);
+};
+
+if (import.meta.url === pathToFileURL(argv[1]).href) {
+  cli().catch((err) => {
+    stderr.write(`${err?.stack || String(err)}\n`);
+    exit(1);
+  });
+}
