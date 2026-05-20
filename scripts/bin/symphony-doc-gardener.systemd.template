@@ -1,0 +1,11 @@
+[Unit]
+Description=Symphony doc-gardening recurring sweep
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.dotfiles/scripts/bin/symphony-doc-gardener.sh
+Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# composio-orch — thin shim that forwards to bin/composio-orch.ts via tsx.
+# Resolves to the orchestrator inside the dotfiles regardless of CWD so cron
+# and shell aliases both work.
+set -uo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.dotfiles/scripts/bin:$PATH"
+
+if ! command -v node >/dev/null 2>&1; then
+  _NVM_BIN=$(find "$HOME/.nvm/versions/node" -maxdepth 2 -type d -name "bin" 2>/dev/null | sort -V | tail -n 1)
+  [[ -n "$_NVM_BIN" ]] && export PATH="$_NVM_BIN:$PATH"
+fi
+
+DOTFILES_ROOT=${DOTFILES_ROOT:-$HOME/.dotfiles}
+ORCH_DIR=$DOTFILES_ROOT/lib/composio-orchestrator
+ENTRY=$ORCH_DIR/bin/composio-orch.ts
+
+if [[ ! -f $ENTRY ]]; then
+  printf 'composio-orch: entry not found at %s\n' "$ENTRY" >&2
+  exit 2
+fi
+
+NODE_BIN=$(command -v node || true)
+if [[ -z $NODE_BIN ]]; then
+  printf 'composio-orch: node is required (>=20)\n' >&2
+  exit 2
+fi
+
+# Use absolute tsx loader path so resolution does not depend on caller CWD.
+TSX_LOADER=$ORCH_DIR/node_modules/tsx/dist/loader.mjs
+if [[ ! -f $TSX_LOADER ]]; then
+  printf 'composio-orch: tsx not installed at %s; run npm install in %s\n' "$TSX_LOADER" "$ORCH_DIR" >&2
+  exit 2
+fi
+
+exec "$NODE_BIN" --import "file://$TSX_LOADER" "$ENTRY" "$@"

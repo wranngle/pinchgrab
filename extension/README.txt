@@ -1,10 +1,11 @@
-Selector Capture Mode extension
+PinchGrab extension
 
 1. Open this folder in your file manager.
 2. Open edge://extensions or chrome://extensions.
 3. Enable Developer mode.
-4. Click Load unpacked and select:
+4. Click "Load unpacked" and select:
    C:\Users\root\Documents\dev\visual_copy_design\extension
-5. Open a page and Alt+Click an element to open the capture panel.
+5. Pin PinchGrab in the toolbar; click its icon to open the side panel.
+6. Open any web page, hold Alt to live-outline elements, Alt+Click to capture.
 
-The panel is bootstrapped automatically on first Alt+Click.
+Repo: https://github.com/wranngle/pinchgrab

@@ -1,0 +1,438 @@
+#!/usr/bin/env bash
+# symphony-orch — PATH-resolved entry point for the Symphony orchestrator.
+# Mirrors the `composio-orch` ergonomics seam: a single discoverable command
+# the user (or any agent) can run from anywhere to manage the BEAM daemon
+# AND interact with the workflow queue (ship/list/show/snapshot).
+#
+# Daemon-lifecycle subcommands (start, stop, status, logs, restart) DELEGATE
+# to scripts/bin/symphony-daemon.sh by exec'ing it — this script never
+# duplicates lifecycle logic and never owns the PID file.
+#
+# Default-on telemetry: every invocation appends one ECS-shaped JSONL line
+# to `<repo-root>/.artifacts/symphony/orch.<yyyy-mm-dd>.jsonl` (canonical
+# artifact layout). Service name is `symphony-orch` so dashboards can split
+# launcher activity from daemon-process activity.
+set -uo pipefail
+
+# ---- paths -----------------------------------------------------------------
+REPO_ROOT="${SYMPHONY_REPO_ROOT:-$HOME/.dotfiles}"
+ISSUES_ROOT="$REPO_ROOT/.symphony/issues"
+TODO_DIR="$ISSUES_ROOT/todo"
+DONE_DIR="$ISSUES_ROOT/done"
+FAILED_DIR="$ISSUES_ROOT/failed"
+IN_PROGRESS_DIR="$ISSUES_ROOT/in_progress"
+DAEMON_SH="$REPO_ROOT/scripts/bin/symphony-daemon.sh"
+GARDENER_SH="$REPO_ROOT/scripts/bin/symphony-doc-gardener.sh"
+SNAPSHOT_URL="${SYMPHONY_SNAPSHOT_URL:-http://127.0.0.1:4044/api/snapshot}"
+ARTIFACTS_DIR="$REPO_ROOT/.artifacts/symphony"
+STATE_DIR="$ARTIFACTS_DIR"
+STATE_LOG="$ARTIFACTS_DIR/orch.$(date -u +%Y-%m-%d).jsonl"
+
+# ---- ECS jsonl --------------------------------------------------------------
+ORCH_RUN_ID="$(uuidgen 2>/dev/null || printf '%s-%s' "$(date +%s%N)" "$RANDOM")"
+ORCH_EVT_SEQ=0
+emit_ecs_event() {
+  # args: level action outcome [labels_json] [error_message]
+  local level=$1 action=$2 outcome=$3 labels=${4:-'{}'} err=${5:-}
+  local ts json
+  ORCH_EVT_SEQ=$((ORCH_EVT_SEQ + 1))
+  ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+  command -v jq >/dev/null 2>&1 || return 0
+  mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+  json=$(jq -nc \
+    --arg ts "$ts" --arg lvl "$level" --arg act "$action" --arg out "$outcome" \
+    --arg svc symphony-orch --arg trace "$ORCH_RUN_ID" \
+    --arg eid "${ORCH_RUN_ID}-${ORCH_EVT_SEQ}" --arg err "$err" \
+    --argjson lbls "$labels" \
+    '{"@timestamp":$ts,"log.level":$lvl,"event.action":$act,"event.outcome":$out,"event.id":$eid,"trace.id":$trace,"service.name":$svc,"labels":$lbls}+(if $err=="" then {} else {"error.message":$err} end)' \
+    2>/dev/null) || return 0
+  printf '%s\n' "$json" >> "$STATE_LOG" 2>/dev/null || return 0
+}
+
+# ---- helpers ---------------------------------------------------------------
+require_daemon_sh() {
+  if [[ ! -x $DAEMON_SH ]]; then
+    emit_ecs_event error symphony-orch.delegate failure '{}' "missing $DAEMON_SH"
+    printf 'symphony-orch: missing daemon shim at %s\n' "$DAEMON_SH" >&2
+    exit 2
+  fi
+}
+
+# Return the highest 3-digit SYM-NNN integer across todo/, done/, failed/,
+# in_progress/. Empty queue → 0. Used by `ship` to compute the next free id.
+max_issue_number() {
+  local max=0 dir base num
+  for dir in "$TODO_DIR" "$DONE_DIR" "$FAILED_DIR" "$IN_PROGRESS_DIR"; do
+    [[ -d $dir ]] || continue
+    for f in "$dir"/SYM-*.md; do
+      [[ -e $f ]] || continue
+      base=${f##*/}
+      num=${base#SYM-}
+      num=${num%.md}
+      # Strip leading zeros so bash arithmetic does not interpret as octal.
+      num=$((10#$num))
+      (( num > max )) && max=$num
+    done
+  done
+  printf '%d' "$max"
+}
+
+# Locate an issue file by identifier across all four state dirs. Prints the
+# absolute path on stdout; returns non-zero if not found.
+locate_issue() {
+  local id=$1 dir hit
+  for dir in "$TODO_DIR" "$IN_PROGRESS_DIR" "$DONE_DIR" "$FAILED_DIR"; do
+    hit="$dir/$id.md"
+    [[ -f $hit ]] && { printf '%s' "$hit"; return 0; }
+  done
+  return 1
+}
+
+# Pretty one-liner for `list`: <ID> [<state>] <title>. Title is the first
+# H1 heading; falls back to "(no title)" when the body is empty.
+issue_summary_line() {
+  local file=$1 state=$2 base id title
+  base=${file##*/}
+  id=${base%.md}
+  title=$(awk '/^# /{ sub(/^# */,""); print; exit }' "$file" 2>/dev/null)
+  [[ -z $title ]] && title='(no title)'
+  printf '%-9s %-12s %s\n' "$id" "[$state]" "$title"
+}
+
+# ---- subcommands -----------------------------------------------------------
+
+# Lifecycle subcommands delegate verbatim. Re-execing symphony-daemon.sh
+# means signal handling, PID-file ownership, and systemd interplay all
+# stay in one place.
+cmd_delegate() {
+  local sub=$1; shift
+  require_daemon_sh
+  emit_ecs_event info "symphony-orch.$sub" success \
+    "$(jq -nc --arg sub "$sub" '{subcommand:$sub,delegated_to:"symphony-daemon.sh"}')" ""
+  exec "$DAEMON_SH" "$sub" "$@"
+}
+
+# `status` is the one lifecycle command we enrich. Daemon-status output is
+# printed first (so the existing contract still holds), then — when the
+# daemon is up AND the snapshot endpoint answers — we append:
+#   beam_uptime=…
+#   running=N retrying=M next_poll_in=…ms
+#   running:    SYM-001
+#   retrying:   SYM-002 (attempt 2)
+# Snapshot fetch is best-effort: a missing/slow endpoint never fails the
+# command, it just suppresses the extra block.
+cmd_status() {
+  require_daemon_sh
+  local daemon_rc=0
+  "$DAEMON_SH" status
+  daemon_rc=$?
+
+  if (( daemon_rc == 0 )); then
+    local snap pid uptime
+    pid=$("$DAEMON_SH" status 2>/dev/null | awk '/^running \(pid /{ gsub(/[()]/,"",$3); print $3; exit }')
+    if [[ -n ${pid:-} ]]; then
+      uptime=$(ps -o etime= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')
+      [[ -n $uptime ]] && printf '  beam_pid=%s uptime=%s\n' "$pid" "$uptime"
+    fi
+    if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+      snap=$(curl -fsS --max-time 1 --connect-timeout 0.3 "$SNAPSHOT_URL" 2>/dev/null)
+      if [[ -n $snap ]]; then
+        local counts_line
+        counts_line=$(printf '%s' "$snap" | jq -r '
+          "  running=\((.counts.running // 0)) retrying=\((.counts.retrying // 0)) next_poll_in=\((.polling.next_poll_in_ms // "?"))ms checking=\(.polling["checking?"] // false)"
+        ' 2>/dev/null)
+        [[ -n $counts_line ]] && printf '%s\n' "$counts_line"
+        printf '%s' "$snap" | jq -r '
+          (.running // [])  | .[]? | "  running:    \(.identifier // .issue_identifier // "?")"
+        ' 2>/dev/null
+        printf '%s' "$snap" | jq -r '
+          (.retrying // []) | .[]? | "  retrying:   \(.identifier // .issue_identifier // "?") (attempt \(.attempt // "?"))"
+        ' 2>/dev/null
+      fi
+    fi
+    emit_ecs_event info symphony-orch.status success '{"subcommand":"status","running":true}' ""
+  else
+    emit_ecs_event info symphony-orch.status success '{"subcommand":"status","running":false}' ""
+  fi
+  return "$daemon_rc"
+}
+
+# `ship` enqueues a new SYM-NNN.md with priority 1 + label "adhoc". Atomic
+# write: build the file in a temp path inside todo/ (same filesystem so mv
+# is rename(2)) and rename into place. A partial write is therefore never
+# visible to the orchestrator's poll-tick.
+cmd_ship() {
+  local title='' body=''
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --body) shift; body=${1:-}; [[ -n ${1+x} ]] && shift; continue ;;
+      --body=*) body=${1#--body=} ;;
+      --help|-h)
+        cat <<USAGE
+symphony-orch ship <title> [--body STR]
+
+Create a new SYM-NNN.md in .symphony/issues/todo/. The orchestrator will
+pick it up on the next poll tick (within polling.interval_ms).
+USAGE
+        return 0
+        ;;
+      --) shift; title="${title:+$title }$*"; break ;;
+      -*) printf 'symphony-orch ship: unknown option: %s\n' "$1" >&2; return 2 ;;
+      *) title="${title:+$title }$1" ;;
+    esac
+    shift
+  done
+
+  if [[ -z $title ]]; then
+    printf 'symphony-orch ship: title is required\n' >&2
+    printf 'usage: symphony-orch ship <title> [--body STR]\n' >&2
+    return 2
+  fi
+
+  mkdir -p "$TODO_DIR" 2>/dev/null || {
+    emit_ecs_event error symphony-orch.ship failure '{}' "could not create $TODO_DIR"
+    printf 'symphony-orch ship: cannot create %s\n' "$TODO_DIR" >&2
+    return 1
+  }
+
+  local next id path tmp
+  next=$(( $(max_issue_number) + 1 ))
+  id=$(printf 'SYM-%03d' "$next")
+  path="$TODO_DIR/$id.md"
+
+  if [[ -e $path ]]; then
+    emit_ecs_event error symphony-orch.ship failure \
+      "$(jq -nc --arg id "$id" --arg path "$path" '{subcommand:"ship",identifier:$id,path:$path}')" \
+      "target path already exists"
+    printf 'symphony-orch ship: %s already exists — aborting\n' "$path" >&2
+    return 1
+  fi
+
+  [[ -z $body ]] && body='_TODO: operator, fill in the deliverable, hard constraints, and acceptance criteria for this work item._'
+
+  tmp=$(mktemp "$TODO_DIR/.${id}.XXXXXX") || {
+    emit_ecs_event error symphony-orch.ship failure '{}' "mktemp failed in $TODO_DIR"
+    printf 'symphony-orch ship: mktemp failed in %s\n' "$TODO_DIR" >&2
+    return 1
+  }
+
+  {
+    printf -- '---\n'
+    printf 'priority: 1\n'
+    printf 'labels: [adhoc]\n'
+    printf -- '---\n'
+    printf '# %s\n\n' "$title"
+    printf '%s\n' "$body"
+  } > "$tmp" || {
+    rm -f "$tmp" 2>/dev/null
+    emit_ecs_event error symphony-orch.ship failure '{}' "write to temp failed"
+    printf 'symphony-orch ship: failed to write temp file\n' >&2
+    return 1
+  }
+
+  if ! mv "$tmp" "$path"; then
+    rm -f "$tmp" 2>/dev/null
+    emit_ecs_event error symphony-orch.ship failure '{}' "atomic rename failed"
+    printf 'symphony-orch ship: atomic rename failed\n' >&2
+    return 1
+  fi
+
+  emit_ecs_event info symphony-orch.ship success \
+    "$(jq -nc --arg id "$id" --arg path "$path" --arg title "$title" '{subcommand:"ship",identifier:$id,path:$path,title:$title}')" ""
+  printf '%s\t%s\n' "$id" "$path"
+}
+
+# `list [todo|done|failed|in_progress|all]`. Default `todo` keeps the
+# common case (what's queued?) one keystroke shorter than `list todo`.
+cmd_list() {
+  local which=${1:-todo}
+  local dirs=()
+  case "$which" in
+    todo)        dirs=("$TODO_DIR") ;;
+    done)        dirs=("$DONE_DIR") ;;
+    failed)      dirs=("$FAILED_DIR") ;;
+    in_progress) dirs=("$IN_PROGRESS_DIR") ;;
+    all)         dirs=("$TODO_DIR" "$IN_PROGRESS_DIR" "$DONE_DIR" "$FAILED_DIR") ;;
+    --help|-h)
+      cat <<USAGE
+symphony-orch list [todo|in_progress|done|failed|all]
+
+List workflow items. Default: todo. Output is one line per item:
+  SYM-NNN  [state]  <H1 title>
+USAGE
+      return 0
+      ;;
+    *) printf 'symphony-orch list: unknown filter: %s\n' "$which" >&2; return 2 ;;
+  esac
+
+  local found=0 dir state f
+  for dir in "${dirs[@]}"; do
+    state=${dir##*/}
+    [[ -d $dir ]] || continue
+    for f in "$dir"/SYM-*.md; do
+      [[ -e $f ]] || continue
+      found=1
+      issue_summary_line "$f" "$state"
+    done
+  done
+  if (( ! found )); then
+    printf '(no items in %s)\n' "$which"
+  fi
+  emit_ecs_event info symphony-orch.list success \
+    "$(jq -nc --arg w "$which" --argjson n "$found" '{subcommand:"list",filter:$w,had_items:($n==1)}')" ""
+}
+
+# `show <SYM-NNN>` cats the issue file from whichever state directory holds
+# it. Useful for `symphony-orch show SYM-005 | less` once an item is queued.
+cmd_show() {
+  local id=${1:-}
+  if [[ -z $id ]]; then
+    printf 'symphony-orch show: identifier required (e.g. SYM-005)\n' >&2
+    return 2
+  fi
+  case "$id" in
+    --help|-h)
+      cat <<USAGE
+symphony-orch show <SYM-NNN>
+
+Print the issue file from whichever state dir (todo/in_progress/done/failed)
+holds it. Exits non-zero if the identifier is not found.
+USAGE
+      return 0
+      ;;
+  esac
+  if [[ ! $id =~ ^SYM-[0-9]+$ ]]; then
+    printf 'symphony-orch show: identifier must look like SYM-NNN, got: %s\n' "$id" >&2
+    return 2
+  fi
+  local path
+  if ! path=$(locate_issue "$id"); then
+    emit_ecs_event warn symphony-orch.show failure \
+      "$(jq -nc --arg id "$id" '{subcommand:"show",identifier:$id}')" "not found"
+    printf 'symphony-orch show: %s not found in %s\n' "$id" "$ISSUES_ROOT" >&2
+    return 1
+  fi
+  emit_ecs_event info symphony-orch.show success \
+    "$(jq -nc --arg id "$id" --arg path "$path" '{subcommand:"show",identifier:$id,path:$path}')" ""
+  cat "$path"
+}
+
+# `snapshot` pretty-prints the orchestrator's JSON snapshot. Color when
+# stdout is a TTY (jq -C), plain when piped (jq .). Non-zero on a missing
+# daemon so callers can branch on `if symphony-orch snapshot >/dev/null;`.
+cmd_snapshot() {
+  if ! command -v curl >/dev/null 2>&1; then
+    printf 'symphony-orch snapshot: curl is required\n' >&2
+    return 2
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'symphony-orch snapshot: jq is required\n' >&2
+    return 2
+  fi
+  local body
+  if ! body=$(curl -fsS --max-time 2 --connect-timeout 0.3 "$SNAPSHOT_URL" 2>/dev/null); then
+    emit_ecs_event warn symphony-orch.snapshot failure \
+      "$(jq -nc --arg url "$SNAPSHOT_URL" '{subcommand:"snapshot",url:$url}')" "endpoint unreachable"
+    printf 'symphony-orch snapshot: %s unreachable (daemon down?)\n' "$SNAPSHOT_URL" >&2
+    return 1
+  fi
+  emit_ecs_event info symphony-orch.snapshot success \
+    "$(jq -nc --arg url "$SNAPSHOT_URL" --argjson bytes "${#body}" '{subcommand:"snapshot",url:$url,bytes:$bytes}')" ""
+  if [[ -t 1 ]]; then
+    printf '%s' "$body" | jq -C .
+  else
+    printf '%s' "$body" | jq .
+  fi
+}
+
+# `garden` is the manual one-shot trigger for the recurring doc-gardening
+# pass. The systemd-user timer at ~/.config/systemd/user/symphony-doc-gardener.timer
+# fires the same script on a schedule (24h by default). Idempotent: the
+# underlying script is a no-op when a SYM-DG-* issue is already queued
+# or in flight.
+cmd_garden() {
+  if [[ ! -x $GARDENER_SH ]]; then
+    emit_ecs_event error symphony-orch.garden failure '{}' "missing $GARDENER_SH"
+    printf 'symphony-orch garden: missing %s\n' "$GARDENER_SH" >&2
+    return 2
+  fi
+  case "${1:-}" in
+    --help|-h)
+      cat <<USAGE
+symphony-orch garden
+
+Manually fire one doc-gardening pass: drop a fresh SYM-DG-<UTC>.md issue
+into .symphony/issues/todo/ for the orchestrator to pick up. Idempotent:
+no-op when a SYM-DG-* file already exists in todo/ or in_progress/.
+
+The same script runs on a 24h cadence under the systemd-user timer
+symphony-doc-gardener.timer when the operator opts in (see
+SYMPHONY_DOC_GARDENER_AUTOSTART=1 in the dotfiles bootstrap).
+USAGE
+      return 0
+      ;;
+  esac
+  emit_ecs_event info symphony-orch.garden success \
+    "$(jq -nc --arg sub garden '{subcommand:$sub,delegated_to:"symphony-doc-gardener.sh"}' 2>/dev/null || printf '{}')" ""
+  exec "$GARDENER_SH"
+}
+
+cmd_help() {
+  cat <<USAGE
+symphony-orch — single discoverable entry point for the Symphony orchestrator.
+
+Lifecycle (delegates to symphony-daemon.sh):
+  symphony-orch start [--foreground]       start the BEAM (default: backgrounded)
+  symphony-orch stop                        SIGTERM → wait 10s → SIGKILL
+  symphony-orch status                      daemon status, enriched with snapshot summary
+  symphony-orch logs [--no-follow]          tail -F (or one-shot) the orchestrator log
+  symphony-orch restart                     stop && start
+
+Workflow queue:
+  symphony-orch ship <title> [--body STR]   create a new SYM-NNN.md in todo/
+  symphony-orch list [todo|in_progress|done|failed|all]
+                                            list workflow items (default: todo)
+  symphony-orch show <SYM-NNN>              cat the issue file from any state dir
+  symphony-orch snapshot                    GET /api/snapshot, pretty-printed
+
+Recurring agents:
+  symphony-orch garden                      manual one-shot of the doc-gardening pass
+                                            (also runs every 24h under
+                                            symphony-doc-gardener.timer when opted in)
+
+Misc:
+  symphony-orch --help                      this message
+
+Environment:
+  SYMPHONY_REPO_ROOT     repo root (default: \$HOME/.dotfiles)
+  SYMPHONY_SNAPSHOT_URL  snapshot endpoint (default: http://127.0.0.1:4044/api/snapshot)
+
+Paths:
+  issues  $ISSUES_ROOT
+  daemon  $DAEMON_SH
+  state   $STATE_LOG
+USAGE
+}
+
+# ---- dispatch --------------------------------------------------------------
+sub=${1:-}
+[[ $# -gt 0 ]] && shift
+case "$sub" in
+  start)        cmd_delegate start    "$@" ;;
+  stop)         cmd_delegate stop     "$@" ;;
+  restart)      cmd_delegate restart  "$@" ;;
+  logs)         cmd_delegate logs     "$@" ;;
+  status)       cmd_status            "$@" ;;
+  ship)         cmd_ship              "$@" ;;
+  list)         cmd_list              "$@" ;;
+  show)         cmd_show              "$@" ;;
+  snapshot)     cmd_snapshot          "$@" ;;
+  garden)       cmd_garden            "$@" ;;
+  --help|-h|help) cmd_help ;;
+  "") cmd_help; exit 2 ;;
+  *)
+    printf 'symphony-orch: unknown subcommand: %s\n' "$sub" >&2
+    cmd_help >&2
+    exit 2
+    ;;
+esac

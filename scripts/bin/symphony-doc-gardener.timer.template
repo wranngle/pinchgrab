@@ -1,0 +1,16 @@
+[Unit]
+Description=Schedule the Symphony doc-gardening sweep every 24h
+After=default.target
+
+[Timer]
+# Fire 5 minutes after login so we never race the daemon's startup
+# settle window, then on a 24h cadence. Override OnUnitActiveSec= via a
+# drop-in (`systemctl --user edit symphony-doc-gardener.timer`) to run
+# more or less frequently without touching the tracked template.
+OnStartupSec=5min
+OnUnitActiveSec=24h
+Persistent=true
+Unit=symphony-doc-gardener.service
+
+[Install]
+WantedBy=default.target

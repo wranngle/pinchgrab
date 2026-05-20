@@ -1,0 +1,51 @@
+{
+  "$schema": "./schemas/model-rankings.schema.json",
+  "version": "2026-01-16",
+  "rankings": {
+    "text": ["gemini-3-pro", "claude-opus-4-5", "gpt-5-turbo"],
+    "code": ["claude-opus-4-5", "gemini-3-pro", "deepseek-r1"],
+    "vision": ["gemini-3-pro", "gpt-5-vision", "claude-opus-4-5"],
+    "reasoning": ["o3", "deepseek-r1", "gemini-3-pro"],
+    "fast": ["gemini-3-flash-preview", "claude-3.5-haiku"]
+  },
+  "enforced": {
+    "elevenlabs_agent": "gemini-3-flash-preview",
+    "n8n_llm_text": "gemini-3-pro",
+    "n8n_llm_code": "claude-opus-4-5",
+    "default_fast": "gemini-3-flash-preview"
+  },
+  "banned": [
+    "gpt-5-mini",
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-4-turbo",
+    "gpt-4",
+    "gpt-3.5-turbo",
+    "gpt-3.5",
+    "gemini-1.0-pro",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-exp",
+    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-flash",
+    "claude-2",
+    "claude-2.1",
+    "claude-3-haiku",
+    "claude-3-sonnet",
+    "claude-3-opus",
+    "claude-instant"
+  ],
+  "deprecated_aliases": {
+    "gpt-5-mini": "Use gemini-3-flash-preview instead (faster, better)",
+    "gpt-4o-mini": "Use gemini-3-flash-preview instead",
+    "gemini-2.0-flash-001": "Use gemini-3-flash-preview instead",
+    "gemini-2.0-flash": "Use gemini-3-flash-preview instead",
+    "gemini-1.5-flash": "Use gemini-3-flash-preview instead",
+    "gemini-1.5-pro": "Use gemini-3-pro instead",
+    "claude-3-haiku": "Use claude-3.5-haiku or claude-opus-4-5 instead",
+    "claude-3-sonnet": "Use claude-opus-4-5 instead",
+    "claude-3-opus": "Use claude-opus-4-5 instead"
+  }
+}

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# dotfiles-skills-sync — re-converge skills across:
+#   ~/.dotfiles/.agents/skills/  (repo, source of truth for tracked skills)
+#   ~/.agents/skills/            (central consolidator)
+#   ~/.claude/skills/            (real materialized copies for Claude registry visibility)
+#   ~/.gemini/skills/            (no central mirrors; Gemini discovers ~/.agents/skills)
+#   ~/.codex/skills/             (no central mirrors; Codex discovers ~/.agents/skills + .system)
+#
+# Idempotent. Safe to re-run. Use this when you've edited a skill in any
+# location and want to propagate without a full bootstrap pass.
+set -euo pipefail
+
+DOTFILES_HOME="${DOTFILES_HOME:-$HOME/.dotfiles}"
+[[ -f $DOTFILES_HOME/.dotfiles.sh ]]||{ printf 'dotfiles-skills-sync: %s/.dotfiles.sh missing\n' "$DOTFILES_HOME" >&2; exit 1; }
+
+# Anchor REPO_ROOT to the dotfiles tree (not the caller's CWD) so the
+# sourced deployer's readonly globals point at the right place.
+REPO_ROOT="$DOTFILES_HOME"
+export REPO_ROOT
+
+# Source the deployer to get its functions. The bottom-of-file BASH_SOURCE
+# guard keeps executeMainBootstrapEntryPoint from auto-running on source.
+# shellcheck disable=SC1090,SC1091
+source "$DOTFILES_HOME/.dotfiles.sh"
+
+mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.gemini/skills" "$HOME/.codex/skills" 2>/dev/null||true
+
+# 1. Normalize repo skills first so canonical frontmatter propagates outward.
+patchExistingSkills
+
+# 2. Push repo → central (archive+replace on drift; repo wins for known skills).
+ingestSkillDirectoriesIntoCentralSource "$REPO_ROOT/.agents/skills" "$HOME/.agents/skills" repo
+
+# 3. Per-agent visibility:
+#    - Claude gets real directories; symlinked skill dirs have been sticky in
+#      its visible registry.
+#    - Gemini/Codex already discover ~/.agents/skills, so agent-local mirrors
+#      are retired to prevent duplicate or stale visibility.
+materializeAgentSkillsFromCentralSource "$HOME/.claude/skills" "$HOME/.agents/skills"
+retireAgentSkillMirrorsToCentralOnly "$HOME/.gemini/skills" "$HOME/.agents/skills"
+retireAgentSkillMirrorsToCentralOnly "$HOME/.codex/skills" "$HOME/.agents/skills"
+
+# 4. Re-normalize: any skills freshly-ingested from agent dirs get their
+#    frontmatter canonicalized too.
+patchExistingSkills
+
+emitEcsLogEvent info skills success "done" 0 '' '' 'dotfiles-skills-sync converged'
+printf '[dotfiles-skills-sync] converged repo + central; materialized Claude; retired Gemini/Codex mirrors.\n' >&2

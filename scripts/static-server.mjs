@@ -18,6 +18,8 @@ const mimeByExt = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 const isInRoot = (candidate) => {
