@@ -1,118 +1,93 @@
-# Selector Capture Mode
+# PinchGrab
 
-A zero-config browser utility for UI review notes.
+Browser-side UI capture exports for review agents.
 
-It captures one JSONL object per Alt+Click and places it directly into a scratchpad in-page.
+[![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml)
+
+> [!NOTE]
+> PinchGrab is a local-first browser extension. It captures selected UI elements, comments, screenshots, page context, and export bundles for agent review workflows.
 
 ![Alt+Click on any element drops a JSONL capture into an in-page scratchpad](docs/hero.gif)
 
-## Why this is useful
-
-You asked for "just enough to identify the exact component and styling context fast."  
-The capture line is JSON, one object per newline (`.jsonl`), with:
-
-- URL + viewport + route
-- CSS/XPath/JS path + compact selectors
-- data attributes (`data-testid`, `data-test`, `data-cy`, `data-qa`) + `id` + `class`
-- full `outerHTML` snippet
-- DOM breadcrumb to disambiguate repeated sections
-- React/Vue best-effort component + source file/line metadata
-- computed style summary + custom properties + box/pseudo style info
-- pseudo-state flags (`:hover`, `:focus`, `:disabled`, etc.)
-- event-handler hints
-- accessibility signals (role/name/aria data + optional native snapshot if available)
-
-Every new capture is appended with a leading newline. So you can paste directly without pressing Enter first.
-
-### Schema
-
-The capture payload is formally described as a JSON Schema (draft-07) at [`docs/capture-schema.json`](docs/capture-schema.json).
-Three representative captures live at [`docs/capture-sample.jsonl`](docs/capture-sample.jsonl) and double as the validation fixture.
-Validate locally with `npm run test:schema` (uses `node --test` + `ajv`).
-The schema is intentionally `additionalProperties: true`; treat the listed properties as the canonical shape, not a closed set.
-
-## Install (recommended: extension)
+## Quick Start
 
 ```powershell
-npm run build:extension
+bun install
+bun run build
 ```
 
-In Edge/Chrome:
+Load the generated extension:
 
-1. Open `edge://extensions` or `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Pick this folder:
-   `C:\Users\root\Documents\dev\visual_copy_design\extension`
+1. Open `edge://extensions` or `chrome://extensions`.
+2. Enable Developer mode.
+3. Click **Load unpacked**.
+4. Select the repo's `extension/` folder.
+5. Pin PinchGrab, open a page, then hold `Alt` to inspect and `Alt+Click` to capture.
 
-You can also install from scripts with browser launch:
+## What It Does
+
+- Captures selector rows with URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML.
+- Lets you add feedback directly beside captured selectors.
+- Saves screenshots and full workspace exports under `Downloads/pinchgrab/<workspace>/...`.
+- Exports JSONL, DuckDB recipes, screenshot indexes, README guidance, and `.tar.zst` workspace bundles.
+- Includes replay/export utilities for Playwright, Puppeteer, plain-English recipes, visual diffs, network replay, and step annotations.
+
+## Commands
 
 ```powershell
-npm run install:extension -- -Open
+bun run build
+bun run test
+bun run test:fast
+bun run devserver
 ```
 
-## Optional bookmarklet install
+Focused checks:
 
 ```powershell
-npm run build:bookmarklet
-# optional launch into browser
-npm run install:bookmarklet -- -Open
+bun run typecheck
+bun run lint
+bun run test:extension
+bun run test:exports
+bun run test:legacy
 ```
 
-## Workflow
-
-1. Open prototype page.
-2. Alt+Click element.
-3. Scratchpad panel appears with one JSONL line.
-4. Write your feedback right after the `"feedback":` field on that line.
-5. Alt+Click next element and continue.
-6. Click **Copy all** when done.
-
-## JSONL schema (v3)
-
-```
-{
-  "schema": "selector-capture-entry",
-  "version": 3,
-  "sequence": 1,
-  "capturedAt": "2026-05-07T..."
-}
-```
-
-Top-level sections:
-
-- `page`: URL/route/viewport/scroll/lang/readyState + URL parts.
-- `selectors`: `compact`, `css`, `xpath`, `jsPath`, `domPath`, `siblingIndex`, `nodeIndex`, `id`, `classes`, `dataIds`.
-- `componentRoot`: nearest semantic/component root (`id`, `role`, `data-*`, selector + source hints).
-- `component`: best-effort React/Vue component metadata.
-- `element`: element attributes + `dataset` + `aria` + `accessibility` + `relation` + `bounds` + `outerHTML`.
-- `styles`: `computed` + `computedTail` + `pseudoStyles` + `customProperties` + `matchedRules`.
-- `events`: inline handler attrs, assigned properties, and best-effort devtools listeners.
-- `states`: pseudo-state booleans (`hover`, `focus`, `disabled`, ...).
-- `domBreadcrumb`: ancestor chain.
-- `feedback`: free-text field you edit directly.
-
-## Local test + check
+Legacy utility commands from the CLI/replay surface:
 
 ```powershell
-npm run build:extension
-npm run build:bookmarklet
-node --check src/selector-capture-mode.js
+bun run replay
+bun run replay:multi
+bun run export:playwright
+bun run export:puppeteer
+bun run export:english
+bun run visual-diff
+bun run network-capture
+bun run annotator
 ```
 
-```powershell
-node scripts/build-extension.mjs
-```
+## Export Shape
 
-> If you want browser-level regression coverage, run a tiny Playwright smoke script that:
-> - opens `http://127.0.0.1:4175/`
-> - Alt+Clicks two known elements
-> - asserts top-level required fields.
+The extension emits newline-delimited JSON with a manifest row followed by page, selector, and feedback rows. Workspace archives add:
 
+- `README.md`
+- `repair-index.md`
+- `<workspace>.jsonl`
+- `screenshots.json`
+- `duckdb.sql`
+- `schema.json`
+- screenshot PNGs when available
+- bundled PinchGrab skill/design context
 
-## Files
+The older standalone capture schema lives at [docs/capture-schema.json](docs/capture-schema.json), with samples in [docs/capture-sample.jsonl](docs/capture-sample.jsonl).
 
-- `src/selector-capture-mode.js` (source logic)
-- `extension/` (generated extension artifact)
-- `dist/bookmarklet-data.js` (generated bookmarklet)
-- `dist/selector-capture-mode.url.txt` (copy-paste URL)
+## Project Layout
+
+- `src/` TypeScript extension source.
+- `extension/` generated unpacked browser extension.
+- `tests/` Playwright, export, extension, framework-tour, and legacy CLI tests.
+- `scripts/` build and repo automation.
+- `.agents/` dogfooded agent skills and design context.
+- `lib/` dotfiles-managed local orchestration libraries.
+
+## License
+
+See [LICENSE](LICENSE).

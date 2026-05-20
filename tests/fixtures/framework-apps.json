@@ -1,0 +1,16 @@
+{
+  "frameworks": [
+    {"slug": "react",   "label": "React",     "url": "https://framework-benchmarks.as93.net/react/app/"},
+    {"slug": "angular", "label": "Angular",   "url": "https://framework-benchmarks.as93.net/angular/app/"},
+    {"slug": "svelte",  "label": "Svelte",    "url": "https://framework-benchmarks.as93.net/svelte/app/"},
+    {"slug": "preact",  "label": "Preact",    "url": "https://framework-benchmarks.as93.net/preact/app/"},
+    {"slug": "solid",   "label": "Solid",     "url": "https://framework-benchmarks.as93.net/solid/app/"},
+    {"slug": "qwik",    "label": "Qwik",      "url": "https://framework-benchmarks.as93.net/qwik/app/"},
+    {"slug": "vue",     "label": "Vue",       "url": "https://framework-benchmarks.as93.net/vue/app/"},
+    {"slug": "jquery",  "label": "jQuery",    "url": "https://framework-benchmarks.as93.net/jquery/app/"},
+    {"slug": "alpine",  "label": "Alpine.js", "url": "https://framework-benchmarks.as93.net/alpine/app/"},
+    {"slug": "lit",     "label": "Lit",       "url": "https://framework-benchmarks.as93.net/lit/app/"},
+    {"slug": "vanjs",   "label": "VanJS",     "url": "https://framework-benchmarks.as93.net/vanjs/app/"},
+    {"slug": "vanilla", "label": "Vanilla JS","url": "https://framework-benchmarks.as93.net/vanilla/app/"}
+  ]
+}

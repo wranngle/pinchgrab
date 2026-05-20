@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+# transcript-search — search Claude Code, Codex CLI, Gemini CLI sessions
+# See: ~/.dotfiles/.agents/skills/transcript-search/SKILL.md
+
+set -euo pipefail
+
+CLAUDE_ROOT="${HOME}/.claude/projects"
+CODEX_ROOT="${HOME}/.codex/sessions"
+GEMINI_ROOT="${HOME}/.gemini/tmp"
+
+USAGE='Usage: transcript-search [--agent claude|codex|gemini|all] [--last N]
+                          [--around K] [--format text|json] [--session ID|FILE]
+                          [--sql SQL] [--regex] [--max-files N] <query>
+Exit: 0 hits, 1 no hits, 2 bad usage, 3 missing dep.'
+
+agent="all"
+last_days=30
+around=3
+format="text"
+session=""
+sql_mode=""
+use_regex=0
+max_files=2000
+query=""
+
+die() { printf 'transcript-search: %s\n' "$*" >&2; exit "${2:-2}"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent)    agent="${2:-}"; shift 2 ;;
+    --last)     last_days="${2:-}"; shift 2 ;;
+    --around)   around="${2:-}"; shift 2 ;;
+    --format)   format="${2:-}"; shift 2 ;;
+    --session)  session="${2:-}"; shift 2 ;;
+    --sql)      sql_mode="${2:-}"; shift 2 ;;
+    --regex)    use_regex=1; shift ;;
+    --max-files) max_files="${2:-}"; shift 2 ;;
+    -h|--help)  printf '%s\n' "$USAGE"; exit 0 ;;
+    --) shift; query="${*:-}"; break ;;
+    -*) die "unknown flag: $1" ;;
+    *)  query="$1"; shift ;;
+  esac
+done
+
+case "$agent" in claude|codex|gemini|all) ;; *) die "bad --agent: $agent" ;; esac
+case "$format" in text|json) ;; *) die "bad --format: $format" ;; esac
+[[ "$last_days" =~ ^[0-9]+$ ]] || die "bad --last: $last_days"
+[[ "$around"    =~ ^[0-9]+$ ]] || die "bad --around: $around"
+
+command -v jq >/dev/null 2>&1 || die "jq is required" 3
+command -v rg >/dev/null 2>&1 || die "ripgrep (rg) is required" 3
+
+have_duckdb=0
+command -v duckdb >/dev/null 2>&1 && have_duckdb=1
+
+# ---------- file discovery ---------------------------------------------------
+
+discover_files() {
+  local roots=()
+  case "$agent" in
+    claude) roots+=("$CLAUDE_ROOT") ;;
+    codex)  roots+=("$CODEX_ROOT") ;;
+    gemini) roots+=("$GEMINI_ROOT") ;;
+    all)    roots+=("$CLAUDE_ROOT" "$CODEX_ROOT" "$GEMINI_ROOT") ;;
+  esac
+
+  local cutoff
+  cutoff=$(date -d "${last_days} days ago" +%s 2>/dev/null || echo 0)
+
+  for root in "${roots[@]}"; do
+    [[ -d "$root" ]] || continue
+    while IFS= read -r f; do
+      local mt
+      mt=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+      [[ "$mt" -ge "$cutoff" ]] && printf '%s\n' "$f"
+    done < <(find "$root" -type f \( -name '*.jsonl' -o -name 'logs.json' \) 2>/dev/null | head -n "$max_files")
+  done
+}
+
+agent_for_file() {
+  case "$1" in
+    "$CLAUDE_ROOT"/*) printf 'claude' ;;
+    "$CODEX_ROOT"/*)  printf 'codex'  ;;
+    "$GEMINI_ROOT"/*) printf 'gemini' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
+# ---------- per-line normalization ------------------------------------------
+#
+# Normalize each transcript line into a uniform record:
+#   {agent, session, file, timestamp, role, text, char_count, raw_chars, kind}
+# Truncation is applied here, before output, per the SNR rules in SKILL.md.
+
+normalize_jq='
+def trunc(s; n): if (s|length) <= n then s else (s[0:n] + "[+\(((s|length)-n))_chars_truncated]") end;
+def join_text(c):
+  if c == null then ""
+  elif (c|type) == "string" then c
+  elif (c|type) == "array" then
+    [ c[] | (
+        if (.text? // empty) != "" then .text
+        elif (.input? // empty) != null then ("[tool_use:" + (.name? // "?") + "] " + (.input|tostring))
+        elif (.content? // empty) != null then (.content|tostring)
+        else (.|tostring) end
+      )
+    ] | join("\n")
+  else (c|tostring) end;
+
+# Claude entries
+if .type == "queue-operation" or .type == "summary" or .type == "compact-summary"
+   or .type == "system" then empty
+elif (.type? // "") | IN("user","assistant") then
+  ( .message.content // .content ) as $c
+  | (join_text($c)) as $t
+  | ($t|length) as $n
+  | (
+      if .type == "user" and $n > 500
+        then trunc($t; 200)
+      elif .type == "assistant" then $t
+      else $t end
+    ) as $out
+  | {agent: $AGENT, session: (.sessionId? // ""),
+     file: $FILE, timestamp: (.timestamp? // ""),
+     role: .type, text: $out, char_count: ($out|length),
+     raw_chars: $n, kind: "msg", full_text: $t}
+
+elif (.type? // "") == "tool_use" then
+  (.name? // "") as $n
+  | ((.input? // {}) | tostring) as $args
+  | {agent: $AGENT, session: (.sessionId? // ""),
+     file: $FILE, timestamp: (.timestamp? // ""),
+     role: "tool_use",
+     text: ("[" + $n + "] " + (trunc($args; 200))),
+     char_count: (($args|length)+($n|length)+3),
+     raw_chars: ($args|length), kind: "tool", full_text: $args}
+
+elif (.type? // "") == "tool_result" then
+  ((.content? // .toolUseResult? // "") | tostring) as $c
+  | trunc($c; 300) as $out
+  | {agent: $AGENT, session: (.sessionId? // ""),
+     file: $FILE, timestamp: (.timestamp? // ""),
+     role: "tool_result", text: $out, char_count: ($out|length),
+     raw_chars: ($c|length), kind: "tool", full_text: $c}
+
+# Codex response_item
+elif (.type? // "") == "response_item" then
+  (.payload // {}) as $p
+  | ($p.type? // "") as $pt
+  | if $pt == "message" then
+      ($p.role? // "user") as $r
+      | (join_text($p.content)) as $t
+      | ($t|length) as $n
+      | (if $r == "user" and $n > 500 then trunc($t; 200) else $t end) as $out
+      | {agent: $AGENT, session: ($p.id? // ""),
+         file: $FILE, timestamp: (.timestamp? // ""),
+         role: $r, text: $out, char_count: ($out|length),
+         raw_chars: $n, kind: "msg", full_text: $t}
+    elif $pt == "reasoning" then
+      (join_text($p.summary // $p.content // [])) as $t
+      | {agent: $AGENT, session: "",
+         file: $FILE, timestamp: (.timestamp? // ""),
+         role: "reasoning", text: $t, char_count: ($t|length),
+         raw_chars: ($t|length), kind: "msg", full_text: $t}
+    elif $pt == "function_call" then
+      (($p.arguments? // "")|tostring) as $a
+      | {agent: $AGENT, session: "",
+         file: $FILE, timestamp: (.timestamp? // ""),
+         role: "tool_use",
+         text: ("[" + ($p.name? // "?") + "] " + trunc($a; 200)),
+         char_count: ($a|length), raw_chars: ($a|length), kind: "tool", full_text: $a}
+    elif $pt == "function_call_output" then
+      (($p.output? // "")|tostring) as $o
+      | {agent: $AGENT, session: "",
+         file: $FILE, timestamp: (.timestamp? // ""),
+         role: "tool_result", text: trunc($o; 300),
+         char_count: ([$o|length, 300]|min), raw_chars: ($o|length),
+         kind: "tool", full_text: $o}
+    else empty end
+
+# Codex session_meta — emit a header pseudo-turn
+elif (.type? // "") == "session_meta" then
+  {agent: $AGENT, session: ((.payload.id?) // ""),
+   file: $FILE, timestamp: (.timestamp? // ""),
+   role: "session_meta",
+   text: ("cwd=" + (.payload.cwd? // "?") + " model=" + (.payload.model? // "?")),
+   char_count: 0, raw_chars: 0, kind: "meta"}
+
+# Gemini logs.json element (fed in as one object per line via jq -c)
+elif (.sessionId? // "") != "" and (.message? // "") != "" then
+  (.message|tostring) as $t
+  | ($t|length) as $n
+  | if ($t|startswith("/")) then empty
+    elif (.type == "user" and $n > 500) then
+      {agent: $AGENT, session: .sessionId,
+       file: $FILE, timestamp: (.timestamp? // ""),
+       role: "user", text: trunc($t; 200),
+       char_count: 200, raw_chars: $n, kind: "msg", full_text: $t}
+    else
+      {agent: $AGENT, session: .sessionId,
+       file: $FILE, timestamp: (.timestamp? // ""),
+       role: (.type // "user"),
+       text: $t, char_count: $n, raw_chars: $n, kind: "msg", full_text: $t}
+    end
+else empty end
+'
+
+# Stream a file as normalized records (one JSON object per line on stdout).
+stream_file() {
+  local f="$1" a
+  a=$(agent_for_file "$f")
+  if [[ "$a" == "gemini" ]]; then
+    jq -c --arg AGENT "$a" --arg FILE "$f" '.[]' "$f" 2>/dev/null \
+      | jq -c --arg AGENT "$a" --arg FILE "$f" "$normalize_jq" 2>/dev/null || true
+  else
+    jq -c --arg AGENT "$a" --arg FILE "$f" "$normalize_jq" "$f" 2>/dev/null || true
+  fi
+}
+
+# ---------- noise filter ----------------------------------------------------
+
+noise_filter='
+def is_dir_listing(s):
+  (s|split("\n")) as $L
+  | ($L | map(select(length>0))) as $NE
+  | if ($NE|length) == 0 then false
+    else (([$NE[] | select(test("^[-d][rwx-]{9}") or test("^[0-9a-f]{40}\\s"))] | length) * 1.0 / ($NE|length)) >= 0.8
+    end;
+def is_base64(s):
+  (s|gsub("\\s"; "")) as $x
+  | (($x|length) > 80) and ($x|test("^[A-Za-z0-9+/=]+$"));
+select(
+  (.text|type) == "string"
+  and (.text|gsub("\\s"; "")|length) > 0
+  and (is_base64(.text) | not)
+  and (is_dir_listing(.text) | not)
+)
+'
+
+# ---------- session dump ----------------------------------------------------
+
+if [[ -n "$session" ]]; then
+  target=""
+  if [[ -f "$session" ]]; then
+    target="$session"
+  else
+    while IFS= read -r f; do
+      if [[ "$f" == *"$session"* ]]; then target="$f"; break; fi
+    done < <(discover_files)
+    if [[ -z "$target" ]]; then
+      while IFS= read -r f; do
+        if jq -c --arg AGENT "$(agent_for_file "$f")" --arg FILE "$f" "$normalize_jq" "$f" 2>/dev/null \
+             | jq -e --arg s "$session" 'select(.session == $s)' >/dev/null 2>&1; then
+          target="$f"; break
+        fi
+      done < <(discover_files)
+    fi
+  fi
+  [[ -z "$target" ]] && die "session not found: $session" 1
+  if [[ "$format" == "json" ]]; then
+    stream_file "$target" | jq -c "$noise_filter" | jq -c 'del(.full_text)'
+  else
+    stream_file "$target" | jq -c "$noise_filter" | jq -r '
+      "=== \(.agent)  \(.timestamp)  [\(.role)] ===\n\(.text)\n"
+    '
+  fi
+  exit 0
+fi
+
+# ---------- DuckDB aggregate mode -------------------------------------------
+
+if [[ -n "$sql_mode" ]]; then
+  if [[ "$have_duckdb" -ne 1 ]]; then
+    printf 'transcript-search: duckdb not on PATH; --sql unavailable. Falling back is not supported for aggregates.\n' >&2
+    exit 3
+  fi
+  tmp=$(mktemp -t transcript-search.XXXXXX.ndjson)
+  trap 'rm -f "$tmp"' EXIT
+  while IFS= read -r f; do
+    stream_file "$f" | jq -c "$noise_filter"
+  done < <(discover_files) > "$tmp"
+  duckdb -c "
+    CREATE OR REPLACE VIEW transcripts AS
+      SELECT agent, session, file, timestamp::TIMESTAMP AS timestamp,
+             role, text, char_count
+      FROM read_json_auto('${tmp}', format='newline_delimited');
+    ${sql_mode};
+  "
+  exit $?
+fi
+
+# ---------- search mode -----------------------------------------------------
+
+[[ -z "$query" ]] && { printf '%s\n' "$USAGE" >&2; exit 2; }
+
+rg_args=(--no-config --line-number --color never --max-count 1000)
+[[ "$use_regex" -eq 1 ]] || rg_args+=(--fixed-strings)
+rg_args+=(-- "$query")
+
+# Files where the literal query string appears anywhere (cheap pre-filter).
+mapfile -t candidate_files < <(
+  while IFS= read -r f; do
+    rg --quiet "${rg_args[@]}" "$f" 2>/dev/null && printf '%s\n' "$f"
+  done < <(discover_files)
+)
+
+[[ ${#candidate_files[@]} -eq 0 ]] && exit 1
+
+q_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
+
+emit_matches() {
+  local f="$1"
+  local recs
+  recs=$(stream_file "$f" | jq -c "$noise_filter")
+  [[ -z "$recs" ]] && return 0
+
+  local total
+  total=$(printf '%s\n' "$recs" | wc -l)
+
+  # Index matching turns (1-based by line in the normalized stream).
+  mapfile -t hit_idxs < <(
+    printf '%s\n' "$recs" | nl -ba -w1 -s$'\t' | awk -v q="$q_lc" -v IGNORECASE=1 -F'\t' '
+      { line = tolower($0); if (index(line, q)) print $1 }
+    '
+  )
+
+  [[ ${#hit_idxs[@]} -eq 0 ]] && return 0
+
+  # Build the union of context windows around hits.
+  declare -A keep=()
+  local idx
+  for idx in "${hit_idxs[@]}"; do
+    local lo=$(( idx - around )); (( lo < 1 )) && lo=1
+    local hi=$(( idx + around )); (( hi > total )) && hi=$total
+    local i
+    for ((i=lo; i<=hi; i++)); do keep[$i]=1; done
+  done
+
+  # Stream selected records, marking hits.
+  declare -A hit_set=()
+  for idx in "${hit_idxs[@]}"; do hit_set[$idx]=1; done
+
+  local n=0
+  while IFS= read -r rec; do
+    n=$((n+1))
+    [[ -n "${keep[$n]:-}" ]] || continue
+    local marker=""
+    [[ -n "${hit_set[$n]:-}" ]] && marker=' MATCH'
+    if [[ "$format" == "json" ]]; then
+      printf '%s\n' "$rec" | jq -c --arg m "$marker" 'del(.full_text) | . + {match: ($m == " MATCH")}'
+    else
+      printf '%s\n' "$rec" | jq -r --arg m "$marker" '
+        "=== \(.agent)  \(.timestamp)  session \(.session[0:8])\($m) ===\n[\(.role)] \(.text)\n"
+      '
+    fi
+  done <<< "$recs"
+}
+
+found=0
+for f in "${candidate_files[@]}"; do
+  out=$(emit_matches "$f") || true
+  if [[ -n "$out" ]]; then
+    printf '%s\n' "$out"
+    found=1
+  fi
+done
+
+[[ "$found" -eq 1 ]] || exit 1
+exit 0

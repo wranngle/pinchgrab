@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PinchGrab</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <section id="panel" class="panel">
+
+    <!-- ───────────────────────── Header ───────────────────────── -->
+    <header class="bar">
+      <div class="title-stack">
+        <div class="brand">
+          <span class="logo emoji" aria-hidden="true">🤏</span>
+          <span class="name">PINCHGRAB</span>
+        </div>
+        <span class="ws-pill" data-tip="Switch workspace">
+          <span data-icon="folder" data-size="11"></span>
+          <select data-workspace aria-label="Workspace"></select>
+        </span>
+      </div>
+      <div class="bar-actions">
+        <button class="iconbtn" type="button" data-action="undo" data-tip="Undo last edit"><span data-icon="undo" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="redo" data-tip="Redo last edit"><span data-icon="redo" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="settings" data-tip="Open settings" aria-label="Settings"><span data-icon="settings" data-size="14"></span></button>
+        <button class="iconbtn ghost" type="button" data-action="github" data-tip="Open the GitHub repo" aria-label="GitHub">
+          <span class="g-pill">
+            <span data-icon="github" data-size="14"></span>
+            <span class="star-side"><span data-icon="star" data-size="12"></span><span class="star-count" data-stars>·</span></span>
+          </span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ───────────────────────── Shortcuts strip ─────────────── -->
+    <!-- Each shortcut: pill on top, lowercase label beneath. -->
+    <div class="shortcuts hint">
+      <span class="sc" data-tip="Outline the element under your cursor"><kbd>Alt</kbd><span class="lbl">peek</span></span>
+      <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+click</kbd><span class="lbl">capture</span></span>
+      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+drag</kbd><span class="lbl">multi</span></span>
+      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift</kbd><span class="lbl">stage</span></span>
+      <span class="sc" data-tip="Undo last edit"><kbd>⌘Z</kbd><span class="lbl">undo</span></span>
+    </div>
+
+    <!-- ───────────────────────── Toolbar ───────────────────────── -->
+    <div class="toolbar">
+      <div class="search">
+        <span class="search-icon" data-icon="search" data-size="13"></span>
+        <input type="text" data-search placeholder="" data-tip="Filter captures by selector, text, or component · ⌘K opens the command palette" />
+        <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd>⌘K</kbd></span>
+        <button type="button" class="iconbtn-x" data-search-clear data-tip="Clear search" aria-label="Clear">
+          <span data-icon="x" data-size="11"></span>
+        </button>
+      </div>
+      <div class="toolbar-actions">
+        <button class="iconbtn primary export-full" type="button" data-action="export-zip" data-tip="Download full export (.tar.zst — JSONL + screenshots + screenshots.json + DuckDB + README) · path is auto-copied to clipboard" data-export-hover="all">
+          <span data-icon="download" data-size="14"></span>
+          <span class="lbl">Export</span>
+        </button>
+        <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file"><span data-icon="upload" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page"><span data-icon="refresh-cw" data-size="14"></span></button>
+        <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
+      </div>
+    </div>
+
+    <!-- ───────────────────────── Stats ─────────────────────────── -->
+    <!-- The four left stats get a hover drilldown popover (see
+         [data-drilldown]) and intentionally do NOT carry data-tip — the
+         drilldown is the tooltip equivalent and showing both produced two
+         overlapping bubbles. The two right stats (Tokens / Words) have
+         no drilldown, so they keep a plain data-tip. -->
+    <div class="stats" data-stats>
+      <span class="stat" data-stat="selectors"><span class="stat-label">Selectors</span><span class="stat-num">0</span></span>
+      <span class="stat" data-stat="comments"><span class="stat-label">Comments</span><span class="stat-num">0</span></span>
+      <span class="stat warn" data-stat="stale"><span class="stat-label">Stale</span><span class="stat-num">0</span></span>
+      <span class="stat" data-stat="pages"><span class="stat-label">Pages</span><span class="stat-num">0</span></span>
+      <span class="stat right export-stats" data-tip="Token estimate of the full export"><span class="stat-label">Tokens</span><span class="stat-num" data-stat-tokens>0</span></span>
+      <span class="stat right export-stats" data-tip="Word count of the full export"><span class="stat-label">Words</span><span class="stat-num" data-stat-words>0</span></span>
+    </div>
+
+    <input type="file" id="import-file" accept=".jsonl,.json,.txt" hidden />
+
+    <!-- ───────────────────────── Body / message canvas ─────────── -->
+    <div class="body" data-list></div>
+
+    <!-- ───────────────────────── Composer ──────────────────────── -->
+    <footer class="composer">
+      <div class="composer-input">
+        <textarea data-composer rows="1" placeholder="Comment · start with `> selector` to capture by CSS selector"></textarea>
+        <div class="composer-meter" data-tip="Word and token estimate of your draft">
+          <span data-comp-words>0</span>w · <span data-comp-tokens>0</span>t
+        </div>
+      </div>
+      <button class="primary send" type="button" data-action="send" data-tip="Send · Enter" aria-label="Send">
+        <span class="send-icon" data-icon="message-square-plus" data-size="18"></span>
+        <span class="send-label">Send</span>
+      </button>
+    </footer>
+
+    <div class="status-row">
+      <div class="status" data-status></div>
+    </div>
+
+    <!-- ───────────────────────── Settings drawer ───────────────── -->
+    <aside class="drawer" data-drawer hidden>
+      <header class="drawer-head">
+        <span class="drawer-title">Settings</span>
+        <button class="iconbtn" type="button" data-action="close-drawer" data-tip="Close settings" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
+      </header>
+      <div class="drawer-body">
+        <section class="prefs">
+          <h4>Workspaces</h4>
+          <div class="ws-controls">
+            <input type="text" data-ws-name placeholder="New workspace name" data-tip="A workspace is a separate bucket of captures, comments, and settings" />
+            <button class="primary" type="button" data-action="ws-create" data-tip="Create the workspace and switch to it">Create</button>
+          </div>
+          <ul class="ws-list" data-ws-list></ul>
+        </section>
+        <section class="prefs">
+          <h4>Export</h4>
+          <label data-tip="Keep the captured element's outerHTML in exports"><input type="checkbox" data-pref="includeOuterHTML" checked /> Include <code>outerHTML</code> <small class="contrib" data-contrib="includeOuterHTML"></small></label>
+          <label data-tip="Keep matched stylesheet rules that target this element"><input type="checkbox" data-pref="includeMatchedRules" checked /> Include matched CSS rules <small class="contrib" data-contrib="includeMatchedRules"></small></label>
+          <label data-tip="Keep resolved browser styles (color, font, layout)"><input type="checkbox" data-pref="includeStyles" checked /> Include computed styles <small class="contrib" data-contrib="includeStyles"></small></label>
+          <label class="minify-row" data-tip="Trim whitespace, drop empty objects, strip redundant audit fields">
+            <span class="minify-head"><input type="checkbox" data-pref="minify" /> Minify on export</span>
+            <small class="minify-explain">Trims whitespace, drops empty objects, removes <code>tokens</code> from page lines, and strips redundant audit fields.</small>
+            <small class="minify-stats" data-minify-stats></small>
+          </label>
+        </section>
+        <section class="prefs">
+          <h4>UI</h4>
+          <label data-tip="Scroll the canvas to the matching capture on alt-hover"><input type="checkbox" data-pref="autoScrollToHovered" checked /> Auto-scroll to hovered capture</label>
+          <label data-tip="Paint margin and padding stripes around alt-hovered elements"><input type="checkbox" data-pref="spacingOverlay" /> Show spacing overlay on hover</label>
+          <label data-tip="Snap hover and click to the nearest component · off = capture the deepest element under the cursor"><input type="checkbox" data-pref="hoverSnap" checked /> Snap hover to component</label>
+          <label data-tip="Save a PNG of the element (and the full page) under Downloads/.pinchgrab/&lt;workspace&gt;/screenshots/"><input type="checkbox" data-pref="autoScreenshot" checked /> Auto-screenshot on capture</label>
+          <label data-tip="Fire a fresh page screenshot on every capture, not just the first per page · useful for multi-step flows · costs one PNG per capture"><input type="checkbox" data-pref="pageShotPerCapture" /> Page screenshot on every capture</label>
+          <label class="ta-row" data-tip="Hosts to skip (comma-separated, substring match) · captures on these hosts won't write screenshots to disk">
+            <span>Skip screenshots on these hosts</span>
+            <textarea data-pref-text="skipScreenshotHosts" rows="2" placeholder="example.com, internal.corp"></textarea>
+          </label>
+        </section>
+        <section class="prefs">
+          <h4>DESIGN.md</h4>
+          <p class="prefs-help">Your project's color tokens, typography, motion, copy voice. Bundled inline at <code>./DESIGN.md</code> inside every workspace archive — the consumer LLM grounds visual feedback in this file.</p>
+          <div class="template-banner" data-template-banner="design" hidden>
+            ⚠ Shipping the bundled <strong>template DESIGN.md</strong>. Click <em>Edit</em> to customize.
+          </div>
+          <label data-tip="Path the receiver should resolve DESIGN.md from (informational pointer — the content is bundled inline)">
+            <span>Receiver path</span>
+            <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
+          </label>
+          <div class="md-preview-row">
+            <button type="button" class="md-preview" data-action="design-edit" data-tip="Edit, upload, or reset the bundled DESIGN.md">
+              <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
+              <span class="md-preview-edit-hint">Edit ↗</span>
+            </button>
+            <div class="md-preview-meta">
+              <span class="design-md-status" data-design-md-status></span>
+            </div>
+          </div>
+          <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
+        </section>
+        <section class="prefs">
+          <h4>PinchGrab UI skill</h4>
+          <p class="prefs-help">Teaches a downstream LLM how to read and triage a PinchGrab export. Bundled inline at <code>./.agents/skills/PinchGrab/SKILL.md</code>.</p>
+          <div class="template-banner" data-template-banner="skill" hidden>
+            ⚠ Shipping the bundled <strong>template SKILL.md</strong>. Click <em>Edit</em> to customize.
+          </div>
+          <label data-tip="Path the receiver should persist the skill at on their filesystem (informational)">
+            <span>Receiver path</span>
+            <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
+          </label>
+          <div class="md-preview-row">
+            <button type="button" class="md-preview" data-action="skill-edit" data-tip="Edit, upload, or reset the bundled SKILL.md">
+              <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
+              <span class="md-preview-edit-hint">Edit ↗</span>
+            </button>
+            <div class="md-preview-meta">
+              <span class="design-md-status" data-skill-md-status></span>
+            </div>
+          </div>
+          <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
+        </section>
+        <section class="prefs">
+          <h4>Hotkeys</h4>
+          <ul class="hotkeys">
+            <li data-tip="Outline the element under your cursor."><kbd>Alt+Hover</kbd> — peek</li>
+            <li data-tip="Capture the hovered element."><kbd>Alt+Click</kbd> — capture</li>
+            <li data-tip="Rubber-band over multiple elements; stages a pending group."><kbd>Alt+Drag</kbd> — multi-stage</li>
+            <li data-tip="Stage one element at a time into a pending group."><kbd>Alt+Shift+Click</kbd> — stage one</li>
+            <li data-tip="Open the command palette."><kbd>⌘/Ctrl+K</kbd> — palette</li>
+            <li data-tip="Undo or redo the last edit."><kbd>⌘/Ctrl+Z</kbd> — undo · <kbd>⌘/Ctrl+Shift+Z</kbd> — redo</li>
+            <li data-tip="Submit the composer; shift adds a newline."><kbd>Enter</kbd> — send · <kbd>Shift+Enter</kbd> — newline</li>
+            <li data-tip="Clear search, cancel insert, or dismiss palette/drawer."><kbd>Esc</kbd> — clear / cancel</li>
+          </ul>
+        </section>
+        <section class="star-pitch">
+          <span class="emoji" aria-hidden="true">🤏</span>
+          <div>
+            If PinchGrab is helping, a <strong>GitHub star</strong> would mean a lot.
+            <br>
+            <a href="#" data-action="github">github.com/wranngle/pinchgrab</a>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <!-- ───────────────────────── Command palette ──────────────── -->
+    <div class="palette-overlay" data-palette hidden>
+      <div class="palette">
+        <header><span data-icon="search" data-size="14"></span><input type="text" data-palette-input placeholder="Type a command or search captures…" /></header>
+        <ul class="palette-list" data-palette-list></ul>
+      </div>
+    </div>
+
+    <!-- ───────────────────────── DESIGN.md / SKILL.md modal ────── -->
+    <div class="md-modal-overlay" data-md-modal hidden>
+      <div class="md-modal">
+        <header class="md-modal-head">
+          <span class="md-modal-title" data-md-modal-title>—</span>
+          <span class="md-modal-stats" data-md-modal-stats>—</span>
+          <button class="iconbtn" type="button" data-md-modal-close data-tip="Close (Esc)" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
+        </header>
+        <div class="md-modal-banner" data-md-modal-banner hidden></div>
+        <textarea class="md-modal-textarea" data-md-modal-textarea spellcheck="false"></textarea>
+        <footer class="md-modal-foot">
+          <button class="iconbtn" type="button" data-md-modal-upload data-tip="Upload a .md file from disk">
+            <span data-icon="upload" data-size="13"></span><span class="lbl">Upload</span>
+          </button>
+          <button class="iconbtn" type="button" data-md-modal-download data-tip="Download the current content as a .md file">
+            <span data-icon="download" data-size="13"></span><span class="lbl">Download</span>
+          </button>
+          <button class="iconbtn" type="button" data-md-modal-reset data-tip="Clear — revert to the bundled template (does not save until you click Save)">
+            <span data-icon="refresh-cw" data-size="13"></span><span class="lbl">Reset</span>
+          </button>
+          <span class="md-modal-spacer"></span>
+          <button class="iconbtn primary" type="button" data-md-modal-save data-tip="Save · persists this content into the workspace prefs">
+            <span data-icon="check" data-size="14"></span><span class="lbl">Save</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ───────────────────────── Custom tooltip target ─────── -->
+    <div class="custom-tip" data-tooltip hidden></div>
+
+    <!-- ───────────────────────── Stat drilldown popover ────── -->
+    <div class="drilldown" data-drilldown hidden></div>
+  </section>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# openspec-from-issue — scaffold an openspec/changes/<slug>/ from a GitHub issue.
+#
+# Usage:
+#   openspec-from-issue <issue-number>           # uses repo of CWD
+#   openspec-from-issue <issue-number> <repo>    # explicit owner/repo
+#
+# Only scaffolds if the issue has label `c.feature` or `c.refactor`
+# and the change directory does not already exist. Idempotent.
+#
+# Requires: gh (authenticated), jq.
+# Migrated 2026-05-06 from wranngle/.claude (github_issue_detector.ts:159-191).
+
+set -euo pipefail
+
+issue_num="${1:-}"
+repo_arg=()
+[[ -n "${2:-}" ]] && repo_arg=(--repo "$2")
+
+if [[ -z "$issue_num" || ! "$issue_num" =~ ^[0-9]+$ ]]; then
+  echo "Usage: openspec-from-issue <issue-number> [owner/repo]" >&2
+  exit 2
+fi
+
+command -v gh >/dev/null || { echo "ERROR: gh CLI not found" >&2; exit 1; }
+command -v jq >/dev/null || { echo "ERROR: jq not found" >&2; exit 1; }
+
+issue_json="$(gh issue view "$issue_num" "${repo_arg[@]}" --json number,title,state,labels,body 2>/dev/null)" || {
+  echo "ERROR: failed to fetch issue #$issue_num" >&2; exit 1; }
+
+state="$(jq -r '.state' <<<"$issue_json")"
+if [[ "$state" != "OPEN" ]]; then
+  echo "Issue #$issue_num is $state — skipping scaffold." ; exit 0
+fi
+
+is_feature="$(jq -r '[.labels[].name] | any(. == "c.feature" or . == "c.refactor")' <<<"$issue_json")"
+if [[ "$is_feature" != "true" ]]; then
+  echo "Issue #$issue_num is not labeled c.feature or c.refactor — skipping scaffold."
+  echo "Add a label and rerun, or scaffold manually."
+  exit 0
+fi
+
+title="$(jq -r '.title' <<<"$issue_json")"
+body="$(jq -r '.body // ""' <<<"$issue_json")"
+slug="$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')"
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+change_dir="$repo_root/openspec/changes/$slug"
+
+if [[ -d "$change_dir" ]]; then
+  echo "Already scaffolded: $change_dir" ; exit 0
+fi
+
+if [[ ! -d "$repo_root/openspec" ]]; then
+  echo "ERROR: $repo_root has no openspec/ — run \`openspec-init\` first." >&2
+  exit 1
+fi
+
+mkdir -p "$change_dir/specs/placeholder"
+
+cat > "$change_dir/proposal.md" <<EOF
+# Proposal: $title
+
+**Change ID:** \`$slug\`
+**GitHub Issue:** #$issue_num
+**Status:** Draft
+
+## Why
+${body:-See issue description.}
+
+## What Changes
+- [ ] Define changes here
+
+## Impact
+- **Affected Specs:** [List specs]
+EOF
+
+checklist="$(printf '%s\n' "$body" | grep -E '^\s*-\s*\[[ xX]\]' || true)"
+if [[ -n "$checklist" ]]; then
+  printf '# Tasks: %s\n\n%s\n' "$title" "$checklist" > "$change_dir/tasks.md"
+else
+  printf '# Tasks: %s\n\n- [ ] Implementation steps\n' "$title" > "$change_dir/tasks.md"
+fi
+
+cat > "$change_dir/specs/placeholder/spec.md" <<'EOF'
+# Spec: Placeholder
+
+## ADDED Requirements
+
+### Requirement: New Capability
+TODO: Define requirements here.
+EOF
+
+echo "Scaffolded: openspec/changes/$slug/  (from issue #$issue_num)"

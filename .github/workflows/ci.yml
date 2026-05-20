@@ -23,8 +23,20 @@ jobs:
       - name: shellcheck
         shell: bash
         run: |
-          shopt -s nullglob globstar
-          files=( **/*.sh )
+          mapfile -t files < <(
+            {
+              find . -type f -name '*.sh' \
+                -not -path './.git/*' \
+                -not -path './node_modules/*' \
+                -not -path './old/*'
+              if [[ -d scripts/bin ]]; then
+                while IFS= read -r candidate; do
+                  first_line=$(head -n 1 "$candidate" 2>/dev/null || true)
+                  [[ "$first_line" == '#!'*sh* ]] && printf '%s\n' "$candidate"
+                done < <(find scripts/bin -maxdepth 1 -type f -perm -111)
+              fi
+            } | sort -u
+          )
           [[ ${#files[@]} -eq 0 ]] && { echo "no shell files — skipping"; exit 0; }
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
@@ -44,6 +56,22 @@ jobs:
           pip install --quiet yamllint
           yamllint -c .yamllint.yml .
 
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - name: actionlint-and-zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$HOME/go/bin/actionlint"
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet zizmor==1.24.1
+          zizmor .github/workflows
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -57,6 +85,18 @@ jobs:
           set -euo pipefail
           export PUPPETEER_SKIP_DOWNLOAD=true
           export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+          if [[ -x scripts/bin/git-awesome ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq bats
+            if [[ -d tests ]]; then
+              echo "::group::bats"
+              bats tests/
+              echo "::endgroup::"
+            fi
+            echo "::group::git-awesome conform"
+            scripts/bin/git-awesome conform || true
+            echo "::endgroup::"
+          fi
           if [[ -f package.json ]];then
             if [[ -f .github/workflows/test.yml || -f .github/workflows/test.yaml ]]; then
               echo "dedicated test workflow detected - skipping generic package test"

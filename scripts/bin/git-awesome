@@ -1,0 +1,836 @@
+#!/usr/bin/env bash
+# git-awesome -- unified Git automation for Wranngle dotfiles.
+#
+# Subcommands:
+#   sync             autostash dirty tree (local-only, no remote, no hostname)
+#   unstash          pop the latest git-awesome stash on this branch
+#   guard baseline   record start-of-turn snapshot for finalize check
+#   guard finalize   compare working tree to baseline; fail closed on dirt
+#   gc               drop git-awesome stashes >30d + prune patch archive
+#   conform          verify repo matches the hardcoded contract
+#   triage           list recent GitHub Actions failures per repo
+#   repair           retire legacy AI/self-repair workflows; rerun hygiene
+#   observe          dump current repo state as NDJSON
+#   defaults         print the hardcoded constants and exit
+#   readme-rewrite   explicit README regeneration (never auto-runs)
+#
+# Global flag:
+#   --dry-run        demote any mutating subcommand to a print-only preview
+#
+# Exit codes: 0 clean / 1 expected failure / 2 misconfigured
+set -euo pipefail
+[[ ${BASH_VERSINFO[0]:-0} -ge 4 ]] || { echo "git-awesome: bash 4+ required" >&2; exit 2; }
+
+# ── Hardcoded universal defaults ──────────────────────────────────────
+# Canonical runtime layout: <repo>/.artifacts/git-awesome/<key>.<ext>
+# (flat, one-deep, keyed filenames; ECS-shaped JSONL for event streams).
+# Mirrors composio-orchestrator/src/artifactPaths.ts so cross-tool tooling
+# (jq, ECS shippers) sees one shape regardless of which dotfiles binary wrote.
+readonly G_ARTIFACT_SYSTEM="git-awesome"
+readonly G_LEGACY_STATE_ROOT=${GIT_AWESOME_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-awesome}
+readonly G_STASH_PREFIX="git-awesome"
+readonly G_STASH_TTL_DAYS=${GIT_AWESOME_STASH_TTL_DAYS:-30}
+readonly G_INTEGRATE_BRANCHES=("main" "master")
+readonly G_SKIP_BRANCHES_GLOB=("wip/**" "scratch/**" "dependabot/**")
+readonly G_REQUIRED_CHECKS=(shell-lint yaml-lint test gitleaks actionlint zizmor workflow-lint)
+readonly G_DEFAULT_ROOTS=("$HOME/projects" "$HOME/.dotfiles")
+readonly G_MAX_DEPTH=${GIT_AWESOME_MAX_DEPTH:-4}
+readonly G_MAX_REPOS=${GIT_AWESOME_MAX_REPOS:-80}
+readonly G_LEGACY_AGENT_GUARD_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/agent-git-guard"
+readonly G_LEGACY_AUTOSYNC_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/git-autosync.jsonl"
+
+# ── Global state ──────────────────────────────────────────────────────
+SESSION_ID=${GIT_AWESOME_SESSION:-}
+DRY_RUN=0
+SCOPE=current
+EXPLICIT_PATHS=()
+
+# ── Generic helpers ───────────────────────────────────────────────────
+log_ts(){ date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+
+gen_uuid(){
+  if command -v uuidgen >/dev/null 2>&1; then uuidgen
+  elif [[ -r /proc/sys/kernel/random/uuid ]]; then cat /proc/sys/kernel/random/uuid
+  else awk 'BEGIN{srand();for(i=0;i<32;i++)printf "%x",int(rand()*16); print ""}'
+  fi
+}
+
+[[ -n $SESSION_ID ]] || SESSION_ID=$(gen_uuid)
+
+slug_for_repo(){
+  local repo=$1 url slug
+  url=$(git -C "$repo" config --get remote.origin.url 2>/dev/null || true)
+  if [[ -n $url ]]; then
+    slug=$(printf '%s' "$url" | sed -e 's|.git$||' -e 's|.*[/:]\([^/]*/[^/]*\)$|\1|' | tr '/' '_')
+  fi
+  [[ -n ${slug:-} ]] || slug=$(basename "$repo")
+  printf '%s' "${slug,,}" | tr -c 'a-z0-9_.-' '_'
+}
+
+# ── Canonical artifact-path resolver (mirrors resolveArtifactPath in TS) ──
+# Returns <repo>/.artifacts/<system>/<key>.<ext>. Enforces the same
+# kebab-case system + alphanumeric.dash.underscore key regex used by
+# composio-orchestrator/src/artifactPaths.ts. Creates the parent dir.
+artifact_dir(){ printf '%s/.artifacts/%s' "$1" "$2"; }
+artifact_path(){
+  local repo=$1 system=$2 key=$3 ext=${4:-jsonl}
+  [[ "$system" =~ ^[a-z][a-z0-9-]*$ ]] \
+    || { echo "artifact_path: system must be kebab-case (got '$system')" >&2; return 2; }
+  [[ "$key" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+    || { echo "artifact_path: key must match [A-Za-z0-9][A-Za-z0-9._-]* (got '$key')" >&2; return 2; }
+  mkdir -p "$(artifact_dir "$repo" "$system")" 2>/dev/null || true
+  printf '%s/%s.%s' "$(artifact_dir "$repo" "$system")" "$key" "$ext"
+}
+
+# Day-keyed events ledger: <repo>/.artifacts/git-awesome/events.<yyyy-mm-dd>.jsonl
+events_path(){ artifact_path "$1" "$G_ARTIFACT_SYSTEM" "events.$(date -u +%Y-%m-%d)" jsonl; }
+# Per-stash patch: <repo>/.artifacts/git-awesome/stash.<uuid>.patch
+patch_path(){ artifact_path "$1" "$G_ARTIFACT_SYSTEM" "stash.$2" patch; }
+# Per-session baseline: <repo>/.artifacts/git-awesome/baseline.<safe-session>.tsv
+baseline_path(){ artifact_path "$1" "$G_ARTIFACT_SYSTEM" "baseline.$2" tsv; }
+# Glob all events files (sorted ascending by date == lexicographic on yyyy-mm-dd).
+events_glob(){ printf '%s/events.*.jsonl' "$(artifact_dir "$1" "$G_ARTIFACT_SYSTEM")"; }
+
+# emit_event <repo> <event.action> <outcome:success|fail|skip> <log.level:info|warn|error> <msg> [<subject>]
+# Writes one ECS-shaped JSON line (matching composio-orchestrator/src/jsonlAppender.ts):
+#   { "@timestamp", "log.level", "event.action", "event.outcome",
+#     "event.id", "trace.id", "service.name", labels:{host,slug,detail,subject?},
+#     "error.message"? }
+# Old outcome values are normalized:  fail→failure, skip→unknown, success→success.
+emit_event(){
+  local repo=$1 event=$2 outcome_raw=$3 severity=$4 msg=$5 subject=${6:-}
+  local slug ecs_outcome file eid
+  slug=$(slug_for_repo "$repo")
+  case "$outcome_raw" in
+    success) ecs_outcome=success;;
+    fail)    ecs_outcome=failure;;
+    skip)    ecs_outcome=unknown;;
+    *)       ecs_outcome=unknown;;
+  esac
+  file=$(events_path "$repo")
+  eid="${SESSION_ID}-$(date +%s%N 2>/dev/null || date +%s)-$$"
+  if command -v jq >/dev/null 2>&1; then
+    jq -nc \
+       --arg ts   "$(log_ts)" \
+       --arg lvl  "$severity" \
+       --arg act  "$event" \
+       --arg oc   "$ecs_outcome" \
+       --arg eid  "$eid" \
+       --arg trc  "$SESSION_ID" \
+       --arg svc  "$G_ARTIFACT_SYSTEM" \
+       --arg slug "$slug" \
+       --arg subj "$subject" \
+       --arg msg  "$msg" \
+       --arg ocr  "$outcome_raw" \
+       '{
+          "@timestamp": $ts,
+          "log.level": $lvl,
+          "event.action": $act,
+          "event.outcome": $oc,
+          "event.id": $eid,
+          "trace.id": $trc,
+          "service.name": $svc,
+          labels: ({host:"local", slug:$slug, detail:$msg}
+                   + (if $subj=="" then {} else {subject:$subj} end))
+        }
+        + (if $ocr=="fail" then {"error.message":$msg} else {} end)' \
+       | tee -a "$file"
+  else
+    local line subj_kv='' err_kv=''
+    [[ -n $subject ]] && subj_kv=",\"subject\":\"${subject//\"/\\\"}\""
+    [[ $outcome_raw == "fail" ]] && err_kv=",\"error.message\":\"${msg//\"/\\\"}\""
+    line=$(printf '{"@timestamp":"%s","log.level":"%s","event.action":"%s","event.outcome":"%s","event.id":"%s","trace.id":"%s","service.name":"%s","labels":{"host":"local","slug":"%s","detail":"%s"%s}%s}' \
+      "$(log_ts)" "$severity" "$event" "$ecs_outcome" "$eid" "$SESSION_ID" \
+      "$G_ARTIFACT_SYSTEM" "$slug" "${msg//\"/\\\"}" "$subj_kv" "$err_kv")
+    printf '%s\n' "$line" | tee -a "$file"
+  fi
+}
+
+is_git_repo(){ git -C "${1:-.}" rev-parse --is-inside-work-tree >/dev/null 2>&1; }
+
+resolve_repo_root(){
+  local cand=${1:-.}
+  is_git_repo "$cand" || return 1
+  git -C "$cand" rev-parse --show-toplevel
+}
+
+unsafe_state(){
+  local repo=$1 gitdir
+  gitdir=$(git -C "$repo" rev-parse --git-dir 2>/dev/null) || return 1
+  [[ -d "$gitdir/rebase-merge" || -d "$gitdir/rebase-apply" ]] && { echo rebase-in-progress; return 0; }
+  [[ -f "$gitdir/MERGE_HEAD" ]] && { echo merge-in-progress; return 0; }
+  [[ -f "$gitdir/CHERRY_PICK_HEAD" ]] && { echo cherry-pick-in-progress; return 0; }
+  [[ -f "$gitdir/REVERT_HEAD" ]] && { echo revert-in-progress; return 0; }
+  [[ -f "$gitdir/BISECT_LOG" ]] && { echo bisect-in-progress; return 0; }
+  return 1
+}
+
+require_jq(){ command -v jq >/dev/null 2>&1 || { echo "git-awesome: jq required for this subcommand" >&2; exit 2; }; }
+
+# ── Repository discovery (for guard --scope roots) ────────────────────
+discover_repos(){
+  local roots=() root entry count=0
+  IFS=':' read -ra roots <<< "${GIT_AWESOME_ROOTS:-${G_DEFAULT_ROOTS[*]}}"
+  REPOS=()
+  if (( ${#EXPLICIT_PATHS[@]} > 0 )); then
+    for entry in "${EXPLICIT_PATHS[@]}"; do
+      [[ -d $entry ]] || continue
+      if is_git_repo "$entry"; then REPOS+=("$(git -C "$entry" rev-parse --show-toplevel)"); fi
+    done
+    return 0
+  fi
+  if [[ $SCOPE == current ]]; then
+    is_git_repo "$PWD" && REPOS+=("$(git -C "$PWD" rev-parse --show-toplevel)") || true
+    return 0
+  fi
+  for root in "${roots[@]}"; do
+    [[ -d $root ]] || continue
+    while IFS= read -r -d '' entry; do
+      (( count >= G_MAX_REPOS )) && break 2
+      REPOS+=("$entry")
+      count=$((count+1))
+    done < <(find "$root" -mindepth 1 -maxdepth "$G_MAX_DEPTH" -type d -name .git -prune -print0 2>/dev/null | xargs -0 -I{} dirname {} 2>/dev/null | tr '\n' '\0' | sort -zu)
+  done
+}
+
+# ── Migrator: one-shot legacy state archival ──────────────────────────
+# Archives pre-`.artifacts/`-era state into a central legacy archive root.
+# Lazy: runs on every sync/baseline call; noop unless a legacy file exists.
+migrate_legacy_state_if_present(){
+  local repo=$1 archive ts moved=0 legacy_slug_ledger slug
+  (( DRY_RUN )) && return 0
+  slug=$(slug_for_repo "$repo")
+  ts=$(date -u +%Y%m%dT%H%M%S)
+  archive="$G_LEGACY_STATE_ROOT/.legacy-archive/$ts"
+  legacy_slug_ledger="$G_LEGACY_STATE_ROOT/$slug.jsonl"
+  [[ -f "$G_LEGACY_AUTOSYNC_LOG" || -d "$G_LEGACY_AGENT_GUARD_STATE" || -f "$legacy_slug_ledger" \
+     || -d "$G_LEGACY_STATE_ROOT/$slug" ]] || return 0
+  if [[ -d $G_LEGACY_AGENT_GUARD_STATE ]] && find "$G_LEGACY_AGENT_GUARD_STATE" -name '*.in-flight' 2>/dev/null | grep -q .; then
+    emit_event "$repo" migrate.defer skip warn "in-flight baseline present; deferring migration"
+    return 0
+  fi
+  mkdir -p "$archive" 2>/dev/null || true
+  if [[ -f $G_LEGACY_AUTOSYNC_LOG ]]; then
+    mv "$G_LEGACY_AUTOSYNC_LOG" "$archive/" 2>/dev/null || true
+    moved=1
+  fi
+  if [[ -d $G_LEGACY_AGENT_GUARD_STATE ]]; then
+    mv "$G_LEGACY_AGENT_GUARD_STATE" "$archive/" 2>/dev/null || true
+    moved=1
+  fi
+  # Pre-`.artifacts/`-era per-slug ledger lived at <state-root>/<slug>.jsonl.
+  # Move it into the repo-local archive name so cross-tooling history isn't lost.
+  if [[ -f $legacy_slug_ledger ]]; then
+    local target
+    target=$(artifact_path "$repo" "$G_ARTIFACT_SYSTEM" "events.legacy" jsonl)
+    cat "$legacy_slug_ledger" >> "$target" 2>/dev/null || true
+    mv "$legacy_slug_ledger" "$archive/" 2>/dev/null || true
+    moved=1
+  fi
+  # And the centralized stash/baseline subtree (<state-root>/<slug>/...) is
+  # archived wholesale; per-stash content stays parseable for forensics.
+  if [[ -d "$G_LEGACY_STATE_ROOT/$slug" ]]; then
+    mv "$G_LEGACY_STATE_ROOT/$slug" "$archive/" 2>/dev/null || true
+    moved=1
+  fi
+  (( moved )) && emit_event "$repo" migrate.legacy_state success info "archived legacy state" "$archive"
+}
+
+# ── sync: autostash + patch archive (local only) ──────────────────────
+cmd_sync(){
+  local repo branch ts uuid stash_name patch_file reason prev_stash
+  repo=$(resolve_repo_root .) || { echo "git-awesome sync: not in a git repo" >&2; exit 2; }
+  migrate_legacy_state_if_present "$repo"
+  if reason=$(unsafe_state "$repo"); then
+    emit_event "$repo" sync.skip skip warn "unsafe state, refusing to stash" "$reason"; return 0
+  fi
+  if ! git -C "$repo" status --porcelain | grep -q .; then
+    emit_event "$repo" sync.skip skip info "clean tree, nothing to stash"; return 0
+  fi
+  prev_stash=$(git -C "$repo" stash list 2>/dev/null | grep "${G_STASH_PREFIX}/" | head -n1 | sed -E 's/^(stash@\{[0-9]+\}):.*/\1/' || true)
+  if [[ -n $prev_stash ]]; then
+    if [[ -z $(git -C "$repo" diff "$prev_stash" 2>/dev/null) ]]; then
+      local latest_patch
+      latest_patch=$(ls -t "$(artifact_dir "$repo" "$G_ARTIFACT_SYSTEM")"/stash.*.patch 2>/dev/null | head -n1 || true)
+      [[ -n $latest_patch ]] && touch "$latest_patch"
+      emit_event "$repo" sync.dedup skip info "no change since previous stash"
+      return 0
+    fi
+  fi
+  branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+  ts=$(log_ts)
+  uuid=$(gen_uuid)
+  stash_name="${G_STASH_PREFIX}/${SESSION_ID}/${branch}/${ts}"
+  patch_file=$(patch_path "$repo" "$uuid")
+  if (( DRY_RUN )); then
+    printf '[dry-run] would stash: %s\n' "$stash_name"
+    printf '[dry-run] would archive patch: %s\n' "$patch_file"
+    return 0
+  fi
+  # Concurrent git operation detection: sync runs from cron every 15 min, so
+  # colliding with a manual git command is normal. Skip this tick (next one
+  # fires in 15 min) rather than logging a spurious failure.
+  local gitdir lock_present=0 lock err success=0
+  gitdir=$(git -C "$repo" rev-parse --git-dir 2>/dev/null || echo "$repo/.git")
+  for lock in "$gitdir/index.lock" "$gitdir/HEAD.lock" "$gitdir/refs/heads/$branch.lock"; do
+    [[ -e "$lock" ]] && { lock_present=1; break; }
+  done
+  if (( lock_present )); then
+    emit_event "$repo" sync.skip skip warn "another git process holds a lock; skipping this tick" "$lock"
+    return 0
+  fi
+  for _ in 1 2 3; do
+    err=$(git -C "$repo" stash push -u -m "$stash_name" 2>&1 >/dev/null) && { success=1; break; }
+    for lock in "$gitdir/index.lock" "$gitdir/HEAD.lock"; do
+      [[ -e "$lock" ]] && { lock_present=1; break; }
+    done
+    if (( lock_present )) || [[ "$err" =~ index\.lock|Another\ git\ process ]]; then
+      sleep "0.$((RANDOM % 5 + 2))"
+      continue
+    fi
+    emit_event "$repo" sync.fail fail error "git stash push failed: ${err:0:120}"
+    return 1
+  done
+  if (( success != 1 )); then
+    emit_event "$repo" sync.skip skip warn "git stash push lock-blocked across 3 retries; skipping this tick"
+    return 0
+  fi
+  # `git stash push -u` runs `git clean -df` after stashing, which removes
+  # empty untracked dirs. If `.artifacts/` is not gitignored (test fixtures,
+  # cron before bootstrap), our just-created parent gets cleaned. Recreate.
+  mkdir -p "$(dirname "$patch_file")" 2>/dev/null || true
+  git -C "$repo" stash show -p "stash@{0}" > "$patch_file" 2>/dev/null || true
+  emit_event "$repo" sync.ok success info "stashed dirty tree" "$stash_name"
+}
+
+# ── unstash: pop the latest git-awesome stash ─────────────────────────
+cmd_unstash(){
+  local repo stash
+  repo=$(resolve_repo_root .) || { echo "git-awesome unstash: not in a git repo" >&2; exit 2; }
+  stash=$(git -C "$repo" stash list 2>/dev/null | grep "${G_STASH_PREFIX}/" | head -n1 | sed -E 's/^(stash@\{[0-9]+\}):.*/\1/' || true)
+  if [[ -z $stash ]]; then echo "no git-awesome stash to pop"; return 1; fi
+  if (( DRY_RUN )); then printf '[dry-run] would pop: %s\n' "$stash"; return 0; fi
+  git -C "$repo" stash pop "$stash" && emit_event "$repo" unstash.ok success info "popped $stash"
+}
+
+# ── guard helpers (port of agent-git-guard core) ──────────────────────
+hash_text(){ printf '%s' "$1" | sha256sum | awk '{print $1}'; }
+encode_path(){ printf '%s' "$1" | sha256sum | awk '{print $1}'; }
+
+dirty_paths(){
+  git -C "$1" status --porcelain=v1 -z 2>/dev/null \
+    | awk -v RS='\0' 'NF{print substr($0,4)}' \
+    | tr '\n' '\0'
+}
+
+path_hashes(){
+  local repo=$1 path=$2 work index
+  work=$(git -C "$repo" hash-object -- "$path" 2>/dev/null || echo "-")
+  index=$(git -C "$repo" ls-files -s -- "$path" 2>/dev/null | awk '{print $2}')
+  [[ -n $index ]] || index="-"
+  printf '%s\t%s' "${work:--}" "${index:--}"
+}
+
+head_oid(){ git -C "$1" rev-parse HEAD 2>/dev/null || echo UNBORN; }
+branch_name(){ git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached; }
+upstream_name(){ git -C "$1" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo ''; }
+ahead_behind(){
+  local repo=$1 ab
+  ab=$(git -C "$repo" rev-list --left-right --count "@{u}...HEAD" 2>/dev/null || echo "-1 -1")
+  printf '%s\n' "$ab"
+}
+
+safe_session(){
+  local normalized digest
+  normalized=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_.-' '_')
+  digest=$(printf '%s' "$SESSION_ID" | sha256sum | awk '{print substr($1,1,12)}')
+  printf '%s-%s' "$normalized" "$digest"
+}
+
+baseline_file(){
+  local repo=$1 sess
+  sess=$(safe_session)
+  baseline_path "$repo" "$sess"
+}
+
+# ── guard baseline ────────────────────────────────────────────────────
+cmd_guard_baseline(){
+  discover_repos
+  (( ${#REPOS[@]} > 0 )) || { emit_event "$PWD" repo fail error "no git repositories discovered"; exit 2; }
+  local repo file tmp ahead behind path count
+  for repo in "${REPOS[@]}"; do
+    migrate_legacy_state_if_present "$repo"
+    file=$(baseline_file "$repo")
+    mkdir -p "$(dirname "$file")"
+    tmp=$(mktemp "${file}.tmp.XXXXXX")
+    read -r ahead behind < <(ahead_behind "$repo")
+    count=0
+    {
+      printf 'version\t1\n'
+      printf 'repo\t%s\n' "$repo"
+      printf 'head\t%s\n' "$(head_oid "$repo")"
+      printf 'branch\t%s\n' "$(branch_name "$repo")"
+      printf 'upstream\t%s\n' "$(upstream_name "$repo")"
+      printf 'ahead\t%s\n' "$ahead"
+      printf 'behind\t%s\n' "$behind"
+      while IFS= read -r -d '' path; do
+        [[ -n $path ]] || continue
+        printf 'path\t%s\t%s\n' "$(encode_path "$path")" "$(path_hashes "$repo" "$path")"
+        count=$((count+1))
+      done < <(dirty_paths "$repo")
+      printf 'dirty_count\t%s\n' "$count"
+    } > "$tmp"
+    if (( DRY_RUN )); then
+      printf '[dry-run] would write baseline: %s (head=%s ahead=%s dirty_count=%s)\n' \
+        "$file" "$(head_oid "$repo")" "$ahead" "$count"
+      rm -f "$tmp" 2>/dev/null || true
+      continue
+    fi
+    mv "$tmp" "$file"
+    emit_event "$repo" baseline.ok success info "baseline recorded" "$file"
+  done
+}
+
+# ── guard finalize ────────────────────────────────────────────────────
+cmd_guard_finalize(){
+  discover_repos
+  (( ${#REPOS[@]} > 0 )) || { emit_event "$PWD" repo fail error "no git repositories discovered"; exit 2; }
+  require_jq
+  local status=0 repo file kind a b c path hashes work index unsafe
+  local base_head base_ahead base_upstream current_head current_ahead current_behind current_upstream
+  local -a new_dirty changed_dirty unchanged_dirty
+  for repo in "${REPOS[@]}"; do
+    file=$(baseline_file "$repo")
+    if [[ ! -s $file ]]; then
+      emit_event "$repo" baseline.missing fail error "missing baseline; finalize fails closed" "$file"
+      status=2; continue
+    fi
+    base_head=UNBORN; base_ahead=-1; base_upstream=''
+    declare -A base_work=()
+    declare -A base_index=()
+    declare -A base_seen=()
+    new_dirty=(); changed_dirty=(); unchanged_dirty=()
+    while IFS=$'\t' read -r kind a b c; do
+      c=${c%$'\r'}
+      case "$kind" in
+        head) base_head=$a;;
+        upstream) base_upstream=$a;;
+        ahead) base_ahead=${a:--1};;
+        path) base_work[$a]=${b:--}; base_index[$a]=${c:--}; base_seen[$a]=1;;
+      esac
+    done < "$file"
+    if unsafe=$(unsafe_state "$repo"); then
+      emit_event "$repo" git.in_progress fail error "in-progress Git operation has precedence" "$unsafe"
+      (( DRY_RUN )) || status=1
+    fi
+    while IFS= read -r -d '' path; do
+      [[ -n $path ]] || continue
+      local key
+      key=$(encode_path "$path")
+      hashes=$(path_hashes "$repo" "$path")
+      work=${hashes%%$'\t'*}; index=${hashes#*$'\t'}
+      if [[ -z ${base_seen[$key]+x} ]]; then new_dirty+=("$path")
+      elif [[ ${base_work[$key]} == "$work" && ${base_index[$key]} == "$index" ]]; then unchanged_dirty+=("$path")
+      else changed_dirty+=("$path")
+      fi
+    done < <(dirty_paths "$repo")
+    (( ${#new_dirty[@]} )) && { emit_event "$repo" dirty.new fail error "new dirty paths after baseline" "${new_dirty[*]}"; (( DRY_RUN )) || status=1; }
+    (( ${#changed_dirty[@]} )) && { emit_event "$repo" dirty.changed fail error "pre-existing dirty paths changed" "${changed_dirty[*]}"; (( DRY_RUN )) || status=1; }
+    (( ${#unchanged_dirty[@]} )) && emit_event "$repo" dirty.unchanged success info "unchanged pre-existing dirty paths ignored" "${#unchanged_dirty[@]}"
+    current_head=$(head_oid "$repo"); current_upstream=$(upstream_name "$repo")
+    read -r current_ahead current_behind < <(ahead_behind "$repo")
+    if [[ $current_upstream != "$base_upstream" ]]; then
+      emit_event "$repo" commits.upstream_changed fail error "branch upstream changed" "baseline=$base_upstream current=$current_upstream"
+      (( DRY_RUN )) || status=1
+    fi
+    if [[ $current_head != "$base_head" && ( $current_ahead == -1 || $current_ahead -gt $base_ahead ) ]]; then
+      emit_event "$repo" commits.unpushed fail error "HEAD changed and new unpushed commits" "ahead=$current_ahead"
+      (( DRY_RUN )) || status=1
+    elif [[ $current_ahead != -1 && $base_ahead != -1 && $current_ahead -gt $base_ahead ]]; then
+      emit_event "$repo" commits.unpushed fail error "branch ahead count increased" "ahead=$current_ahead"
+      (( DRY_RUN )) || status=1
+    fi
+    [[ $current_behind != -1 && $current_behind -gt 0 ]] && emit_event "$repo" commits.behind warn warn "branch behind upstream" "behind=$current_behind"
+    # If sync ran during the turn, dirty work is hidden in a stash and would
+    # otherwise be invisible to the guard. Surface it as dirty.stashed.
+    local stashed_in_session
+    stashed_in_session=$(git -C "$repo" stash list 2>/dev/null | grep -c "git-awesome/${SESSION_ID}/" || true)
+    if (( stashed_in_session > 0 )); then
+      emit_event "$repo" dirty.stashed fail error "agent work hidden in stash during turn" "count=$stashed_in_session session=$SESSION_ID"
+      (( DRY_RUN )) || status=1
+    fi
+    (( status == 0 )) && emit_event "$repo" finalize.ok success info "no agent-owned dirty or unpushed work"
+  done
+  exit "$status"
+}
+
+# ── gc: drop old git-awesome stashes + prune patch archive ────────────
+# Flags:
+#   --legacy-wip  also delete local refs under refs/wip/* (retired namespace)
+#                 and print remote candidates for manual `git push --delete`
+cmd_gc(){
+  local repo stash_line stash_ref msg ts_age now ts_epoch age_d count_dropped=0 count_pruned=0
+  local legacy_wip=0 arg
+  for arg in "${EXPLICIT_PATHS[@]}"; do
+    [[ "$arg" == "--legacy-wip" ]] && legacy_wip=1
+  done
+  repo=$(resolve_repo_root .) || { echo "git-awesome gc: not in a git repo" >&2; exit 2; }
+  now=$(date -u +%s)
+  while IFS= read -r stash_line; do
+    [[ -n $stash_line ]] || continue
+    msg=$(printf '%s' "$stash_line" | sed -E 's/^(stash@\{[0-9]+\}): [^:]+: (.*)$/\2/')
+    [[ $msg == "${G_STASH_PREFIX}/"* ]] || continue
+    ts_age=$(printf '%s' "$msg" | awk -F/ '{print $NF}')
+    ts_epoch=$(date -d "$ts_age" +%s 2>/dev/null || echo "$now")
+    age_d=$(( (now - ts_epoch) / 86400 ))
+    if (( age_d > G_STASH_TTL_DAYS )); then
+      stash_ref=$(printf '%s' "$stash_line" | sed -E 's/^(stash@\{[0-9]+\}):.*/\1/')
+      if (( DRY_RUN )); then printf '[dry-run] would drop: %s (age=%dd)\n' "$stash_ref" "$age_d"
+      else git -C "$repo" stash drop "$stash_ref" >/dev/null 2>&1 && count_dropped=$((count_dropped+1)) || true
+      fi
+    fi
+  done < <(git -C "$repo" stash list 2>/dev/null | tac)
+  local patch
+  while IFS= read -r patch; do
+    [[ -f $patch ]] || continue
+    ts_epoch=$(stat -c %Y "$patch" 2>/dev/null || echo "$now")
+    age_d=$(( (now - ts_epoch) / 86400 ))
+    if (( age_d > G_STASH_TTL_DAYS )); then
+      if (( DRY_RUN )); then printf '[dry-run] would prune: %s (age=%dd)\n' "$patch" "$age_d"
+      else rm -f "$patch" && count_pruned=$((count_pruned+1)) || true
+      fi
+    fi
+  done < <(ls -1 "$(artifact_dir "$repo" "$G_ARTIFACT_SYSTEM")"/stash.*.patch 2>/dev/null || true)
+  local wip_local_dropped=0 wip_remote_candidates=0 ref remote_ref
+  if (( legacy_wip )); then
+    while IFS= read -r ref; do
+      [[ -n $ref ]] || continue
+      if (( DRY_RUN )); then printf '[dry-run] would delete local ref: %s\n' "$ref"
+      else git -C "$repo" update-ref -d "$ref" 2>/dev/null && wip_local_dropped=$((wip_local_dropped+1)) || true
+      fi
+    done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/wip 2>/dev/null)
+    while IFS= read -r remote_ref; do
+      [[ -n $remote_ref ]] || continue
+      wip_remote_candidates=$((wip_remote_candidates+1))
+      printf 'legacy-wip remote candidate: %s  (delete with: git push origin --delete %s)\n' \
+        "$remote_ref" "${remote_ref#origin/}"
+    done < <(git -C "$repo" branch -r 2>/dev/null | awk '/origin\/wip\//{gsub(/^[ *]+/,""); print}')
+    emit_event "$repo" gc.legacy_wip success info "local_dropped=$wip_local_dropped remote_candidates=$wip_remote_candidates"
+  fi
+  emit_event "$repo" gc.ok success info "dropped=$count_dropped pruned=$count_pruned"
+}
+
+# ── conform: verify repo matches hardcoded contract ───────────────────
+cmd_conform(){
+  local repo missing=() exit_class=0 path
+  repo=$(resolve_repo_root .) || { echo "git-awesome conform: not in a git repo" >&2; exit 2; }
+  local expected=(
+    .github/workflows/ci.yml
+    .github/workflows/security.yml
+    .github/workflows/gitleaks.yml
+    .github/workflows/automerge.yml
+    .github/workflows/issue-triage.yml
+    .github/workflows/pr-link-check.yml
+    .github/dependabot.yml
+    .github/CODEOWNERS
+    .github/PULL_REQUEST_TEMPLATE.md
+    .github/ISSUE_TEMPLATE/bug_report.yml
+    .github/ISSUE_TEMPLATE/feature_request.yml
+    .github/ISSUE_TEMPLATE/research.yml
+    .github/ISSUE_TEMPLATE/config.yml
+    .gitignore .gitattributes .gitleaks.toml
+    scripts/bin/git-awesome
+  )
+  for path in "${expected[@]}"; do
+    [[ -e "$repo/$path" ]] || missing+=("$path")
+  done
+  if (( ${#missing[@]} )); then
+    emit_event "$repo" conform.missing fail error "managed files missing" "${missing[*]}"; exit_class=1
+  fi
+  local retired_present=()
+  for path in .automation/policy.json schemas/automation-policy.v1.json AUTOMATION.md docs/github-conventions.md \
+              .autosync .dotfiles-readme-managed \
+              scripts/bin/agent-git-guard.sh scripts/bin/git-autosync.sh scripts/bin/git-conformance \
+              scripts/bin/git-wip-gc scripts/bin/github-hygiene.sh scripts/bin/repo-automation.sh \
+              scripts/bin/gh-issue.sh; do
+    [[ -e "$repo/$path" ]] && retired_present+=("$path")
+  done
+  if (( ${#retired_present[@]} )); then
+    emit_event "$repo" conform.retired_present fail error "retired paths still present" "${retired_present[*]}"; exit_class=1
+  fi
+  (( exit_class == 0 )) && emit_event "$repo" conform.ok success info "repo matches contract"
+  exit "$exit_class"
+}
+
+# ── triage: list recent GitHub Actions failures ───────────────────────
+cmd_triage(){
+  command -v gh >/dev/null 2>&1 || { echo "git-awesome triage: gh CLI required" >&2; exit 2; }
+  local repo repo_slug failed
+  repo=$(resolve_repo_root .) || { echo "git-awesome triage: not in a git repo" >&2; exit 2; }
+  repo_slug=$(gh -R "$repo" repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)
+  [[ -n $repo_slug ]] || { emit_event "$repo" triage.skip skip warn "no GitHub repo detected"; return 0; }
+  failed=$(gh -R "$repo_slug" run list --limit 20 --json conclusion,name,headBranch,databaseId,createdAt \
+           --jq '.[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.databaseId)\t\(.name)\t\(.headBranch)\t\(.createdAt)"' 2>/dev/null || true)
+  if [[ -z $failed ]]; then
+    emit_event "$repo" triage.ok success info "no recent failed runs"; return 0
+  fi
+  printf '%s\n' "$failed"
+  emit_event "$repo" triage.found fail warn "$(printf '%s\n' "$failed" | wc -l) failed run(s)"
+}
+
+# ── repair: retire legacy AI workflows + rerun hygiene ────────────────
+cmd_repair(){
+  local repo retired=() path
+  repo=$(resolve_repo_root .) || { echo "git-awesome repair: not in a git repo" >&2; exit 2; }
+  for path in .github/workflows/claude-review.yml .github/workflows/ai-review.yml .github/workflows/self-repair.yml; do
+    [[ -f "$repo/$path" ]] || continue
+    if (( DRY_RUN )); then retired+=("[dry-run] $path"); continue; fi
+    mkdir -p "$repo/old/workflows"
+    mv "$repo/$path" "$repo/old/workflows/" 2>/dev/null && retired+=("$path") || true
+  done
+  if (( ${#retired[@]} )); then
+    emit_event "$repo" repair.retired success info "retired legacy workflows" "${retired[*]}"
+  else
+    emit_event "$repo" repair.noop success info "no legacy workflows to retire"
+  fi
+}
+
+# ── observe: NDJSON snapshot of current repo state ────────────────────
+cmd_observe(){
+  require_jq
+  local repo slug branch head upstream ahead behind dirty_count
+  repo=$(resolve_repo_root .) || { echo "git-awesome observe: not in a git repo" >&2; exit 2; }
+  slug=$(slug_for_repo "$repo")
+  branch=$(branch_name "$repo"); head=$(head_oid "$repo"); upstream=$(upstream_name "$repo")
+  read -r ahead behind < <(ahead_behind "$repo")
+  dirty_count=$(git -C "$repo" status --porcelain | wc -l)
+  jq -nc --arg ts "$(log_ts)" --arg slug "$slug" --arg branch "$branch" --arg head "$head" \
+     --arg upstream "$upstream" --argjson ahead "${ahead:-0}" --argjson behind "${behind:-0}" --argjson dirty "${dirty_count:-0}" \
+     '{ts:$ts,slug:$slug,branch:$branch,head:$head,upstream:$upstream,ahead:$ahead,behind:$behind,dirty:$dirty}'
+}
+
+# ── status: human-readable snapshot of git-awesome state ──────────────
+cmd_status(){
+  local repo slug branch head upstream ahead behind dirty stashes patches last_event recent_fail
+  local adir
+  repo=$(resolve_repo_root .) || { echo "git-awesome status: not in a git repo" >&2; exit 2; }
+  slug=$(slug_for_repo "$repo")
+  adir=$(artifact_dir "$repo" "$G_ARTIFACT_SYSTEM")
+  branch=$(branch_name "$repo"); head=$(head_oid "$repo")
+  upstream=$(upstream_name "$repo")
+  read -r ahead behind < <(ahead_behind "$repo")
+  dirty=$(git -C "$repo" status --porcelain | wc -l)
+  stashes=$(git -C "$repo" stash list 2>/dev/null | grep -c "${G_STASH_PREFIX}/" || true)
+  patches=$(ls -1 "$adir"/stash.*.patch 2>/dev/null | wc -l || echo 0)
+  last_event="(none)"
+  recent_fail=0
+  # Aggregate across all date-keyed event files (events.<yyyy-mm-dd>.jsonl).
+  # ECS shape: .["event.action"], .["event.outcome"], .["@timestamp"].
+  local concatenated
+  concatenated=$(cat "$adir"/events.*.jsonl 2>/dev/null || true)
+  if [[ -n $concatenated ]]; then
+    last_event=$(printf '%s\n' "$concatenated" | tail -1 \
+      | jq -r '"\(.["@timestamp"]) \(.["event.action"])=\(.["event.outcome"])"' 2>/dev/null)
+    recent_fail=$(printf '%s\n' "$concatenated" | tail -100 \
+      | jq -r 'select(.["event.outcome"]=="failure")|.["event.action"]' 2>/dev/null | wc -l)
+  fi
+  printf 'git-awesome status — %s\n' "$slug"
+  printf '  repo:        %s\n' "$repo"
+  printf '  branch:      %s (head %s)\n' "$branch" "${head:0:12}"
+  printf '  upstream:    %s (ahead %s, behind %s)\n' "${upstream:-none}" "$ahead" "$behind"
+  printf '  working:     %s dirty path(s)\n' "$dirty"
+  printf '  stashes:     %s git-awesome stash(es)\n' "$stashes"
+  printf '  patches:     %s archived in %s/\n' "$patches" "$adir"
+  printf '  last event:  %s\n' "$last_event"
+  printf '  recent fails:%s (last 100 events)\n' "$recent_fail"
+  if (( recent_fail > 0 )); then return 1; fi
+  return 0
+}
+
+# ── history: query the ledger (avoid raw jq) ──────────────────────────
+# Reads ECS-shaped events from <repo>/.artifacts/git-awesome/events.*.jsonl
+# (date-keyed; concatenated in lexicographic == chronological order).
+# Outcome filter accepts BOTH legacy values (success|fail|skip) and canonical
+# ECS values (success|failure|unknown) for caller convenience.
+# Flags (positional after the subcommand):
+#   --limit N         show last N events (default 20)
+#   --event PREFIX    filter event name by prefix (e.g. dirty., sync.)
+#   --outcome S       filter outcome (success|failure|unknown OR fail|skip)
+cmd_history(){
+  local repo limit=20 event_prefix='' outcome_filter='' arg
+  local args=("${EXPLICIT_PATHS[@]}") i=0
+  while (( i < ${#args[@]} )); do
+    arg=${args[$i]}
+    case "$arg" in
+      --limit)   limit=${args[$((i+1))]}; i=$((i+2));;
+      --event)   event_prefix=${args[$((i+1))]}; i=$((i+2));;
+      --outcome) outcome_filter=${args[$((i+1))]}; i=$((i+2));;
+      *) echo "git-awesome history: unknown flag $arg" >&2; return 2;;
+    esac
+  done
+  repo=$(resolve_repo_root .) || { echo "git-awesome history: not in a git repo" >&2; exit 2; }
+  case "$outcome_filter" in
+    fail) outcome_filter=failure;;
+    skip) outcome_filter=unknown;;
+  esac
+  local concatenated
+  concatenated=$(cat "$(artifact_dir "$repo" "$G_ARTIFACT_SYSTEM")"/events.*.jsonl 2>/dev/null || true)
+  [[ -n $concatenated ]] || { echo "no events for repo=$repo"; return 0; }
+  require_jq
+  local jq_filter='.'
+  [[ -n $event_prefix ]]   && jq_filter="$jq_filter | select(.[\"event.action\"] | startswith(\"$event_prefix\"))"
+  [[ -n $outcome_filter ]] && jq_filter="$jq_filter | select(.[\"event.outcome\"] == \"$outcome_filter\")"
+  printf '%s\n' "$concatenated" | tail -n 5000 \
+    | jq -r "$jq_filter | \"\(.[\"@timestamp\"])  \(.[\"event.action\"])=\(.[\"event.outcome\"])/\(.[\"log.level\"])  \(.labels.detail // \"\")\(if .labels.subject then \" :: \"+.labels.subject else \"\" end)\"" 2>/dev/null \
+    | tail -n "$limit"
+}
+
+# ── subcommands: machine-checkable list (the contract surface) ────────
+cmd_subcommands(){
+  cat <<'SUBS'
+sync
+unstash
+guard
+gc
+conform
+triage
+repair
+observe
+status
+history
+defaults
+readme-rewrite
+subcommands
+SUBS
+}
+
+# ── defaults: print hardcoded constants ───────────────────────────────
+cmd_defaults(){
+  cat <<DEFAULTS
+git-awesome hardcoded defaults (no per-repo policy):
+
+  events ledger      <repo>/.artifacts/${G_ARTIFACT_SYSTEM}/events.<yyyy-mm-dd>.jsonl (ECS-shaped JSONL)
+  patch archive      <repo>/.artifacts/${G_ARTIFACT_SYSTEM}/stash.<uuid>.patch
+  baseline           <repo>/.artifacts/${G_ARTIFACT_SYSTEM}/baseline.<session>.tsv
+  legacy state       ${G_LEGACY_STATE_ROOT} (auto-archived on first run after migration)
+  stash prefix       ${G_STASH_PREFIX}
+  stash TTL          ${G_STASH_TTL_DAYS} days
+  integrate branches ${G_INTEGRATE_BRANCHES[*]}
+  skip branches      ${G_SKIP_BRANCHES_GLOB[*]}
+  required checks    ${G_REQUIRED_CHECKS[*]}
+  default roots      ${G_DEFAULT_ROOTS[*]}
+  max depth          ${G_MAX_DEPTH}
+  max repos          ${G_MAX_REPOS}
+  cron cadence       */15 * * * * /home/wranngle/.dotfiles/scripts/bin/git-awesome sync
+  host exposure      none (no hostname in stash names; no remote push from sync)
+  escape hatch       --dry-run (demotes any mutating subcommand to print-only preview)
+DEFAULTS
+}
+
+# ── readme-rewrite: explicit invocation only ──────────────────────────
+cmd_readme_rewrite(){
+  local repo
+  repo=$(resolve_repo_root .) || { echo "git-awesome readme-rewrite: not in a git repo" >&2; exit 2; }
+  if (( DRY_RUN )); then
+    echo "[dry-run] would invoke .dotfiles.sh README writer for $repo"
+    return 0
+  fi
+  if [[ ! -x "$HOME/.dotfiles/.dotfiles.sh" ]]; then
+    emit_event "$repo" readme.fail fail error "bootstrap script not found"; return 1
+  fi
+  DOTFILES_README_ONLY=1 DOTFILES_FORCE=1 "$HOME/.dotfiles/.dotfiles.sh" 2>&1 | tail -20
+  emit_event "$repo" readme.ok success info "explicit README rewrite invoked"
+}
+
+# ── Help text ─────────────────────────────────────────────────────────
+usage(){
+  cat <<USAGE
+git-awesome -- unified Git automation for Wranngle dotfiles.
+
+Usage: git-awesome [--dry-run] <subcommand> [args]
+
+Subcommands:
+  sync                       autostash dirty tree (local-only)
+  unstash                    pop the latest git-awesome stash
+  guard baseline [--session ID] [--scope current|roots] [PATH...]
+  guard finalize [--session ID] [--scope current|roots] [PATH...]
+  gc [--legacy-wip]          drop stashes >${G_STASH_TTL_DAYS}d + prune patches; --legacy-wip also sweeps retired wip/* refs
+  conform                    verify repo matches hardcoded contract
+  triage                     list recent GitHub Actions failures
+  repair                     retire legacy AI/self-repair workflows
+  observe                    dump current repo state as NDJSON
+  status                     human-readable repo + ledger summary
+  history [--limit N] [--event PFX] [--outcome OC] [--slug S]
+                             tail recent events from the ledger
+  subcommands                print authoritative subcommand list (machine-readable)
+  defaults                   print the hardcoded constants
+  readme-rewrite             explicit README regeneration (never auto-runs)
+
+Global flag:
+  --dry-run                  demote any mutating subcommand to print-only
+
+Env:
+  GIT_AWESOME_SESSION        session id (default: random UUID)
+  GIT_AWESOME_ROOTS          colon-separated roots for --scope roots
+  GIT_AWESOME_STATE_DIR      legacy state archival root (pre-.artifacts/ era)
+  GIT_AWESOME_STASH_TTL_DAYS override stash TTL
+  GIT_AWESOME_MAX_DEPTH      repo discovery depth (default 4)
+  GIT_AWESOME_MAX_REPOS      discovery safety cap (default 80)
+
+Runtime files (canonical layout):
+  <repo>/.artifacts/git-awesome/events.<yyyy-mm-dd>.jsonl
+  <repo>/.artifacts/git-awesome/stash.<uuid>.patch
+  <repo>/.artifacts/git-awesome/baseline.<session>.tsv
+
+Exit codes: 0 clean / 1 expected failure / 2 misconfigured
+USAGE
+}
+
+# ── Main dispatcher ───────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift;;
+    -h|--help|help) usage; exit 0;;
+    *) break;;
+  esac
+done
+
+subcmd=${1:-}
+[[ -n $subcmd ]] || { usage; exit 2; }
+shift || true
+
+# Parse common guard flags
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --session) SESSION_ID=${2:-}; [[ -n $SESSION_ID ]] || { echo "missing --session" >&2; exit 2; }; shift 2;;
+    --scope) SCOPE=${2:-}; [[ $SCOPE =~ ^(current|roots)$ ]] || { echo "invalid --scope" >&2; exit 2; }; shift 2;;
+    --) shift; while [[ $# -gt 0 ]]; do EXPLICIT_PATHS+=("$1"); shift; done;;
+    -*) EXPLICIT_PATHS+=("$1"); shift;;
+    *) EXPLICIT_PATHS+=("$1"); shift;;
+  esac
+done
+
+case "$subcmd" in
+  sync)            cmd_sync;;
+  unstash)         cmd_unstash;;
+  guard)
+    sub2=${EXPLICIT_PATHS[0]:-}
+    [[ -n $sub2 ]] || { echo "git-awesome guard: expected baseline|finalize" >&2; exit 2; }
+    EXPLICIT_PATHS=("${EXPLICIT_PATHS[@]:1}")
+    case "$sub2" in
+      baseline) cmd_guard_baseline;;
+      finalize) cmd_guard_finalize;;
+      *) echo "git-awesome guard: unknown $sub2" >&2; exit 2;;
+    esac;;
+  gc)              cmd_gc;;
+  conform)         cmd_conform;;
+  triage)          cmd_triage;;
+  repair)          cmd_repair;;
+  observe)         cmd_observe;;
+  status)          cmd_status;;
+  history)         cmd_history;;
+  subcommands)     cmd_subcommands;;
+  defaults)        cmd_defaults;;
+  readme-rewrite)  cmd_readme_rewrite;;
+  *) echo "git-awesome: unknown subcommand '$subcmd'" >&2; usage >&2; exit 2;;
+esac

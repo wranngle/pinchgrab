@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# openspec-init — scaffold OpenSpec into a target project (or current dir).
+#
+# Usage:
+#   openspec-init                    # current directory
+#   openspec-init /path/to/project   # specific dir
+#   openspec-init . --force          # re-run even if openspec/ exists (won't overwrite files)
+#
+# Idempotent. Never overwrites an existing file. Pure filesystem; no network.
+# Migrated 2026-05-06 from wranngle/.claude/scripts/init_openspec.ts.
+
+set -euo pipefail
+
+target="${1:-$PWD}"
+force=0
+[[ "${2:-}" == "--force" ]] && force=1
+
+target="$(cd "$target" 2>/dev/null && pwd)" || { echo "ERROR: target does not exist: $1" >&2; exit 1; }
+
+parent_claude="${HOME}/.claude"
+if [[ "$target" == "$parent_claude" || "$target" == "$parent_claude"/* ]]; then
+  echo "ERROR: cannot init OpenSpec inside ~/.claude (already configured there)" >&2
+  exit 1
+fi
+
+if [[ -d "$target/openspec" && $force -eq 0 ]]; then
+  echo "OpenSpec already at $target/openspec  (pass --force to re-run)"
+  exit 0
+fi
+
+project_name="$(basename "$target")"
+if [[ -f "$target/package.json" ]]; then
+  pkg_name="$(node -p "try{require('$target/package.json').name||''}catch(e){''}" 2>/dev/null || true)"
+  [[ -n "$pkg_name" ]] && project_name="$pkg_name"
+fi
+
+tech_lines=()
+if [[ -f "$target/package.json" ]]; then
+  if [[ -f "$target/tsconfig.json" ]] || grep -q '"typescript"' "$target/package.json" 2>/dev/null; then
+    tech_lines+=("- **Language:** TypeScript")
+  else
+    tech_lines+=("- **Language:** JavaScript")
+  fi
+  grep -q '"react"' "$target/package.json" 2>/dev/null && tech_lines+=("- **Framework:** React")
+  grep -q '"next"'  "$target/package.json" 2>/dev/null && tech_lines+=("- **Framework:** Next.js")
+  grep -q '"express"' "$target/package.json" 2>/dev/null && tech_lines+=("- **Framework:** Express")
+  if grep -q '"bun"' "$target/package.json" 2>/dev/null; then
+    tech_lines+=("- **Runtime:** Bun")
+  else
+    tech_lines+=("- **Runtime:** Node.js")
+  fi
+fi
+[[ -f "$target/requirements.txt" || -f "$target/pyproject.toml" ]] && tech_lines+=("- **Language:** Python")
+[[ -f "$target/go.mod" ]]    && tech_lines+=("- **Language:** Go")
+[[ -f "$target/Cargo.toml" ]] && tech_lines+=("- **Language:** Rust")
+[[ ${#tech_lines[@]} -eq 0 ]] && tech_lines+=("- [Add your tech stack here]")
+
+mkdir -p "$target/openspec/specs" "$target/openspec/changes/archive"
+echo "Created: openspec/ tree"
+
+project_md="$target/openspec/project.md"
+if [[ ! -f "$project_md" ]]; then
+  {
+    printf '# Project Context\n\n## Purpose\n%s: [Brief description of what this project does]\n\n## Tech Stack\n' "$project_name"
+    printf '%s\n' "${tech_lines[@]}"
+    cat <<EOF
+
+## Project Conventions
+
+### Code Style
+- **Naming:** [Your conventions here]
+- **File Preference:** Edit existing files over creating new ones
+- **Tool Preference:** Use specialized tools (Read, Write, Glob) over Bash equivalents
+
+### Architecture Patterns
+- [Describe key patterns used in this project]
+
+## OpenSpec Workflow
+
+This project uses OpenSpec for spec-driven development.
+
+**Instructions:** See \`~/.claude/openspec/AGENTS.md\` for full workflow.
+
+**Quick Reference:**
+- \`/openspec:proposal\` — Create change proposal
+- \`/openspec:apply <id>\` — Implement approved change
+- \`/openspec:archive <id>\` — Archive completed change
+EOF
+  } > "$project_md"
+  echo "Created: openspec/project.md"
+else
+  echo "Skipped: openspec/project.md (exists)"
+fi
+
+agents_md="$target/openspec/AGENTS.md"
+if [[ ! -f "$agents_md" ]]; then
+  cat > "$agents_md" <<'EOF'
+# OpenSpec Agent Instructions
+
+Full instructions live in the parent configuration:
+
+  ~/.claude/openspec/AGENTS.md
+
+Quick start:
+  1. /openspec:proposal — create change proposal
+  2. /openspec:apply <id> — implement approved change
+  3. /openspec:archive <id> — archive completed change
+EOF
+  echo "Created: openspec/AGENTS.md (pointer)"
+fi
+
+claude_md="$target/CLAUDE.md"
+snippet=$'<!-- OPENSPEC:START -->\n# OpenSpec Instructions\n\nThis project uses OpenSpec for spec-driven development.\n\n**Full Instructions:** `~/.claude/openspec/AGENTS.md`\n**Project Specs:** `openspec/`\n\n| Command | Purpose |\n|---|---|\n| `/openspec:proposal` | Create change proposal |\n| `/openspec:apply <id>` | Implement approved change |\n| `/openspec:archive <id>` | Archive completed change |\n\n**Use for:** new features, breaking changes, architecture changes, refactors.\n**Skip for:** bug fixes, typos, dependency updates, config changes.\n<!-- OPENSPEC:END -->\n'
+
+if [[ ! -f "$claude_md" ]]; then
+  printf '# CLAUDE.md\n\n%s\n## Project-Specific Instructions\n\n[Add your project-specific instructions here]\n' "$snippet" > "$claude_md"
+  echo "Created: CLAUDE.md"
+elif grep -q 'OPENSPEC:START' "$claude_md"; then
+  echo "Skipped: CLAUDE.md (OPENSPEC section already present)"
+else
+  printf '%s\n\n%s' "$snippet" "$(cat "$claude_md")" > "$claude_md.tmp" && mv "$claude_md.tmp" "$claude_md"
+  echo "Updated: CLAUDE.md (prepended OPENSPEC section)"
+fi
+
+echo
+echo "OpenSpec initialized at: $target/openspec"
+echo "Next: review openspec/project.md and use /openspec:proposal."

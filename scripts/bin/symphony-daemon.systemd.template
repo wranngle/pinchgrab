@@ -1,0 +1,13 @@
+[Unit]
+Description=Symphony orchestrator
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.dotfiles/scripts/bin/symphony-daemon.sh start --foreground
+Restart=on-failure
+RestartSec=5
+Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

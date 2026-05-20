@@ -16,8 +16,9 @@ import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   describeEntry,
@@ -25,9 +26,8 @@ import {
   parseCaptureJsonl,
 } from "../src/export-english.mjs";
 
-const fixturePath = resolve(
-  new URL("../tests/fixtures/export-capture.jsonl", import.meta.url).pathname,
-);
+const here = dirname(fileURLToPath(import.meta.url));
+const fixturePath = resolve(here, "fixtures/export-capture.jsonl");
 const fixtureRaw = readFileSync(fixturePath, "utf-8");
 const fixtureEntries = parseCaptureJsonl(fixtureRaw);
 
@@ -124,7 +124,7 @@ test("CLI: writes <recipe-name>.recipe.md and exits 0", () => {
     const stdout = execFileSync(
       process.execPath,
       [
-        resolve(new URL("../src/export-english.mjs", import.meta.url).pathname),
+        resolve(here, "../src/export-english.mjs"),
         fixturePath,
         outdir,
         "--auth-state",

@@ -24,13 +24,6 @@ jobs:
           export PUPPETEER_SKIP_DOWNLOAD=true
           export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-          # Bypassing WIP branches automatically
-          if [[ "$HEAD_REF" == wip/* ]]; then
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label pr-needs-issue 2>/dev/null || true
-            echo "WIP PRs bypass issue link requirement; cleared pr-needs-issue if present"
-            exit 0
-          fi
-
           if printf '%s' "$PR_BODY" | grep -qiE '(closes|fixes|resolves)[[:space:]]+#[0-9]+'; then
             gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label pr-needs-issue 2>/dev/null || true
             echo "PR has issue link; cleared pr-needs-issue if present"
