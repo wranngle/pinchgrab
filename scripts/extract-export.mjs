@@ -15,6 +15,16 @@ if (!inFile || !fs.existsSync(inFile)) {
   process.exit(1);
 }
 const data = new Uint8Array(fs.readFileSync(inFile));
+const outRoot = path.resolve(outDir);
+const safeOutputPath = (name) => {
+  if (!name || name.includes('\0')) throw new Error(`unsafe tar entry path: ${JSON.stringify(name)}`);
+  const target = path.resolve(outRoot, name.replaceAll('\\', '/'));
+  const rel = path.relative(outRoot, target);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`tar entry escapes output directory: ${name}`);
+  }
+  return target;
+};
 
 // Try fzstd first.
 let raw;
@@ -27,7 +37,7 @@ try {
 }
 
 // Now tar-untar. Posix ustar format. Each entry is 512-byte header + body padded to 512.
-fs.mkdirSync(outDir, {recursive: true});
+fs.mkdirSync(outRoot, {recursive: true});
 let p = 0;
 const dec = new TextDecoder();
 const readNullStr = (off, len) => {
@@ -46,7 +56,7 @@ while (p + 512 <= raw.length) {
   p += 512;
   if (size > 0) {
     const body = raw.subarray(p, p + size);
-    const outPath = path.join(outDir, name);
+    const outPath = safeOutputPath(name);
     fs.mkdirSync(path.dirname(outPath), {recursive: true});
     fs.writeFileSync(outPath, body);
     entries.push({name, size});
@@ -55,5 +65,5 @@ while (p + 512 <= raw.length) {
     p += pad;
   }
 }
-console.log(`Extracted ${entries.length} files to ${outDir}`);
+console.log(`Extracted ${entries.length} files to ${outRoot}`);
 for (const e of entries) console.log(`  ${e.size.toString().padStart(10)} ${e.name}`);

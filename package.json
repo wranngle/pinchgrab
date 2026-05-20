@@ -32,7 +32,7 @@
     "test:network-replay": "node --test tests/network-replay.test.mjs",
     "test:annotator": "node --test tests/annotator.test.mjs",
     "tour": "tsx tests/framework-tour.spec.ts",
-    "devserver": "bun run scripts/static-server.ts",
+    "devserver": "bun run scripts/static-server.mjs",
     "install:extension": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install-selector-capture-extension.ps1",
     "pinchtab:server": "npx pinchtab server --background",
     "pinchtab:status": "npx pinchtab health",

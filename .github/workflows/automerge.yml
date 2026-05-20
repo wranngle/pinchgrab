@@ -101,8 +101,7 @@ jobs:
           fi
 
           required_json=$(jq -cn --arg csv "$REQUIRED_CHECKS" '$csv | split(",") | map(select(length > 0))')
-          check_runs_file=$(mktemp)
-          statuses_file=$(mktemp)
+          checks_file=$(mktemp)
           stable_green=0
           max_attempts=90
           interval_seconds=10
@@ -115,24 +114,15 @@ jobs:
               exit 0
             fi
 
-            gh api "repos/$REPO/commits/$HEAD_OID/check-runs?per_page=100" > "$check_runs_file"
-            gh api "repos/$REPO/commits/$HEAD_OID/status" > "$statuses_file"
+            gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state > "$checks_file" || true
 
             failed=$(
-              {
-                jq -r '
-                  .check_runs[]
-                  | select(.name != "arm")
-                  | select(.status == "completed")
-                  | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")
-                  | "check-run:\(.name)=\(.conclusion)"
-                ' "$check_runs_file"
-                jq -r '
-                  .statuses[]?
-                  | select(.state == "failure" or .state == "error")
-                  | "status:\(.context)=\(.state)"
-                ' "$statuses_file"
-              } | sed '/^$/d'
+              jq -r '
+                .[]
+                | select(.name != "arm")
+                | select(.state == "FAILURE" or .state == "ERROR" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ACTION_REQUIRED")
+                | "check:\(.name)=\(.state)"
+              ' "$checks_file" | sed '/^$/d'
             )
             if [[ -n "$failed" ]]; then
               printf 'blocking auto-merge; check failure detected:\n%s\n' "$failed"
@@ -140,24 +130,17 @@ jobs:
             fi
 
             missing_required=$(jq -r --argjson required "$required_json" '
-              [.check_runs[] | select(.name != "arm" and .status == "completed" and .conclusion == "success") | .name] as $passed
+              [.[] | select(.name != "arm" and .state == "SUCCESS") | .name] as $passed
               | $required[]
               | select(($passed | index(.)) | not)
-            ' "$check_runs_file")
+            ' "$checks_file")
             pending=$(
-              {
-                jq -r '
-                  .check_runs[]
-                  | select(.name != "arm")
-                  | select(.status != "completed")
-                  | "check-run:\(.name)=\(.status)"
-                ' "$check_runs_file"
-                jq -r '
-                  .statuses[]?
-                  | select(.state == "pending")
-                  | "status:\(.context)=\(.state)"
-                ' "$statuses_file"
-              } | sed '/^$/d'
+              jq -r '
+                .[]
+                | select(.name != "arm")
+                | select(.state != "SUCCESS" and .state != "SKIPPED")
+                | "check:\(.name)=\(.state)"
+              ' "$checks_file" | sed '/^$/d'
             )
 
             if [[ -z "$missing_required" && -z "$pending" ]]; then
