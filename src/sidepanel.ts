@@ -19,7 +19,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
 (() => {
   const LOG = '[PinchGrab/sp]';
-  const PREFS_KEY = 'pinchgrab.prefs.v2';
+  const PREFS_STORAGE_NAME = 'pinchgrab.prefs.v2';
   const WORKSPACES_KEY = 'pinchgrab.workspaces.v1';
   const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id);
 
@@ -447,7 +447,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     if (!workspaces.length) workspaces = [{name: 'default', createdAt: new Date().toISOString()}];
     activeWs = (await Store.get<string>('pinchgrab.activeWorkspace', 'default')) || 'default';
     if (!workspaces.find((w) => w.name === activeWs)) activeWs = workspaces[0]!.name;
-    prefs = {...DEFAULT_PREFS, ...(await Store.get<Partial<Prefs>>(PREFS_KEY, {}))};
+    prefs = {...DEFAULT_PREFS, ...(await Store.get<Partial<Prefs>>(PREFS_STORAGE_NAME, {}))};
     // Path migration: prior versions defaulted skillPath to
     // `~/.agents/skills/ui/SKILL.md`, and some users had it stored as
     // `~/.dotfiles/.agents/skills/ui/SKILL.md`. The skill was renamed
@@ -532,7 +532,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     sendToCS({kind: 'set-captured', selectors});
   };
   const persistPrefs = (): void => {
-    void Store.set(PREFS_KEY, prefs);
+    void Store.set(PREFS_STORAGE_NAME, prefs);
     // Push the subset of prefs the content script cares about so its
     // overlay (spacing visualizer, hover snap, etc.) reflects the latest.
     void sendToCS({

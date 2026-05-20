@@ -5,6 +5,9 @@ useDefault = true
 
 [allowlist]
 description = "Test fixtures, examples, and obvious-dummy patterns."
+stopwords = [
+  "pinchgrab.prefs.v2",
+]
 paths = [
   '''(.*?)(_|/)?test_?fixtures(.*?)\.(json|yml|yaml|txt|md)$''',
   '''(.*?)(_|/)?examples?/(.*?)\.(env\.example|env\.template|env\.sample)$''',
@@ -19,4 +22,6 @@ regexes = [
   '''(?i)(key|token|secret|password):\s*['\"]?[a-z0-9_-]*(example|dummy|fake|mock|placeholder|sample|test)[a-z0-9_-]*''',
   '''(?i)your[_-]?(api[_-]?key|secret|token|password)[_-]?here''',
   '''(?i)xxx+[a-z0-9]{0,4}(api[_-]?key|secret|token)?''',
+  '''PREFS_KEY\s*=\s*['"]pinchgrab\.prefs\.v2['"]''',
+  '''PREFS_STORAGE_NAME\s*=\s*['"]pinchgrab\.prefs\.v2['"]''',
 ]
