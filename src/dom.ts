@@ -23,9 +23,7 @@ const MAX_PREVIEW_CSS = 420;
 // ---- Tiny utilities -------------------------------------------------------
 const canEscape = typeof CSS !== 'undefined' && typeof CSS.escape === 'function';
 export const escapeCss = (v: string): string =>
-  canEscape ? CSS.escape(v) : String(v)
-    .replaceAll('\\', '\\\\')
-    .replace(/([ #;?%&,.+*~':"!^$[\]()=>|/@])/g, '\\$1');
+  canEscape ? CSS.escape(v) : String(v).replace(/([\\ #;?%&,.+*~':"!^$[\]()=>|/@])/g, '\\$1');
 
 export const trimText = (v: unknown, max = MAX_TEXT): string =>
   String(v ?? '').replaceAll(/\s+/g, ' ').trim().slice(0, max);
@@ -1370,7 +1368,7 @@ const elideInlineSvgs = (html: string): string =>
 // carry CSRF/CSP tokens. Strip the inner contents of all three.
 const stripDangerousElements = (html: string): string =>
   html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/\s*script\s*>/gi, '<script data-pg-elided="script-content"/>')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/\s*script(?:\s[^>]*)?>/gi, '<script data-pg-elided="script-content"/>')
     .replace(/<style\b[^>]*>[\s\S]*?<\/\s*style\s*>/gi, '<style data-pg-elided="style-content"/>')
     .replace(/<meta\b[^>]*\bcontent="[^"]*"[^>]*>/gi, (m) => {
       // Keep meta name/charset visible but redact `content` if the name
