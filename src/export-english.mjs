@@ -1,0 +1,216 @@
+// Capture → plain-English recipe exporter.
+//
+// Sibling to src/export-playwright.mjs (round-1 PR #6) and
+// src/export-puppeteer.mjs (round-2 PR #7). Reads the same JSONL capture
+// file (`schema: selector-capture-entry`, version 3) and emits a
+// markdown recipe a human reviewer or LLM agent can follow without
+// opening the JSONL.
+//
+// Each capture entry becomes one numbered step. Entries that share a
+// page URL group under a `## On <url>` header so the recipe mirrors the
+// browsing session. Editable inputs render as "Type <value> into the
+// <name> field"; everything else renders as "Click the <name>". The
+// element name preference matches the runtime selector chain in
+// src/replay.mjs: accessible name > test-id > id > visible CSS hook.
+//
+// If an `--auth-state <path>` is supplied (CLI flag or `{ authState }`
+// option), the recipe prepends a one-line Auth section telling the
+// runner to load a Playwright storageState file before step 1 — the
+// same affordance round-1 PR (`feat(pinchgrab): --auth-state flag for
+// replay`) added to the replayer.
+//
+// Output is deterministic: identical input → byte-identical output.
+//
+// Programmatic API:
+//   exportEnglish(entries, { recipeName, authState }) → string
+//   parseCaptureJsonl(raw)                            → entries
+//   describeEntry(entry, index)                       → step line
+//
+// CLI:
+//   node src/export-english.mjs <capture.jsonl> [outdir] [--auth-state <p>]
+//     Writes <outdir>/<recipe-name>.recipe.md and prints path + count.
+
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, extname, resolve } from "node:path";
+import { argv, exit, stderr, stdout } from "node:process";
+import { pathToFileURL } from "node:url";
+
+export const parseCaptureJsonl = (raw) => {
+  const out = [];
+  const lines = raw.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (err) {
+      throw new Error(`line ${i + 1}: invalid JSON — ${err.message}`);
+    }
+    if (entry?.schema !== "selector-capture-entry") {
+      throw new Error(
+        `line ${i + 1}: not a selector-capture-entry (schema=${entry?.schema ?? "missing"})`,
+      );
+    }
+    out.push(entry);
+  }
+  return out;
+};
+
+const looksFillable = (entry) => {
+  const el = entry?.element ?? {};
+  if (el.isEditable === true) return true;
+  if (el.tag === "input" || el.tag === "textarea") {
+    const t = (el.type ?? "").toLowerCase();
+    return t !== "button" && t !== "submit" && t !== "checkbox" && t !== "radio" && t !== "file";
+  }
+  return false;
+};
+
+const pickElementName = (entry) => {
+  const el = entry?.element ?? {};
+  const sel = entry?.selectors ?? {};
+  const accessibleName =
+    el.accessibleName ?? el?.accessibility?.computed?.explicitName ?? null;
+  if (accessibleName) return accessibleName;
+  if (el.testId || sel.dataIds) return el.testId ?? sel.dataIds;
+  if (el.id || sel.id) return el.id ?? sel.id;
+  if (sel.compact) return sel.compact;
+  if (sel.css) return sel.css;
+  return el.tag ?? "element";
+};
+
+const pickRoleNoun = (entry) => {
+  const el = entry?.element ?? {};
+  const role = el?.accessibility?.computed?.computedRole ?? el.role ?? null;
+  if (role) return role;
+  if (el.tag === "a") return "link";
+  if (el.tag === "button") return "button";
+  if (el.tag === "input" || el.tag === "textarea") return "field";
+  return el.tag ?? "element";
+};
+
+export const describeEntry = (entry, index) => {
+  const name = pickElementName(entry);
+  const noun = pickRoleNoun(entry);
+  if (looksFillable(entry)) {
+    const el = entry?.element ?? {};
+    const value = el.value ?? el.placeholder ?? "";
+    const valueStr = value === "" ? "the value you want" : `\`${value}\``;
+    return `${index}. Type ${valueStr} into the **${name}** ${noun}.`;
+  }
+  return `${index}. Click the **${name}** ${noun}.`;
+};
+
+const groupByUrl = (entries) => {
+  const groups = [];
+  let current = null;
+  for (const entry of entries) {
+    const url = entry?.page?.url ?? "about:blank";
+    if (!current || current.url !== url) {
+      current = { url, title: entry?.page?.title ?? null, entries: [] };
+      groups.push(current);
+    }
+    current.entries.push(entry);
+  }
+  return groups;
+};
+
+const slugify = (raw) =>
+  String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "recipe";
+
+export const exportEnglish = (entries, opts = {}) => {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error("exportEnglish: entries must be a non-empty array");
+  }
+  const recipeName = opts.recipeName ?? "captures";
+  const authState = opts.authState ?? null;
+  const groups = groupByUrl(entries);
+  const lines = [];
+  lines.push(
+    `# Recipe: ${recipeName}`,
+    "",
+    `Generated by pinchgrab from a captured browsing session. Each step below`,
+    `corresponds to one capture entry; pages are grouped under \`## On <url>\``,
+    `headers in the order they were visited.`,
+    "",
+  );
+  if (authState) {
+    lines.push(
+      `## Auth`,
+      "",
+      `Before step 1, load the Playwright storageState file at \`${authState}\``,
+      `(equivalent to \`pinchgrab replay --auth-state ${authState}\`) so the`,
+      `session starts already logged in.`,
+      "",
+    );
+  }
+  let stepIndex = 0;
+  for (const group of groups) {
+    const header = group.title ? `${group.title} — ${group.url}` : group.url;
+    lines.push(`## On ${header}`, "");
+    lines.push(`Navigate to <${group.url}>.`, "");
+    for (const entry of group.entries) {
+      stepIndex += 1;
+      lines.push(describeEntry(entry, stepIndex));
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+};
+
+const usage = `pinchgrab export — emit plain-English recipes from JSONL captures
+
+Usage:
+  node src/export-english.mjs <capture.jsonl> [outdir] [--auth-state <path>]
+
+Writes <outdir>/<recipe-name>.recipe.md (outdir defaults to the current
+directory; recipe-name derives from the capture file's basename). Each
+capture entry becomes one numbered step a human or LLM agent can follow.
+`;
+
+const parseAuthState = (args) => {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--auth-state" || arg === "-a") {
+      const next = args[i + 1];
+      if (!next) throw new Error("--auth-state: missing path");
+      return { authState: next, rest: [...args.slice(0, i), ...args.slice(i + 2)] };
+    }
+    if (arg?.startsWith("--auth-state=")) {
+      const value = arg.slice("--auth-state=".length);
+      if (!value) throw new Error("--auth-state=: missing path");
+      return { authState: value, rest: [...args.slice(0, i), ...args.slice(i + 1)] };
+    }
+  }
+  return { authState: null, rest: args };
+};
+
+const cli = async () => {
+  const { authState, rest } = parseAuthState(argv.slice(2));
+  const [file, outdir = "."] = rest;
+  if (!file || file === "-h" || file === "--help") {
+    stdout.write(usage);
+    exit(file ? 0 : 2);
+  }
+  const raw = readFileSync(resolve(file), "utf-8");
+  const entries = parseCaptureJsonl(raw);
+  const recipeName = slugify(basename(file, extname(file)));
+  const md = exportEnglish(entries, { recipeName, authState });
+  mkdirSync(resolve(outdir), { recursive: true });
+  const outPath = resolve(outdir, `${recipeName}.recipe.md`);
+  writeFileSync(outPath, md, "utf-8");
+  const stepCount = md.split("\n").filter((l) => /^\d+\.\s/.test(l)).length;
+  stdout.write(`${outPath}\n`);
+  stdout.write(`${stepCount} step(s) for ${entries.length} capture entr${entries.length === 1 ? "y" : "ies"}\n`);
+};
+
+if (import.meta.url === pathToFileURL(argv[1]).href) {
+  cli().catch((err) => {
+    stderr.write(`${err?.stack || String(err)}\n`);
+    exit(1);
+  });
+}

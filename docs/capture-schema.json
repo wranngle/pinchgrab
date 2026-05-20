@@ -1,0 +1,402 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/wranngle/pinchgrab/blob/main/docs/capture-schema.json",
+  "title": "Selector Capture Entry (pinchgrab v3)",
+  "description": "One JSONL object emitted per Alt+Click by src/selector-capture-mode.js. Permissive on additionalProperties because the capture format is intentionally append-friendly and may grow new keys without a schema bump.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "version", "sequence", "capturedAt", "page", "selectors", "element"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "selector-capture-entry"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Capture format version. Currently 3."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based index of this capture within the in-page scratchpad session."
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Page-level context: URL, route, viewport, scroll, locale.",
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "url": { "type": "string", "format": "uri" },
+        "origin": { "type": "string" },
+        "protocol": { "type": "string" },
+        "path": { "type": "string" },
+        "search": { "type": "string" },
+        "hash": { "type": "string" },
+        "route": { "type": "string" },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "width": { "type": "integer", "minimum": 0 },
+            "height": { "type": "integer", "minimum": 0 },
+            "devicePixelRatio": { "type": "number", "minimum": 0 },
+            "colorScheme": { "type": "string", "enum": ["light", "dark"] },
+            "reducedMotion": { "type": "boolean" }
+          }
+        },
+        "scroll": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "x": { "type": "integer" },
+            "y": { "type": "integer" }
+          }
+        },
+        "language": { "type": ["string", "null"] },
+        "direction": { "type": ["string", "null"] },
+        "charset": { "type": ["string", "null"] },
+        "documentState": { "type": ["string", "null"] },
+        "referrer": { "type": ["string", "null"] },
+        "contentType": { "type": ["string", "null"] }
+      }
+    },
+    "selectors": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Locator chain for replay. Primary is `css`; fall back to `xpath`, then `compact`.",
+      "properties": {
+        "compact": { "type": ["string", "null"] },
+        "css": { "type": ["string", "null"] },
+        "xpath": { "type": ["string", "null"] },
+        "jsPath": { "type": ["string", "null"] },
+        "domPath": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "siblingIndex": { "type": ["integer", "null"] },
+        "nodeIndex": { "type": ["integer", "null"] },
+        "id": { "type": ["string", "null"] },
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "dataIds": { "type": ["string", "null"] }
+      }
+    },
+    "componentRoot": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Nearest semantic / component-root ancestor (id, role, data-*, semantic tag).",
+      "properties": {
+        "compact": { "type": ["string", "null"] },
+        "css": { "type": ["string", "null"] },
+        "xpath": { "type": ["string", "null"] },
+        "tag": { "type": ["string", "null"] },
+        "id": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] },
+        "testId": { "type": ["string", "null"] },
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "component": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Best-effort React/Vue framework metadata. Null when no framework root is detected.",
+      "properties": {
+        "framework": { "type": "string", "enum": ["react", "vue"] },
+        "componentName": { "type": ["string", "null"] },
+        "componentDisplayName": { "type": ["string", "null"] },
+        "source": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "file": { "type": ["string", "null"] },
+            "line": { "type": ["integer", "null"] },
+            "column": { "type": ["integer", "null"] },
+            "uid": { "type": ["integer", "string", "null"] }
+          }
+        },
+        "props": {},
+        "state": {},
+        "hooks": {},
+        "scopeId": { "type": ["integer", "string", "null"] }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Per-element attributes, dataset, aria/a11y, bounds, and outerHTML snippet.",
+      "required": ["tag"],
+      "properties": {
+        "tag": { "type": "string" },
+        "id": { "type": ["string", "null"] },
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "name": { "type": ["string", "null"] },
+        "testId": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] },
+        "type": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] },
+        "alt": { "type": ["string", "null"] },
+        "href": { "type": ["string", "null"] },
+        "src": { "type": ["string", "null"] },
+        "target": { "type": ["string", "null"] },
+        "placeholder": { "type": ["string", "null"] },
+        "aria": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "null"] }
+        },
+        "value": { "type": ["string", "null"] },
+        "text": { "type": ["string", "null"] },
+        "accessibleName": { "type": ["string", "null"] },
+        "accessibility": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "computed": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "explicitRole": { "type": ["string", "null"] },
+                "explicitName": { "type": ["string", "null"] },
+                "computedRole": { "type": ["string", "null"] },
+                "ariaLive": { "type": ["string", "null"] },
+                "ariaChecked": { "type": ["string", "null"] },
+                "ariaExpanded": { "type": ["string", "null"] },
+                "ariaSelected": { "type": ["string", "null"] },
+                "tabIndex": { "type": ["integer", "null"] },
+                "labelledBy": { "type": ["string", "null"] },
+                "describedBy": { "type": ["string", "null"] },
+                "hasPopup": { "type": ["string", "null"] },
+                "level": { "type": ["integer", "null"] },
+                "controls": { "type": ["string", "null"] }
+              }
+            },
+            "nativeSnapshot": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "role": { "type": ["string", "null"] },
+                "name": { "type": ["string", "null"] },
+                "description": { "type": ["string", "null"] }
+              }
+            }
+          }
+        },
+        "isInteractive": { "type": "boolean" },
+        "isEditable": { "type": "boolean" },
+        "isDisabled": { "type": "boolean" },
+        "isRequired": { "type": "boolean" },
+        "validation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "minLength": { "type": ["integer", "null"] },
+            "maxLength": { "type": ["integer", "null"] },
+            "min": { "type": ["string", "null"] },
+            "max": { "type": ["string", "null"] }
+          }
+        },
+        "relation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "parent": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "tag": { "type": "string" },
+                "id": { "type": ["string", "null"] },
+                "role": { "type": ["string", "null"] }
+              }
+            },
+            "siblingIndex": { "type": ["integer", "null"] },
+            "childElementCount": { "type": ["integer", "null"] },
+            "nodeIndex": { "type": ["integer", "null"] },
+            "previousSibling": { "type": ["string", "null"] },
+            "nextSibling": { "type": ["string", "null"] }
+          }
+        },
+        "dataset": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "All `data-*` attributes with the `data-` prefix stripped."
+        },
+        "attrs": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "outerHTML": { "type": ["string", "null"] },
+        "outerHTMLLength": { "type": ["integer", "null"] },
+        "rect": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "x": { "type": "integer" },
+            "y": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "top": { "type": "integer" },
+            "left": { "type": "integer" },
+            "right": { "type": "integer" },
+            "bottom": { "type": "integer" }
+          }
+        },
+        "bounds": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Geometry: viewport rect, screen rect, offset/client sizes, scroll, and visibility flags."
+        }
+      }
+    },
+    "styles": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Computed style summary, custom CSS properties, pseudo styles, box model, and matched-rule trace.",
+      "properties": {
+        "computed": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "computedTail": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "customProperties": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "CSS custom properties (`--*`) visible on this element."
+        },
+        "pseudoStyles": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "before": { "type": "object", "additionalProperties": { "type": "string" } },
+            "after": { "type": "object", "additionalProperties": { "type": "string" } },
+            "marker": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+        "boxModel": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "width": { "type": ["string", "null"] },
+            "height": { "type": ["string", "null"] },
+            "minWidth": { "type": ["string", "null"] },
+            "minHeight": { "type": ["string", "null"] },
+            "maxWidth": { "type": ["string", "null"] },
+            "maxHeight": { "type": ["string", "null"] },
+            "margin": { "type": "object", "additionalProperties": { "type": "string" } },
+            "padding": { "type": "object", "additionalProperties": { "type": "string" } },
+            "border": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+        "inlineStyle": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "matchedRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "selector": { "type": ["string", "null"] },
+              "specificity": { "type": ["integer", "string", "null"] },
+              "declarations": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "media": { "type": ["string", "null"] },
+              "source": { "type": "object", "additionalProperties": true },
+              "declarationPriority": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "isInlineStyleRule": { "type": "boolean" },
+              "selectorText": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "description": "Pseudo-state booleans: `hover`, `focus`, `focus-visible`, `active`, `checked`, `disabled`, `required`, `invalid`, plus `isVisible` and `isEnabled`."
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Event-handler hints: inline `on*` attributes, assigned handler props, optional devtools listeners.",
+      "properties": {
+        "inline": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "propertyAssigned": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "type": { "type": "string" },
+              "assigned": { "type": "boolean" },
+              "handlerName": { "type": "string" }
+            }
+          }
+        },
+        "devtoolsListeners": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "handlerPropNames": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "domBreadcrumb": {
+      "type": "array",
+      "description": "Ancestor chain, root-first, with compact selector and a11y hints for each link.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "depth": { "type": "integer", "minimum": 1 },
+          "tag": { "type": "string" },
+          "compact": { "type": ["string", "null"] },
+          "id": { "type": ["string", "null"] },
+          "role": { "type": ["string", "null"] },
+          "classes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "testId": { "type": "string" },
+          "dataComponent": { "type": "string" }
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "feedback": {
+      "type": "string",
+      "description": "Free-text field the operator edits in-place after capture."
+    }
+  }
+}
