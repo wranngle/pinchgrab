@@ -577,8 +577,16 @@ export type PgEnvelope<T> = T & {__pg: true; __mid: string};
 export type AnyMessage = CsToPanel | PanelToCs | PanelToBg;
 
 let _midCounter = 0;
-const newMid = (): string =>
-  `${Date.now().toString(36)}-${(++_midCounter).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const newMid = (): string => {
+  const prefix = `${Date.now().toString(36)}-${(++_midCounter).toString(36)}`;
+  try {
+    const bytes = new Uint8Array(4);
+    globalThis.crypto.getRandomValues(bytes);
+    return `${prefix}-${Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  } catch {
+    return prefix;
+  }
+};
 
 // Helper: stamp a payload with the envelope marker + unique message id.
 export const pg = <T extends {kind: string}>(payload: T): PgEnvelope<T> =>

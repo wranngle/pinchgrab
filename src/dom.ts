@@ -23,7 +23,9 @@ const MAX_PREVIEW_CSS = 420;
 // ---- Tiny utilities -------------------------------------------------------
 const canEscape = typeof CSS !== 'undefined' && typeof CSS.escape === 'function';
 export const escapeCss = (v: string): string =>
-  canEscape ? CSS.escape(v) : String(v).replace(/([ #;?%&,.+*~':"!^$[\]()=>|/@])/g, '\\$1');
+  canEscape ? CSS.escape(v) : String(v)
+    .replaceAll('\\', '\\\\')
+    .replace(/([ #;?%&,.+*~':"!^$[\]()=>|/@])/g, '\\$1');
 
 export const trimText = (v: unknown, max = MAX_TEXT): string =>
   String(v ?? '').replaceAll(/\s+/g, ' ').trim().slice(0, max);
@@ -1368,8 +1370,8 @@ const elideInlineSvgs = (html: string): string =>
 // carry CSRF/CSP tokens. Strip the inner contents of all three.
 const stripDangerousElements = (html: string): string =>
   html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '<script data-pg-elided="script-content"/>')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '<style data-pg-elided="style-content"/>')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/\s*script\s*>/gi, '<script data-pg-elided="script-content"/>')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/\s*style\s*>/gi, '<style data-pg-elided="style-content"/>')
     .replace(/<meta\b[^>]*\bcontent="[^"]*"[^>]*>/gi, (m) => {
       // Keep meta name/charset visible but redact `content` if the name
       // looks token-bearing.
@@ -1529,7 +1531,8 @@ const rectOf = (el: Element): Rect => {
 
 // Generate a uuid that works in service workers, content scripts, and
 // older Chrome contexts. crypto.randomUUID exists in modern browsers; the
-// fallback uses crypto.getRandomValues if available, else Math.random.
+// fallback uses crypto.getRandomValues if available, else a per-page counter.
+let fallbackUidCounter = 0;
 const uuid = (): string => {
   try { if (crypto.randomUUID) return crypto.randomUUID(); } catch { /* fall through */ }
   try {
@@ -1540,7 +1543,7 @@ const uuid = (): string => {
     const h = Array.from(a).map((b) => b.toString(16).padStart(2, '0')).join('');
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
   } catch {
-    return 'uid_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    return `uid_${Date.now().toString(36)}_${(++fallbackUidCounter).toString(36)}`;
   }
 };
 

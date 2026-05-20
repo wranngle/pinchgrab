@@ -180,7 +180,7 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     assert.strictEqual(head.workspace, 'default');
     assert.strictEqual(head.filename, 'out.jsonl');
     assert.strictEqual(head.format, 'jsonl');
-    assert(Array.isArray(head.hosts) && head.hosts.includes('app.example.com'));
+    assert.deepStrictEqual(head.hosts, ['app.example.com']);
     assert.strictEqual(head.counts.selectors, 2);
     console.log('exports 4 ok: jsonl manifest shape');
   }

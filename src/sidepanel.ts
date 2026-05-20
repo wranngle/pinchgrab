@@ -317,9 +317,20 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   const showDownloadError = (label: string, detail: string): void => showToast(label, detail, 'warn');
 
   // ─── Utilities ──────────────────────────────────────────────────────────
-  const msgId = (): string =>
-    crypto?.randomUUID ? crypto.randomUUID() :
-      'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  let fallbackIdCounter = 0;
+  const secureToken = (bytes = 12): string => {
+    try {
+      const raw = new Uint8Array(bytes);
+      globalThis.crypto.getRandomValues(raw);
+      return Array.from(raw).map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+      return `${Date.now().toString(36)}_${(++fallbackIdCounter).toString(36)}`;
+    }
+  };
+  const msgId = (): string => {
+    try { if (globalThis.crypto.randomUUID) return globalThis.crypto.randomUUID(); } catch { /* fall through */ }
+    return `id_${secureToken(16)}`;
+  };
   const escapeHtml = (s: string): string =>
     String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -417,28 +428,40 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     return KEY_PALETTE[h % KEY_PALETTE.length]!;
   };
   const JSON_TOKEN_RE = /(\s+)|("(?:[^"\\]|\\.)*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],:])/g;
-  const highlightJson = (text: string): string => {
-    let out = '';
+  const appendJsonHighlight = (root: HTMLElement, text: string): void => {
+    root.textContent = '';
     let m: RegExpExecArray | null;
+    let last = 0;
     JSON_TOKEN_RE.lastIndex = 0;
     while ((m = JSON_TOKEN_RE.exec(text)) !== null) {
+      if (m.index > last) root.append(document.createTextNode(text.slice(last, m.index)));
+      last = JSON_TOKEN_RE.lastIndex;
       const [, ws, str, lit, num, punct] = m;
-      if (ws) { out += escapeHtml(ws); continue; }
+      if (ws) { root.append(document.createTextNode(ws)); continue; }
       if (str) {
         let k = JSON_TOKEN_RE.lastIndex;
         while (k < text.length && (text[k] === ' ' || text[k] === '\t' || text[k] === '\n')) k++;
+        const span = document.createElement('span');
         if (text[k] === ':') {
           let key: string;
           try { key = JSON.parse(str) as string; } catch { key = str.slice(1, -1); }
-          out += `<span class="k" style="color:${colorForKey(key)}">${escapeHtml(str)}</span>`;
-        } else { out += `<span class="s">${escapeHtml(str)}</span>`; }
+          span.className = 'k';
+          span.style.color = colorForKey(key);
+        } else {
+          span.className = 's';
+        }
+        span.textContent = str;
+        root.append(span);
         continue;
       }
-      if (lit) { out += `<span class="b">${lit}</span>`; continue; }
-      if (num) { out += `<span class="n">${num}</span>`; continue; }
-      if (punct) { out += `<span class="p">${escapeHtml(punct)}</span>`; continue; }
+      const span = document.createElement('span');
+      if (lit) span.className = 'b';
+      else if (num) span.className = 'n';
+      else if (punct) span.className = 'p';
+      span.textContent = lit ?? num ?? punct ?? '';
+      root.append(span);
     }
-    return out;
+    if (last < text.length) root.append(document.createTextNode(text.slice(last)));
   };
 
   // ─── Persistence ────────────────────────────────────────────────────────
@@ -652,7 +675,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   };
   const sendToCSAndWait = async <R>(payload: PanelToCs): Promise<R | null> => new Promise<R | null>((resolve) => {
     if (!inExtension) {
-      const reqId = 'req_' + Math.random().toString(36).slice(2);
+      const reqId = `req_${secureToken(12)}`;
       const onResp = (e: Event): void => {
         const detail = (e as CustomEvent).detail;
         if (detail?.__reqId === reqId) {
@@ -1859,7 +1882,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     const renderJson = (): void => {
       const payload = prefs.minify ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
       const text = JSON.stringify(payload, null, prefs.minify ? 0 : 2);
-      body.innerHTML = highlightJson(text);
+      appendJsonHighlight(body, text);
       if (searchQuery) wrapSearchHitsInTextNodes(body, searchQuery);
     };
     renderJson();
@@ -4113,10 +4136,25 @@ ORDER BY s.n;
   });
 
   // ─── Stat drilldowns ────────────────────────────────────────────────────
-  const buildDrilldown = (kind: string): string => {
-    const lines: string[] = [];
+  const appendHeading = (root: ParentNode, text: string): void => {
+    const h = document.createElement('h5');
+    h.textContent = text;
+    root.append(h);
+  };
+  const appendBold = (root: ParentNode, text: string): void => {
+    const b = document.createElement('b');
+    b.textContent = text;
+    root.append(b);
+  };
+  const appendCode = (root: ParentNode, text: string): void => {
+    const code = document.createElement('code');
+    code.textContent = text;
+    root.append(code);
+  };
+  const buildDrilldown = (kind: string): DocumentFragment => {
+    const frag = document.createDocumentFragment();
     if (kind === 'selectors') {
-      lines.push('<h5>Selectors by quality</h5>');
+      appendHeading(frag, 'Selectors by quality');
       const buckets = {id: 0, testid: 0, class: 0, nth: 0, tag: 0};
       for (const m of messages) {
         if (m.type !== 'selector') continue;
@@ -4127,38 +4165,70 @@ ORDER BY s.n;
         else if (/\./.test(e.selector ?? '')) buckets.class++;
         else buckets.tag++;
       }
-      lines.push(`<ul>
-        <li><b>${buckets.testid}</b> data-testid</li>
-        <li><b>${buckets.id}</b> stable id</li>
-        <li><b>${buckets.class}</b> class-based</li>
-        <li><b>${buckets.nth}</b> nth-of-type</li>
-        <li><b>${buckets.tag}</b> tag-only</li>
-      </ul>`);
+      const ul = document.createElement('ul');
+      for (const [value, label] of [
+        [buckets.testid, ' data-testid'],
+        [buckets.id, ' stable id'],
+        [buckets.class, ' class-based'],
+        [buckets.nth, ' nth-of-type'],
+        [buckets.tag, ' tag-only'],
+      ] as const) {
+        const li = document.createElement('li');
+        appendBold(li, String(value));
+        li.append(label);
+        ul.append(li);
+      }
+      frag.append(ul);
     } else if (kind === 'stale') {
-      lines.push('<h5>Stale captures</h5><ul>');
+      appendHeading(frag, 'Stale captures');
+      const ul = document.createElement('ul');
       const stale = messages.filter((m): m is SelectorMessage => m.type === 'selector' && selectorValidity.get(m.entry.selector) === false);
-      if (!stale.length) lines.push('<li>None — everything resolves.</li>');
-      else for (const m of stale) lines.push(`<li><b>#${m.entry.n}</b> <code>${escapeHtml((m.entry.selector ?? '').slice(0, 50))}</code></li>`);
-      lines.push('</ul>');
+      if (!stale.length) {
+        const li = document.createElement('li');
+        li.textContent = 'None - everything resolves.';
+        ul.append(li);
+      } else for (const m of stale) {
+        const li = document.createElement('li');
+        appendBold(li, `#${m.entry.n}`);
+        li.append(' ');
+        appendCode(li, (m.entry.selector ?? '').slice(0, 50));
+        ul.append(li);
+      }
+      frag.append(ul);
     } else if (kind === 'comments') {
-      lines.push('<h5>Comments</h5><ul>');
+      appendHeading(frag, 'Comments');
+      const ul = document.createElement('ul');
       const fbs = messages.filter((m): m is FeedbackMessage => m.type === 'feedback');
-      lines.push(`<li>Total words: <b>${fbs.reduce((s, m) => s + wordCount(m.text), 0)}</b></li>`);
-      lines.push(`<li>Average length: <b>${fbs.length ? Math.round(fbs.reduce((s, m) => s + m.text.length, 0) / fbs.length) : 0}</b> chars</li>`);
-      lines.push('</ul>');
+      const total = document.createElement('li');
+      total.append('Total words: ');
+      appendBold(total, String(fbs.reduce((s, m) => s + wordCount(m.text), 0)));
+      ul.append(total);
+      const avg = document.createElement('li');
+      avg.append('Average length: ');
+      appendBold(avg, String(fbs.length ? Math.round(fbs.reduce((s, m) => s + m.text.length, 0) / fbs.length) : 0));
+      avg.append(' chars');
+      ul.append(avg);
+      frag.append(ul);
     } else if (kind === 'pages') {
-      lines.push('<h5>Pages</h5><ul>');
+      appendHeading(frag, 'Pages');
+      const ul = document.createElement('ul');
       const seen = new Map<string, number>();
       for (const m of messages) if (m.type === 'selector') seen.set(m.entry.url, (seen.get(m.entry.url) ?? 0) + 1);
-      for (const [url, n] of seen) lines.push(`<li><b>${n}</b> selector${n === 1 ? '' : 's'} · <code>${escapeHtml(pathOf(url))}</code></li>`);
-      lines.push('</ul>');
+      for (const [url, n] of seen) {
+        const li = document.createElement('li');
+        appendBold(li, String(n));
+        li.append(` selector${n === 1 ? '' : 's'} · `);
+        appendCode(li, pathOf(url));
+        ul.append(li);
+      }
+      frag.append(ul);
     }
-    return lines.join('');
+    return frag;
   };
   const showDrilldown = (target: HTMLElement): void => {
     const kind = target.getAttribute('data-stat');
     if (!kind) return;
-    drilldownEl.innerHTML = buildDrilldown(kind);
+    drilldownEl.replaceChildren(buildDrilldown(kind));
     drilldownEl.hidden = false;
     const r = target.getBoundingClientRect();
     const dR = drilldownEl.getBoundingClientRect();
