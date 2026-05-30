@@ -10,7 +10,7 @@
 
 import type {
   AnnotationPayload, CsToPanel, Entry, ExportDiagnostic, ExportManifest, FeedbackMessage, PageMessage,
-  PanelMessage, PanelToBg, PanelToCs, PgEnvelope, SaveReply, SelectorMessage, ShotReply, Viewport,
+  PageSnapshot, PanelMessage, PanelToBg, PanelToCs, PgEnvelope, SaveReply, SelectorMessage, ShotReply, Viewport,
 } from './types.ts';
 import {pg} from './types.ts';
 import {PG_ICONS} from './lucide.ts';
@@ -733,6 +733,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       case 'pending-clear': onPendingClear(); return;
       case 'feedback-add': onFeedbackAdd(msg); return;
       case 'preference-change': onPreferenceChange(msg as Extract<CsToPanel, {kind: 'preference-change'}>); return;
+      case 'page-snapshot': onPageSnapshot((msg as Extract<CsToPanel, {kind: 'page-snapshot'}>).payload); return;
       default: return;
     }
   };
@@ -744,6 +745,36 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     // selector capture from this page will carry the new viewport/state and
     // insert a page header only if needed.
     setStatus(`${reason} changed`, {kind: 'info'});
+  };
+
+  // Page-group records may carry a full-page snapshot (viewport, scroll
+  // extents, dpr, lang, full-page screenshot). PageMessage in types.ts doesn't
+  // yet declare the field, so we widen it locally — the value persists with
+  // the rest of the message JSON and round-trips through export.
+  type PageMessageWithSnapshot = PageMessage & {snapshot?: PageSnapshot};
+  // Snapshots that arrived before a page-group record exists for their URL.
+  // Applied when the page header is later created (see onCapture).
+  const pendingSnapshots = new Map<string, PageSnapshot>();
+  const applySnapshotToPage = (snap: PageSnapshot): boolean => {
+    // Attach to the most recent page-group record for this URL.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.type === 'page' && m.url === snap.url) {
+        (m as PageMessageWithSnapshot).snapshot = snap;
+        return true;
+      }
+    }
+    return false;
+  };
+  const onPageSnapshot = (payload: PageSnapshot): void => {
+    if (!payload?.url) return;
+    if (applySnapshotToPage(payload)) {
+      persist();
+      render();
+    } else {
+      // No page record yet — stash for the next capture on this URL.
+      pendingSnapshots.set(payload.url, payload);
+    }
   };
 
   const onFeedbackAdd = ({selector, text, url, parentUid}: {selector: string; text: string; url?: string; parentUid?: string}): void => {
@@ -921,6 +952,12 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         state: (page as any).state,
         sessionId,
       };
+      // Attach any page-snapshot that arrived before this page header existed.
+      const pending = pendingSnapshots.get(page.url);
+      if (pending) {
+        (pageMsg as PageMessageWithSnapshot).snapshot = pending;
+        pendingSnapshots.delete(page.url);
+      }
       messages.splice(position, 0, pageMsg);
       position++;
     }
@@ -2590,7 +2627,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   //     PLUS bundled `feedback` arrays on selectors (so old single-line
   //     readers still see them adjacent).
   //   • A leading manifest line carries workspace + counts + filename.
-  type SlimPage = {v: 2; type: 'page'; ts: string; url: string; title?: string; viewport?: Viewport; tokens?: Record<string, string>; userAgent?: string; lang?: string; gitContext?: {commit?: string; branch?: string; build?: string}; route?: any; state?: any; sessionId?: string};
+  type SlimPage = {v: 2; type: 'page'; ts: string; url: string; title?: string; viewport?: Viewport; tokens?: Record<string, string>; userAgent?: string; lang?: string; gitContext?: {commit?: string; branch?: string; build?: string}; route?: any; state?: any; sessionId?: string; snapshot?: PageSnapshot};
   // Severity was removed from the UI (2026-05). Tolerant readers may still
   // see `severity` on legacy JSONL — denormalizeEntry preserves it on
   // FeedbackMessage so re-export round-trips, but new sessions never set
@@ -2686,6 +2723,11 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         if (m.route) slim.route = m.route;
         if (m.state) slim.state = m.state;
         if (m.sessionId) slim.sessionId = m.sessionId;
+        // Full-page snapshot (viewport, scroll extents, dpr, lang, screenshot)
+        // captured for this URL. Part of the export deliverable so a downstream
+        // agent has whole-page context, not just element crops.
+        const snap = (m as PageMessage & {snapshot?: PageSnapshot}).snapshot;
+        if (snap) slim.snapshot = snap;
         lines.push(slim);
       } else if (m.type === 'selector') { flush(); pendingSel = m; }
       else if (m.type === 'feedback') {
@@ -4587,7 +4629,7 @@ ORDER BY s.n;
   const installTestApi = (): void => {
     (window as any).__pinchgrab_panel = {
       pushMessage: (m: PanelMessage) => { messages.push(m); persist(); render(); },
-      onCapture, onHover, onHoverEnd,
+      onCapture, onHover, onHoverEnd, onPageSnapshot,
       getMessages: () => [...messages],
       getPrefs: () => ({...prefs}),
       setPrefs: (p: Partial<Prefs>) => { prefs = {...prefs, ...p}; persistPrefs(); applyPrefsToUI(); render(); },

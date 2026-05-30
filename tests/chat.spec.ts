@@ -682,6 +682,49 @@ const startServer = () =>
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 44 ok: DESIGN.md recommended, SKILL.md advanced, Help group present');
 
+  // Test 45 ── A page-snapshot message is stored on the page-group record
+  // under `snapshot` and round-trips into the export.
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    const snap = {
+      url: 'http://example/snap', title: 'Snap Page', capturedAt: new Date().toISOString(),
+      viewport: { width: 1280, height: 720 }, scrollWidth: 1280, scrollHeight: 3200,
+      devicePixelRatio: 2, lang: 'en', screenshot: 'data:image/png;base64,AAAA', partial: false,
+    };
+    // Snapshot arrives BEFORE any capture on this URL — exercises the pending
+    // path; it should attach when the page header is created.
+    window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {
+      detail: { __pg: true, kind: 'page-snapshot', payload: snap },
+    }));
+    window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {
+      detail: {
+        __pg: true, kind: 'capture',
+        entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/snap', tag: 'div', selector: '#snap-el', rect: { x: 0, y: 0, w: 80, h: 40 } },
+        page: { url: 'http://example/snap', title: 'Snap Page', viewport: { w: 1280, h: 720, dpr: 2 }, tokens: {} },
+      },
+    }));
+  });
+  await page.waitForFunction(() => window.__pinchgrab_panel.getMessages().some((m) => m.type === 'page' && m.url === 'http://example/snap'));
+  const snapStored = await page.evaluate(() => {
+    const pageMsg = window.__pinchgrab_panel.getMessages().find((m) => m.type === 'page' && m.url === 'http://example/snap');
+    const snap = pageMsg?.snapshot;
+    const jsonl = window.__pinchgrab_panel.buildJsonl();
+    const pageLine = jsonl.trim().split('\n').map(JSON.parse).find((l) => l.type === 'page' && l.url === 'http://example/snap');
+    return {
+      stored: !!snap,
+      scrollHeight: snap?.scrollHeight,
+      dpr: snap?.devicePixelRatio,
+      exported: !!pageLine?.snapshot,
+      exportedScreenshot: pageLine?.snapshot?.screenshot,
+    };
+  });
+  assert(snapStored.stored, 'page-snapshot should be stored on the page record');
+  assert.strictEqual(snapStored.scrollHeight, 3200, 'snapshot scrollHeight should persist');
+  assert.strictEqual(snapStored.dpr, 2, 'snapshot devicePixelRatio should persist');
+  assert(snapStored.exported, 'page-snapshot should be included in the export');
+  assert.strictEqual(snapStored.exportedScreenshot, 'data:image/png;base64,AAAA', 'exported snapshot should carry the screenshot');
+  console.log('test 45 ok: page-snapshot stored on page record and exported');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();
