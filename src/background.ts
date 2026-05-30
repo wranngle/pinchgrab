@@ -754,8 +754,33 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
   // the user activation through chrome.runtime.sendMessage so this doesn't
   // throw — the click that triggered the capture in the content script is
   // still considered "live" here in the worker.
+  //
+  // INVESTIGATE-1 (first-capture race): on the VERY FIRST Alt+Click the panel
+  // document doesn't exist yet, so its chrome.runtime.onMessage listener isn't
+  // registered. chrome.runtime.sendMessage only reaches listeners that are
+  // already live, so this first capture is dropped — the user has to click a
+  // second time (panel now listening) to see it. The robust fix is a panel→bg
+  // "panel-ready, send me anything pending" handshake, but that needs a
+  // sidepanel.ts change (reported separately). As a background-only, low-risk
+  // mitigation we re-broadcast the first capture(s) a few times over a short
+  // window AFTER opening the panel. The panel registers its onMessage listener
+  // synchronously at script-eval (before its async loadAll), and it already
+  // buffers messages until ready AND dedupes by __mid — so a replay that lands
+  // after the listener exists is processed exactly once, and replays that lose
+  // the race are harmless no-ops.
+  //
+  // We guard on `sender.tab?.id != null` so our OWN replays (which have no
+  // sender.tab) never re-enter this branch — no open/replay loop.
   if ((msg.kind === 'capture' || msg.kind === 'pending-add') && sender.tab?.id != null) {
     chrome.sidePanel.open({tabId: sender.tab.id}).catch(() => { /* already open */ });
+    // Always replay — we can't reliably tell from here whether the panel was
+    // already listening (sidePanel has no "is-open" API, and open() resolving
+    // vs rejecting is not a clean signal across Chrome versions / gesture
+    // states). Over-replaying when the panel is already up is harmless: the
+    // panel dedupes by __mid, so the redundant broadcasts collapse to nothing.
+    // Under-replaying would resurrect the dropped-first-capture bug, so we err
+    // toward always replaying. The window is short and bounded (3 sends).
+    replayFirstCapture(msg as PgEnvelope<AnyMessage>);
   }
 
   // No port relay: the side panel listens directly on chrome.runtime.onMessage,
@@ -764,6 +789,25 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
   // duplicated multi-select entries in production.
   return false;
 });
+
+// Re-broadcast a capture/pending-add envelope a few times over a short window
+// so a freshly-opened side panel (whose listener registers a few ms after the
+// document starts loading) catches it. Same __mid each time → the panel's
+// recentMids ring dedupes to a single processed message. Bounded (no loop):
+// three attempts inside ~450ms, then we stop. Resending the SAME envelope is
+// important — a new __mid would defeat the dedup and double-insert.
+const REPLAY_DELAYS_MS = [60, 180, 450];
+const replayFirstCapture = (envelope: PgEnvelope<AnyMessage>): void => {
+  for (const delay of REPLAY_DELAYS_MS) {
+    setTimeout(() => {
+      // sendMessage with no callback; the panel consumes it. Wrapped so a
+      // "receiving end does not exist" rejection (panel still not up on the
+      // earliest attempt) is swallowed rather than logged as an error.
+      try { void chrome.runtime.sendMessage(envelope).catch?.(() => { /* not up yet */ }); }
+      catch { /* ignore */ }
+    }, delay);
+  }
+};
 
 // Encode a PNG blob into a base64 data URL using the same chunked-btoa
 // path saveDownload uses. The result is two purposes-in-one: the
