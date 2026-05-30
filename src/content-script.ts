@@ -31,6 +31,7 @@ import type {
   PgEnvelope,
 } from './types.ts';
 import {pg} from './types.ts';
+import {PG_ICONS} from './lucide.ts';
 
 declare global {
   interface Window {
@@ -1196,16 +1197,37 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     ta.addEventListener('focus', () => { ta.style.borderColor = '#ff5f00'; });
     ta.addEventListener('blur', () => { ta.style.borderColor = 'rgba(255,95,0,.3)'; });
     textarea = ta;
+    // Send button — must MATCH the side panel's main composer Send button
+    // (src/sidepanel.html `.composer .send` + src/sidepanel.css). That button
+    // is the `message-square-plus` lucide icon + a short text label on the
+    // orange→orange-2 primary gradient. We rebuild it here with inline styles
+    // (CSP-safe; no shared stylesheet across the two documents) so it reads as
+    // the same control even though it lives in the page's shadow root.
     const sendBtn = styled<HTMLButtonElement>('button', {
       flex: '0 0 auto',
-      padding: '4px 10px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '4px',
+      padding: '0 10px',
+      // Match the textarea min-height so the button doesn't drag when the
+      // textarea grows (mirrors `.composer .send { height: 36px }`, scaled to
+      // the more compact on-page box).
+      height: '28px',
       background: 'linear-gradient(180deg, #ff5f00 0%, #ef4b00 100%)',
       color: '#fff', border: '0', borderRadius: '6px',
-      font: "700 10px/1 'Bricolage Grotesque','Outfit',system-ui,sans-serif",
-      textTransform: 'uppercase', letterSpacing: '.04em',
+      font: "700 11px/1 'Bricolage Grotesque','Outfit',system-ui,sans-serif",
+      letterSpacing: '.01em',
+      whiteSpace: 'nowrap',
       cursor: 'pointer',
+      boxShadow: '0 0 24px rgba(255,95,0,.25)',
     });
-    sendBtn.textContent = captured ? 'Add' : 'Capture';
+    const sendIcon = styled<HTMLSpanElement>('span', {
+      display: 'inline-flex', lineHeight: '0',
+    });
+    sendIcon.innerHTML = PG_ICONS.svgString('message-square-plus', 16);
+    const sendLabel = styled<HTMLSpanElement>('span', {fontSize: '10px'});
+    sendLabel.textContent = captured ? 'Add' : 'Capture';
+    sendBtn.append(sendIcon, sendLabel);
+    sendBtn.setAttribute('aria-label', captured ? 'Add comment' : 'Capture and comment');
     addRow.append(ta, sendBtn);
     el.append(addRow);
 
