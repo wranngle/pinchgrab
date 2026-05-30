@@ -27,6 +27,8 @@ import type {
   CsToPanel,
   DomMutation,
   Entry,
+  PageSnapshot,
+  PageSnapshotReply,
   PanelToCs,
   PgEnvelope,
 } from './types.ts';
@@ -998,10 +1000,73 @@ function init(): void {
     if (inExtension) {
       try { void chrome.runtime.sendMessage(msg).catch?.(() => { /* ignore */ }); }
       catch { /* ignore */ }
-    } else {
+    }
+    else {
       try { window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {detail: msg})); } catch { /* ignore */ }
     }
+    // Item 18: the first capture on a given page URL triggers a one-time
+    // full-page snapshot (screenshot + metadata) routed to the panel. Dedup
+    // is by URL inside maybeSnapshotPage.
+    if (payload.kind === 'capture') void maybeSnapshotPage(payload.page.url);
   }
+
+  // ─── Page-snapshot (item 18) ──────────────────────────────────────────────
+  // Round-trip request to the background worker (which owns captureVisibleTab).
+  // Resolves to the reply object, or null on any failure / non-extension mode.
+  const requestBg = <R>(payload: {kind: string} & Record<string, unknown>): Promise<R | null> =>
+    new Promise<R | null>((resolve) => {
+      if (!inExtension) { resolve(null); return; }
+      try {
+        chrome.runtime.sendMessage(pg(payload as any), (reply: R) => {
+          if (chrome.runtime.lastError) { resolve(null); return; }
+          resolve((reply ?? null) as R | null);
+        });
+      } catch { resolve(null); }
+    });
+
+  // Dedup set: at most one page-snapshot per distinct URL per page session.
+  const snapshottedUrls = new Set<string>();
+  let snapshotInFlight = false;
+  const maybeSnapshotPage = async (url: string): Promise<void> => {
+    if (!inExtension) return;            // viewport capture needs the worker
+    if (snapshottedUrls.has(url)) return;
+    if (snapshotInFlight) return;        // serialize; the next capture retries
+    snapshottedUrls.add(url);            // optimistic — avoids a duplicate burst
+    snapshotInFlight = true;
+    try {
+      // Metadata is read on the page side (the worker can't see the DOM).
+      // capturedAt is stamped before the (slower) screenshot request so it
+      // reflects when the snapshot was initiated.
+      const capturedAt = new Date().toISOString();
+      const meta = {
+        url: location.href,
+        title: document.title,
+        viewport: {width: window.innerWidth, height: window.innerHeight},
+        scrollWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0),
+        scrollHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0),
+        devicePixelRatio: window.devicePixelRatio || 1,
+        lang: document.documentElement.lang || navigator.language || '',
+      };
+      const reply = await requestBg<PageSnapshotReply>({kind: 'page-snapshot-shot'});
+      if (!reply?.ok || !reply.screenshot) {
+        // Capture failed — drop the dedup entry so a later capture on this
+        // URL can retry rather than permanently skipping the snapshot.
+        snapshottedUrls.delete(url);
+        return;
+      }
+      const snapshot: PageSnapshot = {
+        ...meta,
+        capturedAt,
+        screenshot: reply.screenshot,
+        ...(reply.partial ? {partial: true} : {}),
+      };
+      sendToPanel({kind: 'page-snapshot', payload: snapshot});
+    } catch {
+      snapshottedUrls.delete(url);
+    } finally {
+      snapshotInFlight = false;
+    }
+  };
 
   if (inExtension) {
     chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {

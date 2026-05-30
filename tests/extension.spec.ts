@@ -231,6 +231,47 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
     failures.push(`screenshot threw: ${(e as Error).message}`);
   }
 
+  // ─── Test 4: page-snapshot generation (item 18) ───────────────────────
+  // The content script asks the bg for a full-page snapshot via the new
+  // `page-snapshot-shot` request; the bg returns a PNG data URL (best-effort
+  // full page, `partial` when stitch was capped). We exercise the generation
+  // half directly against the real worker — same path the content script
+  // drives on the first capture of a new URL.
+  try {
+    await host.bringToFront();
+    await sleep(150);
+    const hostTabId = await panel.evaluate(async () => {
+      const tabs = await new Promise<any[]>((resolve) => chrome.tabs.query({}, (ts) => resolve(ts)));
+      const hostTab = tabs.find((t: any) => typeof t.url === 'string' && t.url.startsWith('http://127.0.0.1'));
+      return hostTab?.id ?? null;
+    });
+    if (hostTabId == null) {
+      failures.push('page-snapshot: could not locate host tab id');
+    } else {
+      const reply = await panel.evaluate(async (tabId) =>
+        new Promise<any>((resolve) => {
+          chrome.runtime.sendMessage(
+            { __pg: true, __mid: 'test-snap', kind: 'page-snapshot-shot', tabId },
+            (r) => resolve(r),
+          );
+        }), hostTabId) as { ok?: boolean; screenshot?: string; partial?: boolean; error?: string };
+      if (!reply || reply.ok !== true) {
+        failures.push(`page-snapshot reply was not ok: ${JSON.stringify(reply)}`);
+      } else if (typeof reply.screenshot !== 'string' || !reply.screenshot.startsWith('data:image/png;base64,')) {
+        failures.push(`page-snapshot screenshot is not a PNG data URL: ${String(reply.screenshot).slice(0, 40)}`);
+      } else {
+        // Decode the base64 PNG and check the magic bytes.
+        const b64 = reply.screenshot.slice('data:image/png;base64,'.length);
+        const bytes = Buffer.from(b64, 'base64');
+        const magicOk = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+        assert(magicOk, 'page-snapshot PNG magic missing');
+        console.log(`extension 4 ok: page-snapshot PNG (${bytes.length} bytes, partial=${reply.partial === true})`);
+      }
+    }
+  } catch (e) {
+    failures.push(`page-snapshot threw: ${(e as Error).message}`);
+  }
+
   // Print collected console output regardless — visibility while debugging.
   if (collected.length) {
     console.log('--- console capture (last 50 lines) ---');

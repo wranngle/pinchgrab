@@ -669,6 +669,51 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
     return true;
   }
 
+  // Full-page snapshot for the page-snapshot feature. Reuses the same
+  // hide-overlays → stitch → restore path as shot-page, but returns the PNG
+  // as a data URL instead of writing a file. Serialized per tab through the
+  // same queue so it can't race a concurrent element/group capture.
+  if (msg.kind === 'page-snapshot-shot') {
+    void (async () => {
+      try {
+        const tabId = msg.tabId ?? sender.tab?.id;
+        let resolvedTabId = tabId;
+        let windowId: number | undefined;
+        if (resolvedTabId == null) {
+          const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+          resolvedTabId = tabs[0]?.id;
+          windowId = tabs[0]?.windowId;
+        } else {
+          const t = await chrome.tabs.get(resolvedTabId);
+          windowId = t?.windowId;
+        }
+        if (resolvedTabId == null || windowId == null) {
+          sendResponse({ok: false, error: 'no active tab'});
+          return;
+        }
+        const tabIdFinal = resolvedTabId;
+        const windowIdFinal = windowId;
+        await enqueue(tabIdFinal, async () => {
+          try {
+            const got = await shotPageCommon(tabIdFinal, windowIdFinal);
+            if (!got) { sendResponse({ok: false, error: 'capture failed'}); return; }
+            const screenshot = await blobToFullDataUrl(got.blob);
+            got.bitmap.close?.();
+            // `truncated` here means the stitch stopped early (chunk/pixel
+            // cap) — the PNG covers only part of the document, which is
+            // exactly the `partial` signal the PageSnapshot contract wants.
+            sendResponse({ok: true, screenshot, partial: got.truncated});
+          } catch (e) {
+            sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
+          }
+        });
+      } catch (e) {
+        sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
+      }
+    })();
+    return true;
+  }
+
   if (msg.kind === 'save-text' || msg.kind === 'save-bytes') {
     void (async () => {
       try {

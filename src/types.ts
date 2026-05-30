@@ -240,6 +240,12 @@ export type Entry = {
   };
 };
 
+// Full-page screenshot + page metadata, emitted once per distinct page URL
+// involved in captures (deduped by URL). `screenshot` is a PNG data URL.
+// `partial` is set when only the viewport could be captured (full-page stitch
+// unavailable) — see background.ts stitchPage limitations.
+export type PageSnapshot = { url:string; title:string; capturedAt:string; viewport:{width:number;height:number}; scrollWidth:number; scrollHeight:number; devicePixelRatio:number; lang:string; screenshot:string; partial?:boolean };
+
 export type DomMutation = {
   type: 'childList' | 'attributes' | 'characterData';
   ts: string;            // ISO of when the mutation fired
@@ -359,7 +365,11 @@ export type CsToPanel =
   // motion-pref change). The panel appends a fresh page row so the
   // export's chronology reflects the toggle and post-change captures
   // carry the new viewport state.
-  | {kind: 'preference-change'; reason: 'color-scheme' | 'reduced-motion'; page: PageContext};
+  | {kind: 'preference-change'; reason: 'color-scheme' | 'reduced-motion'; page: PageContext}
+  // Full-page screenshot + metadata for one distinct page (URL). Emitted at
+  // most once per URL (the content script dedupes). The panel can stash these
+  // as page-level context / export them alongside element shots.
+  | {kind: 'page-snapshot'; payload: PageSnapshot};
 
 export type PanelToCs =
   | {kind: 'outline'; selector: string; gold?: boolean; dashed?: boolean}
@@ -416,6 +426,12 @@ export type PanelToBg =
   | {kind: 'shot-element'; selector: string; n: number; workspace: string; padding?: number; tabId?: number}
   | {kind: 'shot-group'; selectors: string[]; n: number; workspace: string; padding?: number; tabId?: number}
   | {kind: 'shot-page'; n: number; workspace: string; tabId?: number}
+  // Full-page (best-effort) screenshot for the page-snapshot feature. Unlike
+  // shot-page this does NOT write a file or build a thumbnail — it just
+  // returns the stitched PNG as a data URL so the caller (content script) can
+  // attach it to a PageSnapshot. `partial` is true when only the viewport
+  // could be captured.
+  | {kind: 'page-snapshot-shot'; tabId?: number}
   // Side panel asks the background to write a UTF-8 string (JSONL, Markdown,
   // README) to disk. `subdir` is relative to .pinchgrab/<workspace>/ — we
   // default to 'exports' so JSONL/MD live separate from screenshots.
@@ -450,6 +466,16 @@ export type ShotReply = {
   };
 };
 
+// Reply to a `page-snapshot-shot` request. `screenshot` is a PNG data URL of
+// the (best-effort) full page; `partial` is true when only the viewport was
+// captured. `ok:false` carries an error string.
+export type PageSnapshotReply = {
+  ok: boolean;
+  screenshot?: string;
+  partial?: boolean;
+  error?: string;
+};
+
 export type SaveReply = {
   ok: boolean;
   filename?: string; // workspace-relative path
@@ -466,7 +492,8 @@ export type BgReply =
   | {tabs: Array<{id?: number; url?: string; title?: string}>}
   | {error: string}
   | ShotReply
-  | SaveReply;
+  | SaveReply
+  | PageSnapshotReply;
 
 // ─── Export shapes (v2) ─────────────────────────────────────────────────────
 // Manifest line emitted as the very first JSONL line. Carries the metadata
