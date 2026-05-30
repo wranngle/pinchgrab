@@ -1129,6 +1129,12 @@ type AnnotationApi = {
   hide: () => void;
   isLocked: () => boolean;
   focusTextarea: () => void;
+  // rAF watchdog that keeps the box pinned to its anchor and tears it down
+  // when the anchor leaves the DOM. Internal lifecycle hooks; the public
+  // surface (show/hide) drives them, but they're exposed for the destroy()
+  // teardown path.
+  startWatchdog: () => void;
+  stopWatchdog: () => void;
 };
 
 function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, onHide, onShow}: AnnotationDeps): AnnotationApi {
@@ -1294,18 +1300,56 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     }
   };
 
+  const GAP = 8;     // gap between anchor edge and box
+  const MARGIN = 8;  // min distance from any viewport edge
+
+  // Deterministic placement relative to `anchor`. Two subtleties the old
+  // version got wrong, which produced the "box in a random spot" reports:
+  //   1. It read `el.offsetHeight` while the box was still `display:none`,
+  //      so height measured as 0 and the above/below decision + the
+  //      Math.max(8, …) clamp were computed against garbage.
+  //   2. It clamped the left edge with a hardcoded 360px width instead of
+  //      the box's real measured width, so a narrower box (short comment)
+  //      drifted and a wider box (long feedback list) overflowed.
+  // We force the box visible but transparent for one synchronous measure,
+  // then place it using its real rendered size. All numbers are clamped so
+  // the whole box always lands inside the viewport.
   const position = (anchor: Element): void => {
     const r = anchor.getBoundingClientRect();
-    const ah = el.offsetHeight || 160;
-    const useAbove = r.bottom + 8 + ah > window.innerHeight;
-    const top = useAbove ? Math.max(8, r.top - 8 - ah) : r.bottom + 8;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - 360 - 8));
-    el.style.left = left + 'px';
-    el.style.top = top + 'px';
+    // Measure the real box size. It's already in the DOM (buildBody ran);
+    // making it `block` lets getBoundingClientRect report true dimensions.
+    // visibility:hidden keeps the measure invisible so there's no flash at
+    // a pre-placement location.
+    const prevVis = el.style.visibility;
+    el.style.visibility = 'hidden';
+    el.style.display = 'block';
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const box = el.getBoundingClientRect();
+    const bw = box.width || 320;
+    const bh = box.height || 160;
+    el.style.visibility = prevVis || 'visible';
+
+    // Vertical: prefer below the anchor; flip above when below would clip
+    // the bottom edge AND there's more room above.
+    const roomBelow = window.innerHeight - r.bottom - GAP;
+    const roomAbove = r.top - GAP;
+    const useAbove = bh > roomBelow && roomAbove > roomBelow;
+    let top = useAbove ? r.top - GAP - bh : r.bottom + GAP;
+    top = Math.max(MARGIN, Math.min(top, window.innerHeight - bh - MARGIN));
+
+    // Horizontal: left-align to the anchor, then clamp the whole box inside
+    // the viewport using its real width.
+    let left = r.left;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - bw - MARGIN));
+
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
     el.style.display = 'block';
   };
 
   const hide = (): void => {
+    stopWatchdog();
     el.style.display = 'none';
     selector = null;
     activeUid = null;
@@ -1314,6 +1358,7 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     textarea = null;
     feedbackList = null;
     wantsFocus = false;
+    lastAnchorKey = '';
     onHide();
   };
 
@@ -1351,6 +1396,7 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     lockedTo = anchor;
     buildBody(payload);
     position(anchor);
+    startWatchdog();
     onShow(anchor);
   };
   // Pending-focus flag: if focus is requested before the textarea exists
@@ -1382,13 +1428,59 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     locked = false;
   });
 
+  // True when the anchor has left the DOM or collapsed to nothing (display
+  // toggled off, removed, detached). A box anchored to a vanished element is
+  // the "tooltip stranded after its anchor leaves" failure — tear it down.
+  const anchorIsGone = (): boolean => {
+    if (!lockedTo) return true;
+    if (!lockedTo.isConnected) return true;
+    const r = lockedTo.getBoundingClientRect();
+    return r.width === 0 && r.height === 0;
+  };
+
   const reposition = (): void => {
-    if (el.style.display === 'block' && lockedTo?.isConnected) position(lockedTo);
+    if (el.style.display !== 'block') return;
+    if (anchorIsGone()) { hide(); return; }
+    position(lockedTo!);
   };
   window.addEventListener('scroll', reposition, true);
   window.addEventListener('resize', reposition);
 
-  return {show, hide, isLocked: () => locked || isTyping(), focusTextarea};
+  // Anchor watchdog. Scroll/resize cover most movement, but an SPA that
+  // swaps the anchored element out (route change, list re-render, modal
+  // close) fires neither — leaving the box stranded at a stale position.
+  // A self-cancelling rAF loop that only runs while the box is visible
+  // catches that: it repositions on layout drift and hides the moment the
+  // anchor is gone. It stops itself when the box hides so there's no
+  // ambient loop on every page.
+  let watchdog = 0;
+  const stopWatchdog = (): void => {
+    if (watchdog) { cancelAnimationFrame(watchdog); watchdog = 0; }
+  };
+  let lastAnchorKey = '';
+  const startWatchdog = (): void => {
+    stopWatchdog();
+    const tick = (): void => {
+      if (el.style.display !== 'block') { watchdog = 0; return; }
+      if (anchorIsGone()) { hide(); return; }
+      // Reposition only when the anchor actually moved, so we don't fight
+      // the user's caret / re-measure every frame.
+      const r = lockedTo!.getBoundingClientRect();
+      const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      if (key !== lastAnchorKey) { lastAnchorKey = key; position(lockedTo!); }
+      watchdog = requestAnimationFrame(tick);
+    };
+    watchdog = requestAnimationFrame(tick);
+  };
+
+  // Escape from anywhere (not just the focused textarea) dismisses the box.
+  // The textarea's own keydown handles Escape while focused; this covers the
+  // case where the box is locked/open but focus is elsewhere on the page.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.style.display === 'block') { hide(); }
+  }, true);
+
+  return {show, hide, isLocked: () => locked || isTyping(), focusTextarea, startWatchdog, stopWatchdog};
 }
 
 // (No shadow stylesheet — every overlay element gets its style applied via
