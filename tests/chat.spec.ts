@@ -594,6 +594,24 @@ const startServer = () =>
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 41 ok: header dropdown "+ New workspace" creates a workspace');
 
+  // Test 42 ── Settings labels word-wrap at narrow widths instead of clipping.
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  await page.waitForFunction(() => !document.querySelector('[data-drawer]').hidden);
+  const labelWrap = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('.drawer .prefs label')];
+    const drawerBody = document.querySelector('.drawer-body');
+    const noClip = labels.every((l) => getComputedStyle(l).whiteSpace === 'normal');
+    // No label should extend past the drawer's content box (no right-cutoff).
+    const right = drawerBody.getBoundingClientRect().right;
+    const noOverflow = labels.every((l) => Math.floor(l.getBoundingClientRect().right) <= Math.ceil(right));
+    return { noClip, noOverflow };
+  });
+  assert(labelWrap.noClip, 'settings labels should use white-space:normal (wrap, not clip)');
+  assert(labelWrap.noOverflow, 'settings labels should not overflow the drawer at 320px');
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 42 ok: settings labels word-wrap at narrow width');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();
