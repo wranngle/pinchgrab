@@ -4160,6 +4160,17 @@ ORDER BY s.n;
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
     if (t && t === tipFor && !t.contains(e.relatedTarget as Node)) hideTip();
   });
+  // The panel re-renders aggressively (render() resets list.innerHTML, confirm
+  // buttons replaceWith, delete-confirm reverts on a timer) and the list
+  // scrolls — in all of those the anchored node leaves the DOM or moves
+  // without ever firing mouseout, which used to strand the tooltip on screen
+  // (covering other elements, never dismissing). Dismiss on any such signal.
+  window.addEventListener('scroll', hideTip, true);
+  document.addEventListener('pointerdown', hideTip, true);
+  const tipGuard = new MutationObserver(() => {
+    if (tipFor && !tipFor.isConnected) hideTip();
+  });
+  tipGuard.observe(document.body, {childList: true, subtree: true});
 
   // ─── Stat drilldowns ────────────────────────────────────────────────────
   const appendHeading = (root: ParentNode, text: string): void => {

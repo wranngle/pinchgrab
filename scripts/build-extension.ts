@@ -106,7 +106,13 @@ for (const f of PASSTHROUGH) {
 const stale = resolve(distDir, 'selector-capture-mode.js');
 if (existsSync(stale)) { rmSync(stale); console.log(`Removed ${stale}`); }
 
-// README install instructions.
+// README install instructions. The extension is loaded from a Windows browser,
+// so when building under WSL the "Load unpacked" path must be the \\wsl.localhost
+// UNC path, not the Linux distDir. Off WSL (native Win/macOS/Linux) distDir is
+// already the right path for that host.
+const loadPath = process.env.WSL_DISTRO_NAME
+  ? `\\\\wsl.localhost\\${process.env.WSL_DISTRO_NAME}${distDir.replace(/\//g, '\\')}`
+  : distDir;
 const installHints = [
   'PinchGrab extension',
   '',
@@ -114,7 +120,7 @@ const installHints = [
   '2. Open edge://extensions or chrome://extensions.',
   '3. Enable Developer mode.',
   '4. Click "Load unpacked" and select:',
-  `   ${distDir}`,
+  `   ${loadPath}`,
   '5. Pin PinchGrab in the toolbar; click its icon to open the side panel.',
   '6. Open any web page, hold Alt to live-outline elements, Alt+Click to capture.',
   '',
