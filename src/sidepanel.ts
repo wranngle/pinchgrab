@@ -1875,10 +1875,13 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     const jsonBar = document.createElement('div');
     jsonBar.className = 'body-json-bar';
 
-    // Line-wrap checkbox (per-bubble local state, default ON).
+    // Line-wrap checkbox (per-bubble local state, default ON). When ON the
+    // JSON is flattened to ONE minified line that soft-wraps to the bubble
+    // width (no horizontal scroll); when OFF it falls back to the global
+    // minify-respecting pretty/compact form with horizontal scroll.
     const wrapLabel = document.createElement('label');
     wrapLabel.className = 'json-wrap-toggle';
-    wrapLabel.dataset.tip = 'Wrap long lines instead of horizontal scroll';
+    wrapLabel.dataset.tip = 'Flatten to a single soft-wrapping line instead of horizontal scroll';
     const wrapCheck = document.createElement('input');
     wrapCheck.type = 'checkbox';
     wrapCheck.checked = true;
@@ -1907,12 +1910,20 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
     const body = document.createElement('div');
     body.className = 'body-json wrap-on';
-    // Reflect the minify pref: when minified, show the slimEntry-shaped
-    // export form (compact, single-line). Otherwise pretty-print the full
-    // entry so it's readable.
+    // Render the JSON to match the wrap state:
+    //   wrap ON  → a single minified line (indent 0) that soft-wraps to the
+    //              bubble width (CSS handles the visual wrapping via
+    //              overflow-wrap:anywhere), so the whole object is one
+    //              continuous string with no horizontal scroll.
+    //   wrap OFF → the global minify-respecting form: pretty-printed full
+    //              entry, or the slimEntry compact form when minify is on,
+    //              with horizontal scroll for long lines.
     const renderJson = (): void => {
-      const payload = prefs.minify ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
-      const text = JSON.stringify(payload, null, prefs.minify ? 0 : 2);
+      body.textContent = '';
+      const wrapped = wrapCheck.checked;
+      const payload = (wrapped || prefs.minify) ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
+      const indent = (wrapped || prefs.minify) ? 0 : 2;
+      const text = JSON.stringify(payload, null, indent);
       appendJsonHighlight(body, text);
       if (searchQuery) wrapSearchHitsInTextNodes(body, searchQuery);
     };
@@ -1920,6 +1931,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     wrapCheck.addEventListener('change', () => {
       body.classList.toggle('wrap-on', wrapCheck.checked);
       body.classList.toggle('wrap-off', !wrapCheck.checked);
+      renderJson();
     });
     // Stop the click on the toolbar from collapsing the bubble — the head's
     // click handler toggles `.expanded` on click, and the bar lives inside

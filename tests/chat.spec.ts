@@ -519,6 +519,32 @@ const startServer = () =>
     `consecutive same-URL captures should share one divider, got ${JSON.stringify(dividerUrls)}`);
   console.log('test 38 ok: page divider dedupes consecutive same-URL captures');
 
+  // Test 39 ── Per-capture JSON Wrap toggle. With minify OFF: wrap ON renders
+  // a single (newline-free) minified line that soft-wraps; wrap OFF renders
+  // the pretty-printed multi-line form.
+  await page.evaluate(() => window.__pinchgrab_panel.setPrefs({ minify: false }));
+  await page.evaluate(() => {
+    const sel = document.querySelector('.msg.selector');
+    sel.classList.add('expanded');
+  });
+  const wrapJson = await page.evaluate(() => {
+    const sel = document.querySelector('.msg.selector');
+    const check = sel.querySelector('.json-wrap-toggle input');
+    const body = sel.querySelector('.body-json');
+    // Default is wrap ON → single line.
+    const onText = body.textContent ?? '';
+    const onWhiteSpace = getComputedStyle(body).whiteSpace;
+    // Toggle wrap OFF → multi-line pretty print.
+    check.checked = false;
+    check.dispatchEvent(new Event('change', { bubbles: true }));
+    const offText = sel.querySelector('.body-json').textContent ?? '';
+    return { onSingleLine: !onText.includes('\n'), onWhiteSpace, offMultiLine: offText.includes('\n') };
+  });
+  assert(wrapJson.onSingleLine, 'wrap ON should render JSON as a single line');
+  assert(wrapJson.onWhiteSpace === 'pre-wrap', `wrap ON should soft-wrap (pre-wrap), got ${wrapJson.onWhiteSpace}`);
+  assert(wrapJson.offMultiLine, 'wrap OFF (minify off) should render multi-line pretty JSON');
+  console.log('test 39 ok: per-capture JSON wrap toggle flattens to one soft-wrapping line');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

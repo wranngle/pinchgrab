@@ -852,10 +852,11 @@ body {
   overscroll-behavior: auto;
   user-select: text;
 }
-/* Wrap toggle: 'wrap-on' (default) — break long lines so the JSON fits the
-   bubble width. 'wrap-off' — keep one logical line per JSON line and let
-   the user scroll horizontally. */
-.msg.selector .body-json.wrap-on { white-space: pre-wrap; word-break: break-word; }
+/* Wrap toggle: 'wrap-on' (default) — the JSON is rendered as one minified
+   line that soft-wraps to the bubble width, breaking anywhere so no token
+   forces horizontal scroll. 'wrap-off' — pretty/compact form kept on one
+   logical line per JSON line with horizontal scroll. */
+.msg.selector .body-json.wrap-on { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
 .msg.selector .body-json.wrap-off { white-space: pre; }
 .msg.selector .body-json::-webkit-scrollbar { width: 8px; }
 .msg.selector .body-json::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
