@@ -168,44 +168,68 @@
         </details>
         <details class="prefs">
           <summary>Templates</summary>
-          <h4>DESIGN.md</h4>
-          <p class="prefs-help">Visual source: color tokens, typography, motion, and copy voice. Bundled as <code>./DESIGN.md</code>.</p>
-          <div class="template-banner" data-template-banner="design" hidden>
-            ⚠ Shipping the bundled <strong>template DESIGN.md</strong>. Click <em>Edit</em> to customize.
-          </div>
-          <label data-tip="Path the receiver should resolve DESIGN.md from (informational pointer — the content is bundled inline)">
-            <span>Receiver path</span>
-            <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
-          </label>
-          <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="design-edit" data-tip="Open advanced editor for DESIGN.md">
-              <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
-              <span class="md-preview-edit-hint">Advanced edit</span>
-            </button>
-            <div class="md-preview-meta">
-              <span class="design-md-status" data-design-md-status></span>
+
+          <!-- DESIGN.md — the recommended, primary action. This is where you
+               teach your coding agent your own brand and UI taste so it
+               builds in *your* voice instead of a generic default. -->
+          <div class="md-card md-card-primary">
+            <div class="md-card-head">
+              <h4>DESIGN.md <span class="md-badge md-badge-recommended">Recommended</span></h4>
             </div>
-          </div>
-          <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
-          <h4>PinchGrab UI skill</h4>
-          <p class="prefs-help">Triage guide for reading PinchGrab exports. Bundled at <code>./.agents/skills/PinchGrab/SKILL.md</code>.</p>
-          <div class="template-banner" data-template-banner="skill" hidden>
-            ⚠ Shipping the bundled <strong>template SKILL.md</strong>. Click <em>Edit</em> to customize.
-          </div>
-          <label data-tip="Path the receiver should persist the skill at on their filesystem (informational)">
-            <span>Receiver path</span>
-            <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
-          </label>
-          <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="skill-edit" data-tip="Open advanced editor for SKILL.md">
-              <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
-              <span class="md-preview-edit-hint">Advanced edit</span>
-            </button>
-            <div class="md-preview-meta">
-              <span class="design-md-status" data-skill-md-status></span>
+            <p class="prefs-help">
+              This is the file that teaches your AI coding agent how to build UI
+              <strong>in your own brand and preferences</strong> — your colors,
+              type, spacing, motion, and copy voice. Editing it is the single
+              highest-leverage thing you can do here: every export carries it,
+              so the agent designs the way <em>you</em> would, not a generic
+              default. Start here.
+            </p>
+            <div class="template-banner" data-template-banner="design" hidden>
+              ⚠ You're still shipping the <strong>starter DESIGN.md</strong>. Open it and make it yours.
             </div>
+            <div class="md-preview-row">
+              <button type="button" class="md-preview md-preview-primary" data-action="design-edit" data-tip="Edit DESIGN.md — teach the agent your brand">
+                <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
+                <span class="md-preview-edit-hint">Edit your design</span>
+              </button>
+              <div class="md-preview-meta">
+                <span class="design-md-status" data-design-md-status></span>
+              </div>
+            </div>
+            <label data-tip="Path the receiver should resolve DESIGN.md from (informational pointer — the content is bundled inline)">
+              <span>Receiver path</span>
+              <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
+            </label>
+            <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
           </div>
-          <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
+
+          <!-- SKILL.md — advanced/optional, collapsed and de-emphasized. -->
+          <details class="prefs-advanced">
+            <summary>Advanced · PinchGrab UI skill <span class="md-badge md-badge-advanced">Optional</span></summary>
+            <p class="prefs-help">
+              The PinchGrab triage skill (<code>SKILL.md</code>) tells an agent how to
+              <em>read</em> a PinchGrab export. Most people never need to touch this —
+              the bundled default works out of the box. Edit it only if you're
+              tailoring how agents consume your captures.
+            </p>
+            <div class="template-banner" data-template-banner="skill" hidden>
+              Shipping the bundled <strong>template SKILL.md</strong>. Editing is optional.
+            </div>
+            <label data-tip="Path the receiver should persist the skill at on their filesystem (informational)">
+              <span>Receiver path</span>
+              <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
+            </label>
+            <div class="md-preview-row">
+              <button type="button" class="md-preview" data-action="skill-edit" data-tip="Open advanced editor for SKILL.md">
+                <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
+                <span class="md-preview-edit-hint">Advanced edit</span>
+              </button>
+              <div class="md-preview-meta">
+                <span class="design-md-status" data-skill-md-status></span>
+              </div>
+            </div>
+            <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
+          </details>
         </details>
         <details class="prefs">
           <summary>Hotkeys</summary>
@@ -220,6 +244,25 @@
             <li data-tip="Submit the composer; shift adds a newline."><kbd>Enter</kbd> — send · <kbd>Shift+Enter</kbd> — newline</li>
             <li data-tip="Clear search, cancel insert, or dismiss palette/drawer."><kbd>Esc</kbd> — clear / cancel</li>
           </ul>
+        </details>
+        <details class="prefs">
+          <summary>Help &amp; about</summary>
+          <p class="prefs-help">
+            <strong>PinchGrab</strong> is an annotation tool for frontends. You
+            point at the parts of a page that are wrong or could be better, leave
+            a note in plain language, and hand the result to your AI coding agent
+            so it can fix them from real human feedback.
+          </p>
+          <h4>How to use it</h4>
+          <ul class="help-steps">
+            <li><strong>Alt+Click</strong> an element on the page to capture it.</li>
+            <li><strong>Type a comment</strong> in the composer to say what you want changed.</li>
+            <li><strong>Export</strong> and give the file to your coding agent.</li>
+          </ul>
+          <p class="prefs-help">
+            Tip: edit <strong>DESIGN.md</strong> above so the agent rebuilds UI in
+            your own brand. Full keyboard shortcuts live under <em>Hotkeys</em>.
+          </p>
         </details>
         <section class="star-pitch">
           <span class="emoji" aria-hidden="true">🤏</span>

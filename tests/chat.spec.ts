@@ -481,7 +481,7 @@ const startServer = () =>
     label: details.querySelector('summary')?.textContent?.trim(),
     open: (details as HTMLDetailsElement).open,
   })));
-  assert.deepStrictEqual(settingsGroups.map((group) => group.label), ['Workspaces', 'Export', 'Capture', 'Templates', 'Hotkeys']);
+  assert.deepStrictEqual(settingsGroups.map((group) => group.label), ['Workspaces', 'Export', 'Capture', 'Templates', 'Hotkeys', 'Help & about']);
   assert.strictEqual(settingsGroups.filter((group) => group.open).length, 1, 'only Workspaces should be open by default');
   console.log('test 35 ok: settings grouped');
 
@@ -650,6 +650,37 @@ const startServer = () =>
   assert.strictEqual(footer.action, 'github', 'footer CTA should trigger the GitHub action');
   assert(footer.belowComposer, 'footer must sit below the composer, not overlap it');
   console.log('test 43 ok: main-pane GitHub-star footer below composer');
+
+  // Test 44 ── DESIGN.md is presented as the recommended, brand-education
+  // primary action; SKILL.md is de-emphasized as advanced/optional; and a
+  // Help & about group explains the tool and the Alt+Click → comment → export
+  // flow.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const settingsCopy = await page.evaluate(() => {
+    const designCard = document.querySelector('.md-card-primary');
+    const designText = designCard?.textContent?.toLowerCase() ?? '';
+    const advanced = document.querySelector('.prefs-advanced');
+    const help = [...document.querySelectorAll('.drawer details.prefs summary')]
+      .find((s) => /help/i.test(s.textContent ?? ''))?.closest('details');
+    return {
+      designHasRecommended: !!designCard?.querySelector('.md-badge-recommended'),
+      designEducatesBrand: designText.includes('brand') && designText.includes('build'),
+      skillIsAdvancedDetails: advanced?.tagName.toLowerCase() === 'details',
+      skillCollapsedByDefault: advanced ? !(advanced as HTMLDetailsElement).open : false,
+      skillLabeledAdvanced: /advanced/i.test(advanced?.querySelector('summary')?.textContent ?? ''),
+      helpExists: !!help,
+      helpHasHowTo: /alt\+click/i.test(help?.textContent ?? '') && /export/i.test(help?.textContent ?? ''),
+    };
+  });
+  assert(settingsCopy.designHasRecommended, 'DESIGN.md should carry a Recommended badge');
+  assert(settingsCopy.designEducatesBrand, 'DESIGN.md copy should educate about building UI in the user brand');
+  assert(settingsCopy.skillIsAdvancedDetails, 'SKILL.md should live in an advanced <details> disclosure');
+  assert(settingsCopy.skillCollapsedByDefault, 'SKILL.md advanced disclosure should be collapsed by default');
+  assert(settingsCopy.skillLabeledAdvanced, 'SKILL.md disclosure should be labeled Advanced');
+  assert(settingsCopy.helpExists, 'settings should include a Help & about group');
+  assert(settingsCopy.helpHasHowTo, 'Help should explain the Alt+Click → comment → export flow');
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 44 ok: DESIGN.md recommended, SKILL.md advanced, Help group present');
 
   console.log('chat.spec all tests passed');
   await browser.close();

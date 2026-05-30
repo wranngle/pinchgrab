@@ -3960,8 +3960,17 @@ ORDER BY s.n;
       .map((line) => /^#{1,3}\s+(.+)$/.exec(line.trim())?.[1]?.trim())
       .filter((heading): heading is string => Boolean(heading))
       .slice(0, 4);
-    const label = kind === 'design' ? 'Visual source' : 'Triage guide';
-    const source = usingTemplate ? 'Template fallback' : 'Custom';
+    // Warm, plain-language framing of what each file teaches the agent.
+    // DESIGN.md is the headline artifact: it's where you describe your own
+    // brand and UI taste so the agent builds in *your* voice rather than a
+    // generic default. SKILL.md is the advanced triage guide for reading
+    // exports — useful, but not where most people should start.
+    const label = kind === 'design'
+      ? 'Teaches your agent to build UI in your brand'
+      : 'Advanced: how your agent should read PinchGrab exports';
+    const source = usingTemplate
+      ? (kind === 'design' ? 'Starter template — make it yours' : 'Bundled template')
+      : 'Customized';
     const sections = headings.length ? headings.join(' / ') : 'No section headings found';
     return `${label}\n${source} · ${lines.toLocaleString()} lines · ${(bytes / 1024).toFixed(1)} KB\nSections: ${sections}`;
   };
