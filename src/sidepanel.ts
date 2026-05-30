@@ -242,6 +242,17 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     return md.replace(m[0], `---\n${rebrandedFm}\n---\n`);
   };
   type Workspace = {name: string; createdAt: string};
+  // One archived state of a workspace (captured just before a Clear-all).
+  // `shots` is the thumbnail map (full-res PNGs are session-only and not
+  // archived). Restorable from Settings → Workspaces.
+  type WorkspaceSnapshot = {
+    id: string;
+    ts: string;
+    messages: PanelMessage[];
+    shots: Record<string, string>;
+    selectors: number;
+    comments: number;
+  };
 
   let messages: PanelMessage[] = [];
   let liveTabUrl: string | null = null;
@@ -282,6 +293,13 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   let sessionId: string = '';
   const wsMsgKey = (n: string): string => `pinchgrab.ws.${n}.messages.v1`;
   const wsShotsKey = (n: string): string => `pinchgrab.ws.${n}.shots.v1`;
+  // Persistent snapshot history per workspace — a Clear-all archives the wiped
+  // captures+comments+thumbnails here so they can be restored later from
+  // Settings → Workspaces. Lives in the same chrome.storage layer as the rest
+  // of the workspace data.
+  const wsSnapshotsKey = (n: string): string => `pinchgrab.ws.${n}.snapshots.v1`;
+  // Cap so the history can't balloon storage; oldest snapshots drop off.
+  const WS_SNAPSHOT_CAP = 10;
   const wsShotsFullKey = (n: string): string => `pinchgrab.ws.${n}.shotsFull.v1`;
   // chrome.storage.local has a 10 MB default quota; we budget half of
   // that for full-resolution PNGs (the rest is messages, prefs, thumbs).
@@ -544,6 +562,8 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     // earlier captures. FIFO order is preserved by Object key order.
     const storedFull = (await Store.get<Record<string, string>>(wsShotsFullKey(name), {})) || {};
     for (const [k, v] of Object.entries(storedFull)) shotsFull.set(k, v);
+    // Load this workspace's persistent snapshot history (Clear-all archives).
+    await loadWsSnapshots(name);
     selectorValidity.clear();
     selectorErrors.clear();
     undoStack.length = 0;
@@ -3877,8 +3897,61 @@ ORDER BY s.n;
     setStatus(`Imported ${imported.length} message${imported.length === 1 ? '' : 's'}`);
     importFile.value = '';
   });
+  // ─── Workspace snapshot history ─────────────────────────────────────────
+  // Persistent (not the in-session undo stack). A Clear-all archives the
+  // current workspace state so it can be restored from Settings later.
+  let wsSnapshots: WorkspaceSnapshot[] = [];
+  const loadWsSnapshots = async (name: string): Promise<void> => {
+    wsSnapshots = (await Store.get<WorkspaceSnapshot[]>(wsSnapshotsKey(name), [])) || [];
+  };
+  const persistWsSnapshots = (): void => { void Store.set(wsSnapshotsKey(activeWs), wsSnapshots); };
+  // Archive the CURRENT workspace state (before it's wiped). No-op if empty.
+  const archiveWorkspaceSnapshot = (): WorkspaceSnapshot | null => {
+    if (!messages.length) return null;
+    const snap: WorkspaceSnapshot = {
+      id: secureToken(8),
+      ts: new Date().toISOString(),
+      messages: JSON.parse(JSON.stringify(messages)) as PanelMessage[],
+      shots: Object.fromEntries(shots),
+      selectors: messages.filter((m) => m.type === 'selector').length,
+      comments: messages.filter((m) => m.type === 'feedback').length,
+    };
+    // Newest first; cap the history.
+    wsSnapshots.unshift(snap);
+    if (wsSnapshots.length > WS_SNAPSHOT_CAP) wsSnapshots = wsSnapshots.slice(0, WS_SNAPSHOT_CAP);
+    persistWsSnapshots();
+    return snap;
+  };
+  const restoreWorkspaceSnapshot = (id: string): boolean => {
+    const snap = wsSnapshots.find((s) => s.id === id);
+    if (!snap) return false;
+    // Push the live state onto the in-session undo stack so a mistaken
+    // restore is itself undoable.
+    snapshot();
+    messages = JSON.parse(JSON.stringify(snap.messages)) as PanelMessage[];
+    shots.clear();
+    for (const [k, v] of Object.entries(snap.shots)) shots.set(k, v);
+    shotsFull.clear();
+    selectorValidity.clear();
+    insertBefore.current = null;
+    persistShots();
+    persistShotsFull();
+    persist();
+    render();
+    renderWsControls();
+    setStatus(`Restored snapshot · ${snap.selectors} selectors`);
+    return true;
+  };
+  const deleteWorkspaceSnapshot = (id: string): void => {
+    wsSnapshots = wsSnapshots.filter((s) => s.id !== id);
+    persistWsSnapshots();
+    renderWsControls();
+  };
+
   const onClear = (): void => {
     if (!confirm('Clear all captures and comments?')) return;
+    // Archive the workspace BEFORE wiping so it can be restored later.
+    archiveWorkspaceSnapshot();
     snapshot();
     messages = [];
     liveTabUrl = null;
@@ -3890,7 +3963,8 @@ ORDER BY s.n;
     persistShotsFull();
     persist();
     render();
-    setStatus('Cleared');
+    renderWsControls();
+    setStatus('Cleared · snapshot saved');
   };
 
   // ─── Validation ─────────────────────────────────────────────────────────
@@ -4227,7 +4301,7 @@ ORDER BY s.n;
           if (!confirm(`Delete workspace "${w.name}" and all its captures?`)) return;
           workspaces = workspaces.filter((x) => x.name !== w.name);
           persistWorkspaces();
-          if (inExtension) chrome.storage.local.remove([wsMsgKey(w.name), wsShotsKey(w.name), wsShotsFullKey(w.name)]).catch(() => { /* ignore */ });
+          if (inExtension) chrome.storage.local.remove([wsMsgKey(w.name), wsShotsKey(w.name), wsShotsFullKey(w.name), wsSnapshotsKey(w.name)]).catch(() => { /* ignore */ });
           if (activeWs === w.name) await loadWorkspace(workspaces[0]!.name);
           render();
         });
@@ -4235,6 +4309,58 @@ ORDER BY s.n;
       }
       wsList.append(li);
     }
+    renderWsSnapshotHistory();
+  };
+
+  // Render the active workspace's snapshot history (Clear-all archives) with
+  // a Restore action. Appended under the workspace list in Settings.
+  const renderWsSnapshotHistory = (): void => {
+    const host = document.querySelector<HTMLElement>('[data-ws-snapshots]');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!wsSnapshots.length) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    const head = document.createElement('div');
+    head.className = 'ws-snap-head';
+    head.textContent = `Snapshot history · ${wsSnapshots.length}`;
+    head.dataset.tip = 'Restorable snapshots saved before each Clear-all';
+    host.append(head);
+    const ul = document.createElement('ul');
+    ul.className = 'ws-snap-list';
+    for (const snap of wsSnapshots) {
+      const li = document.createElement('li');
+      const meta = document.createElement('span');
+      meta.className = 'ws-snap-meta';
+      meta.textContent = `${new Date(snap.ts).toLocaleString()} · ${snap.selectors} sel · ${snap.comments} cmt`;
+      li.append(meta);
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'ws-snap-restore';
+      restore.textContent = 'Restore';
+      restore.dataset.tip = 'Restore this snapshot into the current workspace (current state is kept on the undo stack)';
+      restore.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (messages.length && !confirm('Restore this snapshot? The current captures will be replaced (undoable).')) return;
+        restoreWorkspaceSnapshot(snap.id);
+      });
+      li.append(restore);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'danger ws-snap-del';
+      del.dataset.tip = 'Delete this snapshot';
+      del.setAttribute('aria-label', 'Delete snapshot');
+      del.innerHTML = PG_ICONS.svgString('trash-2', 12);
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteWorkspaceSnapshot(snap.id);
+      });
+      li.append(del);
+      ul.append(li);
+    }
+    host.append(ul);
   };
   wsSelect?.addEventListener('change', async (e) => {
     const value = (e.target as HTMLSelectElement).value;
@@ -4683,6 +4809,9 @@ ORDER BY s.n;
       setLastActive,
       createWorkspace: (n: string) => { workspaces.push({name: n, createdAt: new Date().toISOString()}); persistWorkspaces(); return loadWorkspace(n).then(render); },
       switchWorkspace: (n: string) => loadWorkspace(n).then(render),
+      clearAll: onClear,
+      listSnapshots: () => wsSnapshots.map((s) => ({id: s.id, ts: s.ts, selectors: s.selectors, comments: s.comments})),
+      restoreSnapshot: (id: string) => restoreWorkspaceSnapshot(id),
     };
   };
 

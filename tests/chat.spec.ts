@@ -725,6 +725,48 @@ const startServer = () =>
   assert.strictEqual(snapStored.exportedScreenshot, 'data:image/png;base64,AAAA', 'exported snapshot should carry the screenshot');
   console.log('test 45 ok: page-snapshot stored on page record and exported');
 
+  // Test 46 ── Clear-all archives a restorable workspace snapshot; the
+  // snapshot is listed in Settings → Workspaces and can be restored.
+  await page.evaluate(() => {
+    window.confirm = () => true;
+    window.__pinchgrab_panel.clear();
+    window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'sp1', ts: new Date().toISOString(), url: 'http://example/hist' });
+    window.__pinchgrab_panel.pushMessage({
+      type: 'selector', id: 'ss1', ts: new Date().toISOString(),
+      entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/hist', tag: 'div', selector: '#hist-el', rect: { x: 0, y: 0, w: 60, h: 30 } },
+    });
+    window.__pinchgrab_panel.pushMessage({ type: 'feedback', id: 'fb1', ts: new Date().toISOString(), text: 'fix this' });
+  });
+  const beforeClear = await page.evaluate(() => window.__pinchgrab_panel.getMessages().length);
+  assert(beforeClear === 3, `expected 3 messages before clear, got ${beforeClear}`);
+  // Clear-all should archive a snapshot then wipe.
+  await page.evaluate(() => window.__pinchgrab_panel.clearAll());
+  const afterClear = await page.evaluate(() => ({
+    messages: window.__pinchgrab_panel.getMessages().length,
+    snapshots: window.__pinchgrab_panel.listSnapshots(),
+  }));
+  assert.strictEqual(afterClear.messages, 0, 'clear-all should wipe messages');
+  assert(afterClear.snapshots.length >= 1, 'clear-all should archive a snapshot');
+  assert.strictEqual(afterClear.snapshots[0].selectors, 1, 'snapshot should record selector count');
+  assert.strictEqual(afterClear.snapshots[0].comments, 1, 'snapshot should record comment count');
+  // The snapshot list should be visible in the settings drawer.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const listVisible = await page.evaluate(() => {
+    const host = document.querySelector('[data-ws-snapshots]');
+    return { hidden: host.hidden, restoreBtns: host.querySelectorAll('.ws-snap-restore').length };
+  });
+  assert.strictEqual(listVisible.hidden, false, 'snapshot history should be visible in settings');
+  assert(listVisible.restoreBtns >= 1, 'snapshot history should expose a Restore action');
+  // Restore brings the captures back.
+  const restoredCount = await page.evaluate(() => {
+    const snaps = window.__pinchgrab_panel.listSnapshots();
+    window.__pinchgrab_panel.restoreSnapshot(snaps[0].id);
+    return window.__pinchgrab_panel.getMessages().length;
+  });
+  assert.strictEqual(restoredCount, 3, `restore should bring back all 3 messages, got ${restoredCount}`);
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 46 ok: clear-all archives restorable workspace snapshot');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

@@ -1419,6 +1419,43 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 .ws-list li button:hover { color: var(--orange); }
 .ws-list li button.danger:hover { color: var(--red); }
 
+/* Workspace snapshot history (Clear-all archives). */
+.ws-snapshots { margin-top: 10px; }
+.ws-snap-head {
+  font: 700 10px/1 var(--sans);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+.ws-snap-list { list-style: none; margin: 0; padding: 0; }
+.ws-snap-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 4px;
+  background: var(--bg-elev-2);
+}
+.ws-snap-meta {
+  flex: 1; min-width: 0;
+  font: 10px/1.4 var(--mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.ws-snap-restore {
+  background: transparent;
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  border-radius: var(--r-xs);
+  padding: 3px 8px;
+  font: 700 10px/1 var(--sans);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ws-snap-restore:hover { background: var(--orange); color: var(--bg); }
+.ws-snap-del { background: transparent; border: 0; color: var(--text-3); cursor: pointer; padding: 2px 4px; }
+.ws-snap-del:hover { color: var(--red); }
+
 /* `.prefs label` higher up sets `align-items: center` (label+class > class
  * only), which on a column flex container centers each row HORIZONTALLY —
  * that's why "Strips whitespace…" and the reduction-stats line floated to
