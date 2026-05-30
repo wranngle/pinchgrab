@@ -110,11 +110,16 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   const composer = $<HTMLTextAreaElement>('[data-composer]');
   const status = $('[data-status]');
   const search = $<HTMLInputElement>('[data-search]');
-  // Update the overlaid kbd pill to use the right modifier per platform.
+  // Canonicalize keyboard-shortcut pills per platform. Every shortcut pill
+  // is authored in the canonical Cmd-form (each token capitalized, joined
+  // with '+': Alt+Click, Cmd+K, Cmd+Shift+Z); on non-Mac we swap the leading
+  // Cmd modifier for Ctrl. Pills opt in via data-mod-* so a string like the
+  // 'Alt+…' pills (which never carry Cmd) are left untouched.
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
   if (!isMac) {
-    const kbdEl = document.querySelector<HTMLElement>('[data-search-kbd] kbd');
-    if (kbdEl) kbdEl.textContent = 'Ctrl+K';
+    for (const el of document.querySelectorAll<HTMLElement>('kbd[data-mod-k], kbd[data-mod-z], kbd[data-mod-shift-z]')) {
+      el.textContent = (el.textContent ?? '').replace(/^Cmd\b/, 'Ctrl');
+    }
   }
   const importFile = $<HTMLInputElement>('#import-file');
   const statsEl = $('[data-stats]');
@@ -190,7 +195,10 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     includeOuterHTML: true,
     includeMatchedRules: true,
     includeStyles: true,
-    minify: false,
+    // Default to minified exports — most agents want the smallest
+    // token-footprint payload. Existing users' saved prefs are merged over
+    // this default in loadAll(), so only NEW/unset installs see the flip.
+    minify: true,
     autoScrollToHovered: true,
     useScreenshots: true,
     spacingOverlay: false,
