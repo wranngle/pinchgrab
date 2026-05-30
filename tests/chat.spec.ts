@@ -125,13 +125,13 @@ const startServer = () =>
   assert(expanded !== 'none');
   console.log('test 3 ok: click-to-expand');
 
-  // Test 4 ── Selector preview tile was removed (per user request) — verify
-  // the .preview container no longer exists in the rendered bubble.
-  const previewGone = await page.evaluate(() => {
-    return document.querySelector('.msg.selector .preview') === null;
-  });
-  assert(previewGone, 'selector preview tile must be removed');
-  console.log('test 4 ok: selector preview tile removed');
+  // Test 4 ── When no screenshot is available (the headless test harness has
+  // no background screenshot pipeline, so the shot resolves "unavailable"),
+  // the reserved preview placeholder collapses and no .preview tile remains.
+  // A reserved skeleton is only shown while a shot is genuinely expected
+  // (covered by test 40).
+  await page.waitForFunction(() => document.querySelector('.msg.selector .preview') === null);
+  console.log('test 4 ok: preview collapses when no screenshot is available');
 
   // Test 5 ── Selector quality dot was removed; verify no .qdot exists.
   const qdot = await page.evaluate(() => document.querySelector('.msg.selector .qdot'));
@@ -544,6 +544,30 @@ const startServer = () =>
   assert(wrapJson.onWhiteSpace === 'pre-wrap', `wrap ON should soft-wrap (pre-wrap), got ${wrapJson.onWhiteSpace}`);
   assert(wrapJson.offMultiLine, 'wrap OFF (minify off) should render multi-line pretty JSON');
   console.log('test 39 ok: per-capture JSON wrap toggle flattens to one soft-wrapping line');
+
+  // Test 40 ── While a screenshot is expected but not yet loaded, the preview
+  // reserves its final height (from the element's aspect ratio) and shows a
+  // skeleton loader, so the timeline doesn't shift when the shot swaps in.
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    window.__pinchgrab_panel.setPrefs({ autoScreenshot: true });
+    window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'pp', ts: new Date().toISOString(), url: 'http://example/c' });
+    window.__pinchgrab_panel.pushMessage({
+      type: 'selector', id: 'ss', ts: new Date().toISOString(),
+      entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/c', tag: 'div', selector: '#shot', rect: { x: 0, y: 0, w: 200, h: 100 } },
+    });
+  });
+  await page.waitForFunction(() => !!document.querySelector('.msg.selector .preview.reserved'));
+  const reserved = await page.evaluate(() => {
+    const prev = document.querySelector('.msg.selector .preview.reserved');
+    const skel = prev?.querySelector('.shot-skeleton');
+    const h = prev?.getBoundingClientRect().height ?? 0;
+    return { hasSkeleton: !!skel, isLoading: prev?.classList.contains('loading'), height: h };
+  });
+  assert(reserved.hasSkeleton, 'expected-shot preview should render a skeleton loader');
+  assert(reserved.isLoading, 'preview should be in loading state before the shot arrives');
+  assert(reserved.height > 20, `reserved preview should commit a non-trivial height up front, got ${reserved.height}`);
+  console.log('test 40 ok: reserved preview height + skeleton before screenshot loads');
 
   console.log('chat.spec all tests passed');
   await browser.close();

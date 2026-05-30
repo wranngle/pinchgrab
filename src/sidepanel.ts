@@ -941,11 +941,15 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       console.log(LOG, 'fireElementShot skipped: autoScreenshot=false');
       // Bug #2: tell the export why the shot is missing.
       msg.entry.screenshot = {...(msg.entry.screenshot ?? {}), unavailableReason: 'autoScreenshotOff'};
+      // Re-render so the reserved skeleton (which assumed a shot was coming)
+      // collapses now that we know one won't arrive.
+      render();
       return;
     }
     if (shouldSkipScreenshot(msg.entry.url)) {
       console.log(LOG, 'fireElementShot skipped: host on skip list', msg.entry.url);
       msg.entry.screenshot = {...(msg.entry.screenshot ?? {}), unavailableReason: 'skipScreenshotHosts'};
+      render();
       return;
     }
     console.log(LOG, 'fireElementShot →', msg.entry.selector);
@@ -969,6 +973,8 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         ...(msg.entry.screenshot ?? {}),
         unavailableReason: reply?.error ?? 'captureFailed',
       };
+      // Collapse the reserved skeleton — no shot is coming for this capture.
+      render();
       return;
     }
     // Successful retry — strip any prior unavailableReason since we now
@@ -1823,18 +1829,50 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       div.append(crumbs);
     }
 
-    // Preview tile — only when we have a thumbnail dataUrl in the in-memory
-    // shots map. The full PNG lives on disk under .pinchgrab/<ws>/screenshots/;
-    // the dataUrl is just a side-panel-friendly downscale (≤320px wide).
+    // Preview tile. The full PNG lives on disk under
+    // .pinchgrab/<ws>/screenshots/; the dataUrl is a side-panel-friendly
+    // downscale (≤320px wide). To stop the layout from jumping when a shot
+    // arrives a second after capture, we RESERVE the final image height up
+    // front using the captured element's known aspect ratio and paint a
+    // skeleton loader in that space, then swap the screenshot in with no
+    // reflow. The reservation only happens when a shot is actually expected
+    // (autoScreenshot on, host not skipped, no recorded failure) so captures
+    // that will never get a shot don't carry an empty box.
     const shotDataUrl = shots.get(m.entry.selector);
-    if (shotDataUrl) {
+    const shotExpected = prefs.autoScreenshot
+      && !shouldSkipScreenshot(m.entry.url ?? '')
+      && !m.entry.screenshot?.unavailableReason;
+    if (shotDataUrl || shotExpected) {
       const preview = document.createElement('div');
       preview.className = 'preview';
-      const img = document.createElement('img');
-      img.className = 'shot';
-      img.src = shotDataUrl;
-      img.alt = `Screenshot of #${m.entry.n}`;
-      preview.append(img);
+      // Reserve vertical space immediately from the element's width/height.
+      // The thumbnail is rendered at the bubble's content width, so the box
+      // height tracks the element's aspect ratio. Clamp so a very tall
+      // element doesn't reserve an absurd amount of space.
+      const r = m.entry.rect;
+      if (r && r.w > 0 && r.h > 0) {
+        const ratio = Math.min(Math.max(r.h / r.w, 0.12), 2.2);
+        preview.style.setProperty('--shot-ratio', String(ratio));
+        preview.classList.add('reserved');
+      }
+      if (shotDataUrl) {
+        const img = document.createElement('img');
+        img.className = 'shot';
+        img.alt = `Screenshot of #${m.entry.n}`;
+        // Reveal only once decoded so the swap is instant and reflow-free;
+        // the skeleton stays visible underneath until then.
+        img.addEventListener('load', () => preview.classList.add('loaded'));
+        img.src = shotDataUrl;
+        if (img.complete) preview.classList.add('loaded');
+        preview.append(img);
+      } else {
+        // No shot yet — show a skeleton shimmer occupying the reserved space.
+        preview.classList.add('loading');
+        const skel = document.createElement('div');
+        skel.className = 'shot-skeleton';
+        skel.setAttribute('aria-label', `Loading screenshot of #${m.entry.n}`);
+        preview.append(skel);
+      }
       div.append(preview);
     }
 

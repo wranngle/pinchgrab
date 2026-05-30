@@ -734,6 +734,38 @@ body {
   overflow: hidden;
   box-sizing: border-box;
 }
+/* Reserved variant: the box height is derived from the captured element's
+   aspect ratio (--shot-ratio = height/width) so the final image height is
+   committed BEFORE the screenshot decodes. This keeps the timeline from
+   shifting when the shot swaps in a moment after capture. Clamped so a very
+   tall element doesn't reserve an absurd amount of space. */
+.msg.selector .preview.reserved {
+  height: auto;
+  aspect-ratio: 1 / var(--shot-ratio, 0.6);
+  min-height: 64px;
+  max-height: 260px;
+}
+/* Skeleton shimmer fills the reserved space until the shot arrives. */
+.msg.selector .preview .shot-skeleton {
+  position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(100deg,
+    rgba(255,255,255,0.02) 30%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.02) 70%);
+  background-size: 200% 100%;
+  animation: shot-shimmer 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg.selector .preview .shot-skeleton { animation: none; }
+}
+@keyframes shot-shimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+/* While the img element exists but hasn't decoded, keep it transparent so
+   the skeleton (or textured mesh) shows through; reveal on .loaded. */
+.msg.selector .preview img.shot { opacity: 0; transition: opacity 120ms ease-out; }
+.msg.selector .preview.loaded img.shot { opacity: 1; }
 .msg.selector .preview iframe,
 .inline-comment .preview iframe {
   border: 0; pointer-events: none;
@@ -879,8 +911,11 @@ body {
 .msg.selector.expanded.diff-page .peek-error { display: block !important; }
 .msg.selector.expanded .ent-stats { display: flex !important; }
 /* Collapsed bubbles use a smaller preview height to keep the timeline
-   scannable. Expanded bubbles get the full 110px preview. */
-.msg.selector:not(.expanded) .preview { height: 64px; }
+   scannable. Expanded bubbles get the full 110px preview. Reserved
+   (aspect-ratio) previews keep their committed height in both states so the
+   shot swap stays reflow-free. */
+.msg.selector:not(.expanded) .preview:not(.reserved) { height: 64px; }
+.msg.selector:not(.expanded) .preview.reserved { max-height: 140px; }
 
 /* Feedback bubble ─────────────────────────────────────────── */
 .msg.feedback {
