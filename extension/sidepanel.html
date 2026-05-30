@@ -37,21 +37,23 @@
     <!-- Each shortcut: pill on top, lowercase label beneath. -->
     <div class="shortcuts hint">
       <span class="sc" data-tip="Outline the element under your cursor"><kbd>Alt</kbd><span class="lbl">peek</span></span>
-      <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+click</kbd><span class="lbl">capture</span></span>
-      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+drag</kbd><span class="lbl">multi</span></span>
-      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift</kbd><span class="lbl">stage</span></span>
-      <span class="sc" data-tip="Undo last edit"><kbd>⌘Z</kbd><span class="lbl">undo</span></span>
+      <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+Click</kbd><span class="lbl">capture</span></span>
+      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+Drag</kbd><span class="lbl">multi</span></span>
+      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift+Click</kbd><span class="lbl">stage</span></span>
+      <span class="sc" data-tip="Undo last edit"><kbd data-mod-z>Cmd+Z</kbd><span class="lbl">undo</span></span>
     </div>
 
     <!-- ───────────────────────── Toolbar ───────────────────────── -->
     <div class="toolbar">
+      <!-- The header search affordance is a command-palette trigger: clicking
+           or focusing it opens the Cmd+K palette (which both runs commands and
+           searches captures). In-list visual find lives on Ctrl+F (see the
+           find-bar below). The input is readonly so it can't accumulate its
+           own query state. -->
       <div class="search">
         <span class="search-icon" data-icon="search" data-size="13"></span>
-        <input type="text" data-search placeholder="Filter captures" data-tip="Filter captures by selector, text, or component. Use ⌘K for commands." />
-        <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd>⌘K</kbd></span>
-        <button type="button" class="iconbtn-x" data-search-clear data-tip="Clear search" aria-label="Clear search">
-          <span data-icon="x" data-size="11"></span>
-        </button>
+        <input type="text" data-search readonly placeholder="Search · run a command" data-tip="Open the command palette to search captures and run commands. Ctrl+F finds in the list." />
+        <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd data-mod-k>Cmd+K</kbd></span>
       </div>
       <div class="toolbar-actions">
         <button class="iconbtn primary export-full" type="button" data-action="export-zip" data-tip="Download full export (.tar.zst — JSONL + screenshots + screenshots.json + DuckDB + README) · path is auto-copied to clipboard" data-export-hover="all">
@@ -62,6 +64,18 @@
         <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page" aria-label="Validate selectors"><span data-icon="refresh-cw" data-size="14"></span></button>
         <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures" aria-label="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
       </div>
+    </div>
+
+    <!-- ───────────────────────── Find bar (Ctrl+F) ────────────── -->
+    <!-- In-list visual find: filters + highlights the captured list. Opens on
+         Ctrl+F, closes on Esc. Distinct from the command palette. -->
+    <div class="find-bar" data-find-bar hidden>
+      <span class="find-icon" data-icon="search" data-size="13"></span>
+      <input type="text" data-find placeholder="Find in list" aria-label="Find in captured list" />
+      <span class="find-count" data-find-count></span>
+      <button type="button" class="iconbtn-x" data-find-clear data-tip="Close find · Esc" aria-label="Close find">
+        <span data-icon="x" data-size="11"></span>
+      </button>
     </div>
 
     <!-- ───────────────────────── Stats ─────────────────────────── -->
@@ -102,6 +116,18 @@
       <div class="status" data-status></div>
     </div>
 
+    <!-- ───────────────────────── Main-pane footer ─────────────── -->
+    <!-- Subtle GitHub-star CTA pinned at the very bottom of the panel,
+         below the composer/status so it never overlaps them. -->
+    <footer class="pane-footer">
+      <span class="emoji" aria-hidden="true">🤏</span>
+      <span class="pane-footer-text">PinchGrab</span>
+      <span class="pane-footer-dot" aria-hidden="true">·</span>
+      <a class="pane-footer-cta" href="#" data-action="github" data-tip="Star PinchGrab on GitHub">
+        <span data-icon="star" data-size="11"></span> Give us a star
+      </a>
+    </footer>
+
     <!-- ───────────────────────── Settings drawer ───────────────── -->
     <aside class="drawer" data-drawer hidden>
       <header class="drawer-head">
@@ -116,6 +142,7 @@
             <button class="primary" type="button" data-action="ws-create" data-tip="Create the workspace and switch to it">Create</button>
           </div>
           <ul class="ws-list" data-ws-list></ul>
+          <div class="ws-snapshots" data-ws-snapshots hidden></div>
         </details>
         <details class="prefs">
           <summary>Export</summary>
@@ -142,44 +169,68 @@
         </details>
         <details class="prefs">
           <summary>Templates</summary>
-          <h4>DESIGN.md</h4>
-          <p class="prefs-help">Visual source: color tokens, typography, motion, and copy voice. Bundled as <code>./DESIGN.md</code>.</p>
-          <div class="template-banner" data-template-banner="design" hidden>
-            ⚠ Shipping the bundled <strong>template DESIGN.md</strong>. Click <em>Edit</em> to customize.
-          </div>
-          <label data-tip="Path the receiver should resolve DESIGN.md from (informational pointer — the content is bundled inline)">
-            <span>Receiver path</span>
-            <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
-          </label>
-          <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="design-edit" data-tip="Open advanced editor for DESIGN.md">
-              <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
-              <span class="md-preview-edit-hint">Advanced edit</span>
-            </button>
-            <div class="md-preview-meta">
-              <span class="design-md-status" data-design-md-status></span>
+
+          <!-- DESIGN.md — the recommended, primary action. This is where you
+               teach your coding agent your own brand and UI taste so it
+               builds in *your* voice instead of a generic default. -->
+          <div class="md-card md-card-primary">
+            <div class="md-card-head">
+              <h4>DESIGN.md <span class="md-badge md-badge-recommended">Recommended</span></h4>
             </div>
-          </div>
-          <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
-          <h4>PinchGrab UI skill</h4>
-          <p class="prefs-help">Triage guide for reading PinchGrab exports. Bundled at <code>./.agents/skills/PinchGrab/SKILL.md</code>.</p>
-          <div class="template-banner" data-template-banner="skill" hidden>
-            ⚠ Shipping the bundled <strong>template SKILL.md</strong>. Click <em>Edit</em> to customize.
-          </div>
-          <label data-tip="Path the receiver should persist the skill at on their filesystem (informational)">
-            <span>Receiver path</span>
-            <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
-          </label>
-          <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="skill-edit" data-tip="Open advanced editor for SKILL.md">
-              <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
-              <span class="md-preview-edit-hint">Advanced edit</span>
-            </button>
-            <div class="md-preview-meta">
-              <span class="design-md-status" data-skill-md-status></span>
+            <p class="prefs-help">
+              This is the file that teaches your AI coding agent how to build UI
+              <strong>in your own brand and preferences</strong> — your colors,
+              type, spacing, motion, and copy voice. Editing it is the single
+              highest-leverage thing you can do here: every export carries it,
+              so the agent designs the way <em>you</em> would, not a generic
+              default. Start here.
+            </p>
+            <div class="template-banner" data-template-banner="design" hidden>
+              ⚠ You're still shipping the <strong>starter DESIGN.md</strong>. Open it and make it yours.
             </div>
+            <div class="md-preview-row">
+              <button type="button" class="md-preview md-preview-primary" data-action="design-edit" data-tip="Edit DESIGN.md — teach the agent your brand">
+                <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
+                <span class="md-preview-edit-hint">Edit your design</span>
+              </button>
+              <div class="md-preview-meta">
+                <span class="design-md-status" data-design-md-status></span>
+              </div>
+            </div>
+            <label data-tip="Path the receiver should resolve DESIGN.md from (informational pointer — the content is bundled inline)">
+              <span>Receiver path</span>
+              <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
+            </label>
+            <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
           </div>
-          <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
+
+          <!-- SKILL.md — advanced/optional, collapsed and de-emphasized. -->
+          <details class="prefs-advanced">
+            <summary>Advanced · PinchGrab UI skill <span class="md-badge md-badge-advanced">Optional</span></summary>
+            <p class="prefs-help">
+              The PinchGrab triage skill (<code>SKILL.md</code>) tells an agent how to
+              <em>read</em> a PinchGrab export. Most people never need to touch this —
+              the bundled default works out of the box. Edit it only if you're
+              tailoring how agents consume your captures.
+            </p>
+            <div class="template-banner" data-template-banner="skill" hidden>
+              Shipping the bundled <strong>template SKILL.md</strong>. Editing is optional.
+            </div>
+            <label data-tip="Path the receiver should persist the skill at on their filesystem (informational)">
+              <span>Receiver path</span>
+              <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
+            </label>
+            <div class="md-preview-row">
+              <button type="button" class="md-preview" data-action="skill-edit" data-tip="Open advanced editor for SKILL.md">
+                <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
+                <span class="md-preview-edit-hint">Advanced edit</span>
+              </button>
+              <div class="md-preview-meta">
+                <span class="design-md-status" data-skill-md-status></span>
+              </div>
+            </div>
+            <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
+          </details>
         </details>
         <details class="prefs">
           <summary>Hotkeys</summary>
@@ -188,11 +239,31 @@
             <li data-tip="Capture the hovered element."><kbd>Alt+Click</kbd> — capture</li>
             <li data-tip="Rubber-band over multiple elements; stages a pending group."><kbd>Alt+Drag</kbd> — multi-stage</li>
             <li data-tip="Stage one element at a time into a pending group."><kbd>Alt+Shift+Click</kbd> — stage one</li>
-            <li data-tip="Open the command palette."><kbd>⌘/Ctrl+K</kbd> — palette</li>
-            <li data-tip="Undo or redo the last edit."><kbd>⌘/Ctrl+Z</kbd> — undo · <kbd>⌘/Ctrl+Shift+Z</kbd> — redo</li>
+            <li data-tip="Open the command palette."><kbd data-mod-k>Cmd+K</kbd> — palette</li>
+            <li data-tip="Find in the captured list."><kbd>Ctrl+F</kbd> — find in list</li>
+            <li data-tip="Undo or redo the last edit."><kbd data-mod-z>Cmd+Z</kbd> — undo · <kbd data-mod-shift-z>Cmd+Shift+Z</kbd> — redo</li>
             <li data-tip="Submit the composer; shift adds a newline."><kbd>Enter</kbd> — send · <kbd>Shift+Enter</kbd> — newline</li>
             <li data-tip="Clear search, cancel insert, or dismiss palette/drawer."><kbd>Esc</kbd> — clear / cancel</li>
           </ul>
+        </details>
+        <details class="prefs">
+          <summary>Help &amp; about</summary>
+          <p class="prefs-help">
+            <strong>PinchGrab</strong> is an annotation tool for frontends. You
+            point at the parts of a page that are wrong or could be better, leave
+            a note in plain language, and hand the result to your AI coding agent
+            so it can fix them from real human feedback.
+          </p>
+          <h4>How to use it</h4>
+          <ul class="help-steps">
+            <li><strong>Alt+Click</strong> an element on the page to capture it.</li>
+            <li><strong>Type a comment</strong> in the composer to say what you want changed.</li>
+            <li><strong>Export</strong> and give the file to your coding agent.</li>
+          </ul>
+          <p class="prefs-help">
+            Tip: edit <strong>DESIGN.md</strong> above so the agent rebuilds UI in
+            your own brand. Full keyboard shortcuts live under <em>Hotkeys</em>.
+          </p>
         </details>
         <section class="star-pitch">
           <span class="emoji" aria-hidden="true">🤏</span>

@@ -6506,13 +6506,13 @@ If the project has none of the above, the fix can introduce one (e.g., create `s
 \### Input
 
 ```json
-{"type":"page","ts":"2026-05-09T15:31:17.156Z","url":"https://app.wranngle.com/console/","title":"Wranngle · gtm_ops console","viewport":{"w":984,"h":668,"dpr":1.8}}
-{"n":4,"ts":"2026-05-09T15:31:14.627Z","url":"https://app.wranngle.com/console/","tag":"button","selector":"[data-testid=\"mission-refresh\"]","outerHTML":"<button class=\"btn btn--ghost\" data-testid=\"mission-refresh\">Refresh</button>","rect":{"x":405,"y":147,"w":107,"h":33},"text":"REFRESH","role":"button","testId":"mission-refresh","feedback":["Should say 'Refresh', not 'REFRESH'. Looks shouty."]}
+{"type":"page","ts":"2026-05-09T15:31:17.156Z","url":"https://app.example.com/dashboard/","title":"Example · Dashboard","viewport":{"w":984,"h":668,"dpr":1.8}}
+{"n":4,"ts":"2026-05-09T15:31:14.627Z","url":"https://app.example.com/dashboard/","tag":"button","selector":"[data-testid=\"toolbar-refresh\"]","outerHTML":"<button class=\"btn btn--ghost\" data-testid=\"toolbar-refresh\">Refresh</button>","rect":{"x":405,"y":147,"w":107,"h":33},"text":"REFRESH","role":"button","testId":"toolbar-refresh","feedback":["Should say 'Refresh', not 'REFRESH'. Looks shouty."]}
 ```
 
 \### Adapter step
 
-Source: pinchgrab. Selector: `[data-testid="mission-refresh"]` (preferred over the full CSS chain). Component hint: none (no React fiber walk in this pinchgrab version). Feedback: `"Should say 'Refresh', not 'REFRESH'. Looks shouty."` Captured `text: "REFRESH"` is the rendered (uppercase) form — known pinchgrab bug. Verify against source.
+Source: pinchgrab. Selector: `[data-testid="toolbar-refresh"]` (preferred over the full CSS chain). Component hint: none (no React fiber walk in this pinchgrab version). Feedback: `"Should say 'Refresh', not 'REFRESH'. Looks shouty."` Captured `text: "REFRESH"` is the rendered (uppercase) form — known pinchgrab bug. Verify against source.
 
 \### Classify
 
@@ -6520,9 +6520,9 @@ Primary: `copy.casing`. Secondary: none. Severity: nit. Scope: pattern (likely a
 
 \### Ground
 
-Grep for `data-testid="mission-refresh"` → finds `src/console/MissionHeader.tsx:42`:
+Grep for `data-testid="toolbar-refresh"` → finds `src/components/Toolbar.tsx:42`:
 ```jsx
-<button className="btn btn--ghost" data-testid="mission-refresh" onClick={handleRefresh}>
+<button className="btn btn--ghost" data-testid="toolbar-refresh" onClick={handleRefresh}>
   Refresh
 </button>
 ```
@@ -6530,7 +6530,7 @@ Grep for `data-testid="mission-refresh"` → finds `src/console/MissionHeader.ts
 The source IS sentence-case "Refresh". The ALL-CAPS rendering comes from CSS. Grep `.btn` styles → finds `src/styles/buttons.css:14`:
 ```css
 .btn {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: 'Display Sans', system-ui, sans-serif;
   font-weight: 700;
   text-transform: uppercase;       /* <— the culprit */
   letter-spacing: 0.48px;
@@ -6544,14 +6544,14 @@ The source IS sentence-case "Refresh". The ALL-CAPS rendering comes from CSS. Gr
 \## [copy.casing] Buttons rendered ALL CAPS but source uses sentence case
 
 \*\*Source:\*\* pinchgrab
-\*\*Element:\*\* `[data-testid="mission-refresh"]` in `src/console/MissionHeader.tsx:42`. Style rule lives in `src/styles/buttons.css:14`.
+\*\*Element:\*\* `[data-testid="toolbar-refresh"]` in `src/components/Toolbar.tsx:42`. Style rule lives in `src/styles/buttons.css:14`.
 \*\*User feedback:\*\* > Should say 'Refresh', not 'REFRESH'. Looks shouty.
-\*\*Diagnosis:\*\* The source JSX renders `Refresh` (sentence case) but the `.btn` CSS rule applies `text-transform: uppercase` plus `letter-spacing: 0.48px` to mimic an "industrial console" aesthetic. The user finds this shouty. Pinchgrab captured `text: "REFRESH"` (the rendered form via `innerText`), which initially looks like a source bug — it's actually a CSS choice. Scope is pattern-level: removing the rule affects every `.btn` in the app, not just this one.
+\*\*Diagnosis:\*\* The source JSX renders `Refresh` (sentence case) but the `.btn` CSS rule applies `text-transform: uppercase` plus `letter-spacing: 0.48px` to mimic a heavier display aesthetic. The user finds this shouty. Pinchgrab captured `text: "REFRESH"` (the rendered form via `innerText`), which initially looks like a source bug — it's actually a CSS choice. Scope is pattern-level: removing the rule affects every `.btn` in the app, not just this one.
 
 \*\*Proposed change:\*\*
 \`\`\`diff
  .btn {
-   font-family: 'Outfit', system-ui, sans-serif;
+   font-family: 'Display Sans', system-ui, sans-serif;
    font-weight: 700;
 -  text-transform: uppercase;
 -  letter-spacing: 0.48px;
@@ -6560,9 +6560,9 @@ The source IS sentence-case "Refresh". The ALL-CAPS rendering comes from CSS. Gr
 \`\`\`
 
 \*\*Files touched:\*\* `src/styles/buttons.css`
-\*\*Acceptance test:\*\* (1) Render the console at `/console`; verify all buttons read sentence case. (2) Visual diff against the previous deploy at the 4 viewport widths (320 / 768 / 1280 / 1920). (3) Update any Storybook stories that snapshot uppercase buttons.
+\*\*Acceptance test:\*\* (1) Render the dashboard at `/dashboard`; verify all buttons read sentence case. (2) Visual diff against the previous deploy at the 4 viewport widths (320 / 768 / 1280 / 1920). (3) Update any Storybook stories that snapshot uppercase buttons.
 \*\*Rollback:\*\* `git revert`. Single CSS rule restored.
-\*\*Confidence:\*\* medium — the change is mechanically safe, but it affects ALL `.btn` instances. The "industrial console" aesthetic was probably intentional. Confirm scope: do you want sentence-case for THIS button only (use a `.btn--no-caps` modifier) or all buttons (the diff above)?
+\*\*Confidence:\*\* medium — the change is mechanically safe, but it affects ALL `.btn` instances. The display-caps aesthetic was probably intentional. Confirm scope: do you want sentence-case for THIS button only (use a `.btn--no-caps` modifier) or all buttons (the diff above)?
 \*\*Open questions:\*\* Pattern-vs-instance scope. Awaiting confirmation before merging.
 ```
 
