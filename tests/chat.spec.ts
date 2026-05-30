@@ -569,6 +569,31 @@ const startServer = () =>
   assert(reserved.height > 20, `reserved preview should commit a non-trivial height up front, got ${reserved.height}`);
   console.log('test 40 ok: reserved preview height + skeleton before screenshot loads');
 
+  // Test 41 ── Header workspace dropdown exposes a "+ New workspace" action
+  // that creates and switches to a new workspace via the shared flow.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const hasNewOption = await page.evaluate(() => {
+    const sel = document.querySelector('[data-workspace]');
+    return [...sel.options].some((o) => o.value === '__new_workspace__' && o.textContent.includes('New workspace'));
+  });
+  assert(hasNewOption, 'header workspace dropdown should include a "+ New workspace" option');
+  const createdViaDropdown = await page.evaluate(async () => {
+    window.prompt = () => 'from-dropdown';
+    const sel = document.querySelector('[data-workspace]');
+    sel.value = '__new_workspace__';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    // The flow is async (loadWorkspace); poll briefly.
+    for (let i = 0; i < 40; i++) {
+      if (window.__pinchgrab_panel.listWorkspaces().some((w) => w.name === 'from-dropdown')) return true;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
+  });
+  assert(createdViaDropdown, 'selecting "+ New workspace" should create the workspace');
+  await page.evaluate(() => window.__pinchgrab_panel.switchWorkspace('default'));
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 41 ok: header dropdown "+ New workspace" creates a workspace');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

@@ -4058,6 +4058,25 @@ ORDER BY s.n;
   const openDrawer = (): void => { drawer.hidden = false; renderWsControls(); };
   const closeDrawer = (): void => { drawer.hidden = true; };
 
+  // Reusable create-workspace flow: validates uniqueness, persists, switches.
+  // Shared by the settings Create button and the header dropdown's
+  // "+ New workspace" action so both paths behave identically.
+  const createWorkspaceFlow = async (name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (workspaces.find((w) => w.name === trimmed)) {
+      setStatus('Already exists', {kind: 'warn'});
+      return false;
+    }
+    workspaces.push({name: trimmed, createdAt: new Date().toISOString()});
+    persistWorkspaces();
+    await loadWorkspace(trimmed);
+    render();
+    renderWsControls();
+    setStatus(`Created workspace "${trimmed}"`);
+    return true;
+  };
+
   const renderWsControls = (): void => {
     if (!wsSelect) return;
     wsSelect.innerHTML = '';
@@ -4068,6 +4087,13 @@ ORDER BY s.n;
       if (w.name === activeWs) opt.selected = true;
       wsSelect.append(opt);
     }
+    // Inline "+ New workspace" action so users can spin up a workspace
+    // straight from the header switcher without opening settings. Handled
+    // as a sentinel value in the change listener below.
+    const newOpt = document.createElement('option');
+    newOpt.value = '__new_workspace__';
+    newOpt.textContent = '+ New workspace';
+    wsSelect.append(newOpt);
     if (!wsList) return;
     wsList.innerHTML = '';
     for (const w of workspaces) {
@@ -4114,7 +4140,16 @@ ORDER BY s.n;
     }
   };
   wsSelect?.addEventListener('change', async (e) => {
-    await loadWorkspace((e.target as HTMLSelectElement).value);
+    const value = (e.target as HTMLSelectElement).value;
+    if (value === '__new_workspace__') {
+      // Reset the select back to the active workspace first so the sentinel
+      // never sticks as the displayed value if the prompt is cancelled.
+      renderWsControls();
+      const name = (window.prompt('New workspace name') ?? '').trim();
+      if (name) await createWorkspaceFlow(name);
+      return;
+    }
+    await loadWorkspace(value);
     render();
   });
 
@@ -4435,11 +4470,7 @@ ORDER BY s.n;
       case 'ws-create': {
         const name = (wsName.value ?? '').trim();
         if (!name) return;
-        if (workspaces.find((w) => w.name === name)) { setStatus('Already exists', {kind: 'warn'}); return; }
-        workspaces.push({name, createdAt: new Date().toISOString()});
-        persistWorkspaces();
-        wsName.value = '';
-        void loadWorkspace(name).then(render);
+        void createWorkspaceFlow(name).then((ok) => { if (ok) wsName.value = ''; });
       }
     }
   });
