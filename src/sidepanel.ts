@@ -16,6 +16,7 @@ import {pg} from './types.ts';
 import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
+import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
   const LOG = '[PinchGrab/sp]';
@@ -2000,11 +2001,14 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     copyBtn.innerHTML = PG_ICONS.svgString('copy', 13);
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      // Honor the same shape the JSON below shows.
-      const payload = prefs.minify ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, prefs.minify ? 0 : 2));
-      setStatus('Copied JSON');
-      showCopied('Copied JSON', `#${m.entry.n}`);
+      // Full single-capture export: identity + paths + text/content + every
+      // attached note/comment — the same depth as a full export, scoped to
+      // this one capture (item 7). Distinct from the raw entry shown below.
+      const feedback = messages.flatMap((x) => x.type === 'feedback' && x.parentUid === m.entry.uid
+        ? [{text: x.text, ts: x.ts, uid: x.id, parentUid: x.parentUid}] : []);
+      await navigator.clipboard.writeText(serializeCaptureJson({entry: m.entry, feedback}));
+      setStatus('Copied capture export');
+      showCopied('Copied capture', `#${m.entry.n}`);
     });
     jsonBar.append(copyBtn);
     jsonWrap.append(jsonBar);
@@ -2140,10 +2144,12 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
       } else setStatus('Re-capture failed', {kind: 'warn'});
     }));
-    actions.append(actionBtn('copy', 'Copy this capture as JSON', async () => {
-      await navigator.clipboard.writeText(JSON.stringify(m.entry));
-      setStatus('Copied entry');
-      showCopied('Copied entry', `#${m.entry.n}`);
+    actions.append(actionBtn('copy', 'Copy this capture as a full export (paths, text, comments)', async () => {
+      const feedback = messages.flatMap((x) => x.type === 'feedback' && x.parentUid === m.entry.uid
+        ? [{text: x.text, ts: x.ts, uid: x.id, parentUid: x.parentUid}] : []);
+      await navigator.clipboard.writeText(serializeCaptureJson({entry: m.entry, feedback}));
+      setStatus('Copied capture export');
+      showCopied('Copied capture', `#${m.entry.n}`);
     }));
     actions.append(deleteBtn(() => removeMessage(m.id)));
     div.append(actions);
