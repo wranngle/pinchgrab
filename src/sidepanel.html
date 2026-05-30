@@ -37,18 +37,18 @@
     <!-- Each shortcut: pill on top, lowercase label beneath. -->
     <div class="shortcuts hint">
       <span class="sc" data-tip="Outline the element under your cursor"><kbd>Alt</kbd><span class="lbl">peek</span></span>
-      <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+click</kbd><span class="lbl">capture</span></span>
-      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+drag</kbd><span class="lbl">multi</span></span>
-      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift</kbd><span class="lbl">stage</span></span>
-      <span class="sc" data-tip="Undo last edit"><kbd>⌘Z</kbd><span class="lbl">undo</span></span>
+      <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+Click</kbd><span class="lbl">capture</span></span>
+      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+Drag</kbd><span class="lbl">multi</span></span>
+      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift+Click</kbd><span class="lbl">stage</span></span>
+      <span class="sc" data-tip="Undo last edit"><kbd data-mod-z>Cmd+Z</kbd><span class="lbl">undo</span></span>
     </div>
 
     <!-- ───────────────────────── Toolbar ───────────────────────── -->
     <div class="toolbar">
       <div class="search">
         <span class="search-icon" data-icon="search" data-size="13"></span>
-        <input type="text" data-search placeholder="Filter captures" data-tip="Filter captures by selector, text, or component. Use ⌘K for commands." />
-        <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd>⌘K</kbd></span>
+        <input type="text" data-search placeholder="Filter captures" data-tip="Search captures and run commands. Click or Cmd+K opens the command palette; Ctrl+F finds in the list." />
+        <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd data-mod-k>Cmd+K</kbd></span>
         <button type="button" class="iconbtn-x" data-search-clear data-tip="Clear search" aria-label="Clear search">
           <span data-icon="x" data-size="11"></span>
         </button>
@@ -188,8 +188,9 @@
             <li data-tip="Capture the hovered element."><kbd>Alt+Click</kbd> — capture</li>
             <li data-tip="Rubber-band over multiple elements; stages a pending group."><kbd>Alt+Drag</kbd> — multi-stage</li>
             <li data-tip="Stage one element at a time into a pending group."><kbd>Alt+Shift+Click</kbd> — stage one</li>
-            <li data-tip="Open the command palette."><kbd>⌘/Ctrl+K</kbd> — palette</li>
-            <li data-tip="Undo or redo the last edit."><kbd>⌘/Ctrl+Z</kbd> — undo · <kbd>⌘/Ctrl+Shift+Z</kbd> — redo</li>
+            <li data-tip="Open the command palette."><kbd data-mod-k>Cmd+K</kbd> — palette</li>
+            <li data-tip="Find in the captured list."><kbd>Ctrl+F</kbd> — find in list</li>
+            <li data-tip="Undo or redo the last edit."><kbd data-mod-z>Cmd+Z</kbd> — undo · <kbd data-mod-shift-z>Cmd+Shift+Z</kbd> — redo</li>
             <li data-tip="Submit the composer; shift adds a newline."><kbd>Enter</kbd> — send · <kbd>Shift+Enter</kbd> — newline</li>
             <li data-tip="Clear search, cancel insert, or dismiss palette/drawer."><kbd>Esc</kbd> — clear / cancel</li>
           </ul>
