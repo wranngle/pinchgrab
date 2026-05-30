@@ -158,6 +158,7 @@ function init(): void {
     slot.label.remove();
     slot.path.remove();
     rings.delete(key);
+    ringTrackOpts.delete(key);
   };
   const clearRings = (): void => {
     for (const k of [...rings.keys()]) removeRing(k);
@@ -223,17 +224,48 @@ function init(): void {
     const stroke = opts.preview ? '#7bd97a' : opts.gold ? '#ffd166' : '#ff5f00';
     slot.path.setAttribute('stroke', stroke);
   };
-  const trackElement = (key: string, el: Element, opts: RingOpts = {}): void => {
-    const slot = ensureRing(key);
-    slot.target = el;
+  // Overlay-freeze flag. During a screenshot the background tells us to
+  // hide-overlays; while hidden we also FREEZE every ring's rAF reposition
+  // loop. Without this the loops keep firing through the capture cycle —
+  // they reposition rings to the post-scroll offset (a visible jump) and
+  // repaint a burst the instant the host is shown again, which is the
+  // flashing the user saw on grouped captures (more rings = more flicker).
+  // Frozen, the rings hold their last frame and the host is display:none,
+  // so there is nothing to repaint until we thaw. (See hide/show-overlays.)
+  let overlayFrozen = false;
+  // Remember each tracked ring's opts so thaw() can re-arm its loop.
+  const ringTrackOpts = new Map<string, {el: Element; opts: RingOpts}>();
+  const armRingLoop = (key: string, el: Element, opts: RingOpts): void => {
+    const slot = rings.get(key);
+    if (!slot) return;
     if (slot.raf) cancelAnimationFrame(slot.raf);
     const tick = (): void => {
-      if (!el.isConnected) { removeRing(key); return; }
+      if (!el.isConnected) { removeRing(key); ringTrackOpts.delete(key); return; }
+      if (overlayFrozen) { slot.raf = 0; return; } // hold last frame; thaw() re-arms
       positionRing(slot, el, opts);
       slot.raf = requestAnimationFrame(tick);
     };
     tick();
   };
+  const trackElement = (key: string, el: Element, opts: RingOpts = {}): void => {
+    const slot = ensureRing(key);
+    slot.target = el;
+    ringTrackOpts.set(key, {el, opts});
+    armRingLoop(key, el, opts);
+  };
+  // Stop every ring's rAF loop in place (used during screenshot capture).
+  // The slot keeps its current geometry; thawRings re-arms the loops.
+  const freezeRings = (): void => {
+    for (const slot of rings.values()) {
+      if (slot.raf) { cancelAnimationFrame(slot.raf); slot.raf = 0; }
+    }
+  };
+  // Re-arm every tracked ring's loop after a freeze. Each loop's first tick
+  // runs synchronously, so all rings reposition on the same frame.
+  const thawRings = (): void => {
+    for (const [key, {el, opts}] of ringTrackOpts) armRingLoop(key, el, opts);
+  };
+
   const flashElement = (el: Element): void => {
     const slot = ensureRing('flash');
     positionRing(slot, el, {});
@@ -925,6 +957,17 @@ function init(): void {
         // flush, and wait for TWO animation frames before acking. Two
         // RAFs is the standard "next paint has happened" signal in
         // browsers.
+        //
+        // Item 17 (flashing): also FREEZE the ring rAF loops for the whole
+        // capture window. The background hides overlays BEFORE it scrolls
+        // the page to frame the capture; if the loops kept running they'd
+        // chase the scroll offset (a visible jump) and repaint a burst when
+        // the host is shown again. Frozen + display:none = the rings hold
+        // their last frame and there is nothing to flicker. The annotation
+        // box freezes implicitly (its anchor watchdog only repositions, and
+        // the host is hidden), so no extra handling is needed there.
+        overlayFrozen = true;
+        freezeRings();
         overlayHost.style.display = 'none';
         // Force layout flush so the change takes effect.
         void overlayHost.getBoundingClientRect();
@@ -936,6 +979,11 @@ function init(): void {
       case 'show-overlays': {
         overlayHost.style.display = '';
         overlayHost.style.visibility = 'visible';
+        // Thaw: re-arm every ring loop in a single batch so they snap to the
+        // (now restored) scroll position on the SAME frame — one clean
+        // reposition instead of a staggered repaint cascade.
+        overlayFrozen = false;
+        thawRings();
         respond({ok: true});
         return true;
       }

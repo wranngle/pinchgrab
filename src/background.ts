@@ -403,17 +403,21 @@ const shotElementCommon = async (
 ): Promise<{blob: Blob; bitmap: ImageBitmap; tabUrl: string; cropMeta: ShotReply['crop']} | null> => {
   const tab = await chrome.tabs.get(tabId);
   const tabUrl = tab?.url ?? '';
-  const bbox = await computeAndScroll(tabId, selectors, padding);
-  if (!bbox) return null;
-  await yieldRaf(tabId);
-
-  // Hide overlays + ack.
+  // Item 17 (flashing): hide + freeze overlays BEFORE we scroll the page to
+  // frame the capture. The old order scrolled first, so the content script's
+  // ring rAF loops chased the new scroll offset (a visible jump) before they
+  // were hidden, and a grouped capture's many rings amplified the flicker.
+  // Hiding first means the whole scroll→yield→capture→restore window happens
+  // with the overlay frozen and out of layout — no on-screen flash.
   await tellCs(tabId, {kind: 'hide-overlays'});
   let dataUrl: string;
+  let bbox: BboxResult | null = null;
   try {
+    bbox = await computeAndScroll(tabId, selectors, padding);
+    if (!bbox) return null;
+    await yieldRaf(tabId);
     dataUrl = await chrome.tabs.captureVisibleTab(windowId, {format: 'png'});
   } catch (e) {
-    await tellCs(tabId, {kind: 'show-overlays'});
     console.warn(LOG, 'captureVisibleTab failed', e);
     return null;
   } finally {
