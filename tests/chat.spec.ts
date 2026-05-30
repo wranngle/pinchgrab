@@ -147,12 +147,12 @@ const startServer = () =>
   assert.strictEqual(stats.comments, 2);
   console.log('test 6 ok: stats accurate');
 
-  // Test 7 ── Search filters live.
-  await page.locator('[data-search]').fill('green');
+  // Test 7 ── Visual find (Ctrl+F) filters the list live.
+  await page.evaluate(() => window.__pinchgrab_panel.setSearch('green'));
   const matchCount = await page.locator('.msg').count();
   assert(matchCount === 1, `expected 1 match for "green", got ${matchCount}`);
-  await page.locator('[data-search]').fill('');
-  console.log('test 7 ok: search filter');
+  await page.evaluate(() => window.__pinchgrab_panel.setSearch(''));
+  console.log('test 7 ok: visual find filter');
 
   // Test 8 ── Insert-rail expands inline composer and inserts before next message.
   await page.evaluate(() => {
@@ -282,16 +282,20 @@ const startServer = () =>
   assert(meter.w === 3 && meter.t > 0, `meter should reflect 3 words, got ${JSON.stringify(meter)}`);
   console.log('test 20 ok: composer word/token meter');
 
-  // Test 21 ── Send clears the search.
+  // Test 21 ── Send clears the active visual find.
   await page.evaluate(() => window.__pinchgrab_panel.setSearch('xyz'));
   await page.evaluate(() => {
     const ta = document.querySelector('[data-composer]');
     ta.value = 'final test';
   });
   await page.evaluate(() => window.__pinchgrab_panel.sendFeedback());
-  const searchAfterSend = await page.evaluate(() => document.querySelector('[data-search]').value);
-  assert.strictEqual(searchAfterSend, '', 'send should clear search input');
-  console.log('test 21 ok: send clears search');
+  const findAfterSend = await page.evaluate(() => ({
+    value: document.querySelector('[data-find]')?.value ?? '',
+    open: window.__pinchgrab_panel.isFindOpen(),
+  }));
+  assert.strictEqual(findAfterSend.value, '', 'send should clear the find input');
+  assert.strictEqual(findAfterSend.open, false, 'send should close the find bar');
+  console.log('test 21 ok: send clears visual find');
 
   // Test 22 ── Multi-cursor (grouped) capture appends to previous selector.
   await page.evaluate(() => {
@@ -441,16 +445,28 @@ const startServer = () =>
   assert(emptyState.size >= 13, `empty state text should be at least 13px, got ${emptyState.size}`);
   console.log('test 32 ok: empty state contrast and copy');
 
-  // Test 33 ── Search filters only; command palette is explicit via shortcut/API.
+  // Test 33 ── The header search affordance opens the command palette; the
+  // Ctrl+F visual find is a separate surface. They are distinct.
+  await page.evaluate(() => { window.__pinchgrab_panel.closePalette(); window.__pinchgrab_panel.closeFind(); });
+  // Clicking/focusing the header search opens the command palette.
+  await page.locator('[data-search]').click();
+  const paletteAfterSearchClick = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
+  assert.strictEqual(paletteAfterSearchClick, true, 'header search click should open the command palette');
+  const findClosedWhilePalette = await page.evaluate(() => window.__pinchgrab_panel.isFindOpen());
+  assert.strictEqual(findClosedWhilePalette, false, 'header search should NOT open the visual find');
   await page.evaluate(() => window.__pinchgrab_panel.closePalette());
-  await page.locator('[data-search]').focus();
-  const paletteAfterSearchFocus = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
-  assert.strictEqual(paletteAfterSearchFocus, false, 'search focus should not open command palette');
-  await page.evaluate(() => window.__pinchgrab_panel.openPalette());
-  const paletteAfterExplicitOpen = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
-  assert.strictEqual(paletteAfterExplicitOpen, true, 'palette should still open explicitly');
-  await page.evaluate(() => window.__pinchgrab_panel.closePalette());
-  console.log('test 33 ok: search and command palette are separate');
+  // Ctrl+F opens the visual find bar (and not the palette).
+  await page.keyboard.press('Control+f');
+  const findState = await page.evaluate(() => ({
+    findOpen: window.__pinchgrab_panel.isFindOpen(),
+    paletteOpen: !document.querySelector<HTMLElement>('[data-palette]')!.hidden,
+    focusOnFind: document.activeElement === document.querySelector('[data-find]'),
+  }));
+  assert.strictEqual(findState.findOpen, true, 'Ctrl+F should open the visual find bar');
+  assert.strictEqual(findState.paletteOpen, false, 'Ctrl+F should not open the command palette');
+  assert.strictEqual(findState.focusOnFind, true, 'Ctrl+F should focus the find input');
+  await page.evaluate(() => window.__pinchgrab_panel.closeFind());
+  console.log('test 33 ok: header search opens palette, Ctrl+F opens visual find (distinct)');
 
   // Test 34 ── Icon-only buttons expose accessible names.
   const unnamedButtons = await page.evaluate(() => [...document.querySelectorAll('button')]

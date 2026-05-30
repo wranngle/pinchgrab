@@ -304,6 +304,33 @@ body {
   background: var(--bg);
   scroll-behavior: smooth;
 }
+
+/* Ctrl+F visual find bar. Placed in the body's grid row, pinned to the top
+   as an overlay so it never disturbs the fixed panel grid (it's display:none
+   when hidden). The body gets extra top padding while find is open so the
+   first capture isn't covered. */
+.find-bar {
+  grid-row: 5; grid-column: 1;
+  align-self: start;
+  z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 12px 0;
+  padding: 5px 8px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--orange);
+  border-radius: var(--r);
+  box-shadow: 0 4px 14px rgba(0,0,0,.35);
+}
+.find-bar[hidden] { display: none; }
+.find-icon { color: var(--text-3); display: inline-flex; }
+.find-bar input {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; outline: 0;
+  color: var(--text); font: 12px/1.4 var(--mono);
+}
+.find-bar input::placeholder { color: var(--text-3); }
+.find-count { color: var(--text-3); font: 10px/1 var(--mono); white-space: nowrap; }
+.panel.find-open .body { padding-top: 52px; }
 .body::-webkit-scrollbar { width: 10px; }
 .body::-webkit-scrollbar-track { background: transparent; }
 .body::-webkit-scrollbar-thumb {

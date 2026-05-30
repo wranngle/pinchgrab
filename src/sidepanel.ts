@@ -110,6 +110,12 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   const composer = $<HTMLTextAreaElement>('[data-composer]');
   const status = $('[data-status]');
   const search = $<HTMLInputElement>('[data-search]');
+  // Ctrl+F visual-find bar (distinct from the header search, which opens the
+  // command palette). May be absent in very old cached markup, so consumers
+  // null-guard.
+  const findBar = document.querySelector<HTMLElement>('[data-find-bar]');
+  const findInput = document.querySelector<HTMLInputElement>('[data-find]');
+  const findCount = document.querySelector<HTMLElement>('[data-find-count]');
   // Canonicalize keyboard-shortcut pills per platform. Every shortcut pill
   // is authored in the canonical Cmd-form (each token capitalized, joined
   // with '+': Alt+Click, Cmd+K, Cmd+Shift+Z); on non-Mac we swap the leading
@@ -2326,7 +2332,9 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     });
     composer.value = '';
     updateComposerMeter();
-    if (searchQuery) { searchQuery = ''; search.value = ''; }
+    // Sending clears any active visual find so the new comment isn't hidden
+    // behind a stale filter.
+    if (searchQuery) closeFind();
     persist();
     render();
     setStatus('Sent');
@@ -2357,26 +2365,64 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   };
   composer.addEventListener('input', updateComposerMeter);
 
-  search.addEventListener('input', () => {
-    searchQuery = search.value.trim();
-    render();
-    // Bring the first matched bubble + its first <mark> into view, so the
-    // user sees where the hit is without scrolling manually.
-    if (searchQuery) {
-      requestAnimationFrame(() => {
-        const firstHit = list.querySelector<HTMLElement>('.msg.selector.search-hit');
-        if (firstHit) {
-          centerElementInList(firstHit);
-          const mk = firstHit.querySelector<HTMLElement>('mark');
-          if (mk) centerElementInList(mk);
-        } else {
-          const firstMatch = list.querySelector<HTMLElement>('.msg mark');
-          if (firstMatch) centerElementInList(firstMatch);
-        }
-      });
-    }
+  // ── Header search → command palette ────────────────────────────────────
+  // The header search affordance no longer runs its own filter; clicking or
+  // focusing it opens the Cmd+K command palette (which searches captures AND
+  // runs commands). It's a readonly trigger, so we just open the palette and
+  // drop focus so the palette input takes over cleanly.
+  const triggerPaletteFromSearch = (): void => {
+    if (!palette.hidden) return;
+    openPalette();
+    search.blur();
+  };
+  search.addEventListener('focus', triggerPaletteFromSearch);
+  search.addEventListener('click', triggerPaletteFromSearch);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); triggerPaletteFromSearch(); }
   });
-  $('[data-search-clear]').addEventListener('click', () => { search.value = ''; searchQuery = ''; render(); });
+
+  // ── Ctrl+F visual find (in-list filter + highlight) ────────────────────
+  const scrollFirstFindHitIntoView = (): void => {
+    if (!searchQuery) return;
+    requestAnimationFrame(() => {
+      const firstHit = list.querySelector<HTMLElement>('.msg.selector.search-hit');
+      if (firstHit) {
+        centerElementInList(firstHit);
+        const mk = firstHit.querySelector<HTMLElement>('mark');
+        if (mk) centerElementInList(mk);
+      } else {
+        const firstMatch = list.querySelector<HTMLElement>('.msg mark');
+        if (firstMatch) centerElementInList(firstMatch);
+      }
+    });
+  };
+  const updateFindCount = (): void => {
+    if (!findCount) return;
+    findCount.textContent = searchQuery ? `${list.querySelectorAll('.msg').length} match` : '';
+  };
+  const applyFind = (value: string): void => {
+    searchQuery = value.trim();
+    render();
+    updateFindCount();
+    scrollFirstFindHitIntoView();
+  };
+  const openFind = (): void => {
+    if (!findBar || !findInput) return;
+    findBar.hidden = false;
+    document.querySelector('.panel')?.classList.add('find-open');
+    findInput.focus();
+    findInput.select();
+  };
+  const closeFind = (): void => {
+    if (findBar) findBar.hidden = true;
+    document.querySelector('.panel')?.classList.remove('find-open');
+    if (findInput) findInput.value = '';
+    if (searchQuery) { searchQuery = ''; render(); }
+    updateFindCount();
+  };
+  findInput?.addEventListener('input', () => applyFind(findInput.value));
+  findInput?.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeFind(); } });
+  document.querySelector('[data-find-clear]')?.addEventListener('click', closeFind);
 
   const tryManualCaptureFromComposer = async (): Promise<boolean> => {
     const m = /^>\s*(.+)$/.exec(composer.value.trim());
@@ -4485,6 +4531,10 @@ ORDER BY s.n;
     const editableTarget = isEditableKeyboardTarget(e.target);
     if (editableTarget && (e.metaKey || e.ctrlKey) && ['a', 'z', 'y'].includes(e.key.toLowerCase())) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palette.hidden ? openPalette() : closePalette(); return; }
+    // Ctrl+F (and Cmd+F) opens the in-list visual find — distinct from the
+    // Cmd+K command palette. Override the browser's native find so the panel
+    // owns the gesture.
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
     if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
     if (e.key === 'Escape') {
@@ -4492,9 +4542,10 @@ ORDER BY s.n;
       if (mdModal && !mdModal.hidden) { closeMdModal(); return; }
       if (!palette.hidden) { closePalette(); return; }
       if (!drawer.hidden) { closeDrawer(); return; }
+      if (findBar && !findBar.hidden) { closeFind(); return; }
       if (pendingMulti.length) { void sendToCS({kind: 'pending-cancel'}); pendingMulti = []; render(); setStatus('Pending group cancelled'); return; }
       if (insertBefore.current) { insertBefore.current = null; render(); setStatus('Insert mode cancelled'); return; }
-      if (searchQuery) { search.value = ''; searchQuery = ''; render(); }
+      if (searchQuery) closeFind();
     }
     if (e.key === 'Alt' || e.altKey) void sendToCS({kind: 'alt-state', on: true});
   });
@@ -4547,7 +4598,14 @@ ORDER BY s.n;
         persistShotsFull();
       },
       __getShotsFull: () => shotsFull,
-      setSearch: (q: string) => { searchQuery = q; search.value = q; render(); },
+      // setSearch drives the Ctrl+F visual-find path (the header search now
+      // opens the command palette instead of filtering).
+      setSearch: (q: string) => {
+        if (q) { openFind(); if (findInput) findInput.value = q; applyFind(q); }
+        else closeFind();
+      },
+      openFind, closeFind,
+      isFindOpen: () => Boolean(findBar && !findBar.hidden),
       setValidity: (sel: string, ok: boolean | 'diff-page', reason?: string) => {
         selectorValidity.set(sel, ok);
         if (reason) selectorErrors.set(sel, reason);
