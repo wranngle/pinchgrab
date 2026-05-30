@@ -244,7 +244,7 @@ export type Entry = {
 // involved in captures (deduped by URL). `screenshot` is a PNG data URL.
 // `partial` is set when only the viewport could be captured (full-page stitch
 // unavailable) — see background.ts stitchPage limitations.
-export type PageSnapshot = { url:string; title:string; capturedAt:string; viewport:{width:number;height:number}; scrollWidth:number; scrollHeight:number; devicePixelRatio:number; lang:string; screenshot:string; partial?:boolean };
+export type PageSnapshot = { url: string; title: string; capturedAt: string; viewport: {width: number;height: number}; scrollWidth: number; scrollHeight: number; devicePixelRatio: number; lang: string; screenshot: string; partial?: boolean };
 
 export type DomMutation = {
   type: 'childList' | 'attributes' | 'characterData';

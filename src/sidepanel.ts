@@ -3917,7 +3917,7 @@ ORDER BY s.n;
     const snap: WorkspaceSnapshot = {
       id: secureToken(8),
       ts: new Date().toISOString(),
-      messages: JSON.parse(JSON.stringify(messages)) as PanelMessage[],
+      messages: structuredClone(messages),
       shots: Object.fromEntries(shots),
       selectors: messages.filter((m) => m.type === 'selector').length,
       comments: messages.filter((m) => m.type === 'feedback').length,
@@ -3934,7 +3934,7 @@ ORDER BY s.n;
     // Push the live state onto the in-session undo stack so a mistaken
     // restore is itself undoable.
     snapshot();
-    messages = JSON.parse(JSON.stringify(snap.messages)) as PanelMessage[];
+    messages = structuredClone(snap.messages);
     shots.clear();
     for (const [k, v] of Object.entries(snap.shots)) shots.set(k, v);
     shotsFull.clear();
