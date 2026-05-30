@@ -52,8 +52,8 @@ body {
 
 .panel {
   display: grid;
-  /* bar / shortcuts / toolbar / stats / body(1fr) / composer / status-row */
-  grid-template-rows: auto auto auto auto 1fr auto auto;
+  /* bar / shortcuts / toolbar / stats / body(1fr) / composer / status-row / footer */
+  grid-template-rows: auto auto auto auto 1fr auto auto auto;
   height: 100vh;
   border-left: 4px solid var(--orange);
   background: var(--bg);
@@ -1109,6 +1109,30 @@ body {
   flex: 0 1 auto;
 }
 .status-row { min-width: 0; }
+
+/* Main-pane footer — subtle GitHub-star CTA pinned at the bottom. Sits in
+   its own grid row below the composer/status, so it never overlaps them.
+   Low-contrast by design; the star CTA inherits the orange accent on hover. */
+.pane-footer {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 22px;
+  padding: 0 12px;
+  background: var(--bg-elev-2);
+  border-top: 1px solid var(--border);
+  font: 10px/1 var(--mono);
+  color: var(--text-3);
+  white-space: nowrap; overflow: hidden;
+}
+.pane-footer .emoji { font-size: 11px; }
+.pane-footer-text { letter-spacing: 0.04em; }
+.pane-footer-dot { color: var(--text-3); opacity: 0.6; }
+.pane-footer-cta {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--text-2); text-decoration: none;
+  transition: color 0.12s;
+}
+.pane-footer-cta:hover { color: var(--orange); }
+.pane-footer-cta [data-icon] { color: inherit; }
 
 .copy-toast {
   position: fixed;

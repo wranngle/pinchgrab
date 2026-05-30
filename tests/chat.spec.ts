@@ -612,6 +612,29 @@ const startServer = () =>
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 42 ok: settings labels word-wrap at narrow width');
 
+  // Test 43 ── Main-pane footer carries a GitHub-star CTA, sits below the
+  // composer, and does not overlap it.
+  await page.setViewportSize({ width: 420, height: 760 });
+  const footer = await page.evaluate(() => {
+    const f = document.querySelector('.pane-footer');
+    if (!f) return null;
+    const cta = f.querySelector('.pane-footer-cta');
+    const composer = document.querySelector('.composer');
+    const fRect = f.getBoundingClientRect();
+    const cRect = composer.getBoundingClientRect();
+    return {
+      text: f.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      action: cta?.getAttribute('data-action'),
+      belowComposer: Math.floor(fRect.top) >= Math.floor(cRect.bottom),
+    };
+  });
+  assert(footer, 'main-pane footer should exist');
+  assert(footer.text.includes('PinchGrab') && footer.text.toLowerCase().includes('star'),
+    `footer should pitch a GitHub star, got "${footer.text}"`);
+  assert.strictEqual(footer.action, 'github', 'footer CTA should trigger the GitHub action');
+  assert(footer.belowComposer, 'footer must sit below the composer, not overlap it');
+  console.log('test 43 ok: main-pane GitHub-star footer below composer');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();
