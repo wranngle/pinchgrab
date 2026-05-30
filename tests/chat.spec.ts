@@ -495,6 +495,30 @@ const startServer = () =>
   assert(narrow.statsRight <= narrow.width, `stats should fit at 320px: ${JSON.stringify(narrow)}`);
   console.log('test 37 ok: 320px layout fits');
 
+  // Test 38 ── Page/URL divider only renders when the URL changes between
+  // consecutive captures. Two captures on the same URL get one divider; a
+  // third capture on a new URL gets its own.
+  await page.setViewportSize({ width: 420, height: 800 });
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    const mk = (n, url, sel) => {
+      window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'p' + n, ts: new Date().toISOString(), url });
+      window.__pinchgrab_panel.pushMessage({
+        type: 'selector', id: 's' + n, ts: new Date().toISOString(),
+        entry: { n, ts: new Date().toISOString(), url, tag: 'div', selector: sel, rect: { x: 0, y: 0, w: 100, h: 40 } },
+      });
+    };
+    mk(1, 'http://example/a', '#one');
+    mk(2, 'http://example/a', '#two');   // same URL → no repeated divider
+    mk(3, 'http://example/b', '#three'); // new URL → its own divider
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.msg.selector').length === 3);
+  const dividerUrls = await page.evaluate(() =>
+    [...document.querySelectorAll('.page-divider .url')].map((el) => el.textContent));
+  assert.deepStrictEqual(dividerUrls, ['http://example/a', 'http://example/b'],
+    `consecutive same-URL captures should share one divider, got ${JSON.stringify(dividerUrls)}`);
+  console.log('test 38 ok: page divider dedupes consecutive same-URL captures');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

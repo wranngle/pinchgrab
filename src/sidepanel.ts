@@ -1511,10 +1511,21 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
     list.append(insertRail(messages[0]!.id));
     let lastSelectorSel: string | null = null;
+    // Track the URL of the most recently rendered page divider so we can
+    // suppress a repeated header when consecutive captures share the same
+    // page. Restating the URL above every capture in a same-URL run is
+    // noise — the divider only earns its space when the URL actually
+    // changes from the previous capture in sequence.
+    let lastRenderedPageUrl: string | null = null;
     let renderedAny = false;
     for (let i = 0; i < ordered.length; i++) {
       const m = ordered[i]!;
       if (!matchesSearch(m)) continue;
+      // Collapse consecutive same-URL page dividers into the first one.
+      if (m.type === 'page') {
+        if (m.url === lastRenderedPageUrl) continue;
+        lastRenderedPageUrl = m.url;
+      }
       const node = renderMessage(m, lastSelectorSel);
       list.append(node);
       if (m.type === 'selector') lastSelectorSel = m.entry.selector;
