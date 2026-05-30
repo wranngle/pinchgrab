@@ -407,6 +407,94 @@ const startServer = () =>
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 31 ok: drawer star pitch');
 
+  // Test 32 ── Empty state is readable and action-oriented.
+  await page.evaluate(() => window.__pinchgrab_panel.clear());
+  await page.waitForFunction(() => !!document.querySelector('.empty'));
+  const parseRgb = (value: string): [number, number, number] => {
+    const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(value);
+    if (!match) throw new Error(`cannot parse rgb: ${value}`);
+    return [Number(match[1]), Number(match[2]), Number(match[3])];
+  };
+  const srgb = (n: number): number => {
+    const channel = n / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]: [number, number, number]): number => 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
+  const contrast = (a: [number, number, number], b: [number, number, number]): number => {
+    const lighter = Math.max(luminance(a), luminance(b));
+    const darker = Math.min(luminance(a), luminance(b));
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  const emptyState = await page.evaluate(() => {
+    const empty = document.querySelector<HTMLElement>('.empty')!;
+    const text = empty.textContent ?? '';
+    return {
+      text,
+      color: getComputedStyle(empty).color,
+      backgroundColor: getComputedStyle(document.body).backgroundColor,
+      size: Number.parseFloat(getComputedStyle(empty).fontSize),
+    };
+  });
+  const emptyContrast = contrast(parseRgb(emptyState.color), parseRgb(emptyState.backgroundColor));
+  assert(emptyState.text.includes('Alt+Click to capture'), `empty state should include capture action: ${emptyState.text}`);
+  assert(emptyContrast >= 4.5, `empty state contrast should pass WCAG AA, got ${emptyContrast.toFixed(2)}`);
+  assert(emptyState.size >= 13, `empty state text should be at least 13px, got ${emptyState.size}`);
+  console.log('test 32 ok: empty state contrast and copy');
+
+  // Test 33 ── Search filters only; command palette is explicit via shortcut/API.
+  await page.evaluate(() => window.__pinchgrab_panel.closePalette());
+  await page.locator('[data-search]').focus();
+  const paletteAfterSearchFocus = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
+  assert.strictEqual(paletteAfterSearchFocus, false, 'search focus should not open command palette');
+  await page.evaluate(() => window.__pinchgrab_panel.openPalette());
+  const paletteAfterExplicitOpen = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
+  assert.strictEqual(paletteAfterExplicitOpen, true, 'palette should still open explicitly');
+  await page.evaluate(() => window.__pinchgrab_panel.closePalette());
+  console.log('test 33 ok: search and command palette are separate');
+
+  // Test 34 ── Icon-only buttons expose accessible names.
+  const unnamedButtons = await page.evaluate(() => [...document.querySelectorAll('button')]
+    .filter((button) => !button.textContent?.trim() && !button.getAttribute('aria-label'))
+    .map((button) => button.outerHTML.slice(0, 120)));
+  assert.deepStrictEqual(unnamedButtons, [], `icon-only buttons need names: ${JSON.stringify(unnamedButtons)}`);
+  console.log('test 34 ok: icon-only buttons named');
+
+  // Test 35 ── Settings are chunked into deliberate disclosure groups.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const settingsGroups = await page.evaluate(() => [...document.querySelectorAll('.drawer details.prefs')].map((details) => ({
+    label: details.querySelector('summary')?.textContent?.trim(),
+    open: (details as HTMLDetailsElement).open,
+  })));
+  assert.deepStrictEqual(settingsGroups.map((group) => group.label), ['Workspaces', 'Export', 'Capture', 'Templates', 'Hotkeys']);
+  assert.strictEqual(settingsGroups.filter((group) => group.open).length, 1, 'only Workspaces should be open by default');
+  console.log('test 35 ok: settings grouped');
+
+  // Test 36 ── Markdown previews are summaries, not giant inline documents.
+  const mdSummaries = await page.evaluate(() => [...document.querySelectorAll('[data-md-preview]')].map((el) => ({
+    text: el.textContent ?? '',
+    height: el.getBoundingClientRect().height,
+  })));
+  assert(mdSummaries.every((item) => item.text.includes('Sections:')), `markdown previews should summarize sections: ${JSON.stringify(mdSummaries)}`);
+  assert(mdSummaries.every((item) => item.height < 140), `markdown previews should stay compact: ${JSON.stringify(mdSummaries)}`);
+  console.log('test 36 ok: markdown previews summarized');
+
+  // Test 37 ── 320px layout has no horizontal overflow or brand/stat spill.
+  await page.setViewportSize({ width: 320, height: 700 });
+  const narrow = await page.evaluate(() => {
+    const brand = document.querySelector<HTMLElement>('.brand')!.getBoundingClientRect();
+    const stats = document.querySelector<HTMLElement>('.stats')!.getBoundingClientRect();
+    return {
+      bodyOverflow: document.documentElement.scrollWidth > window.innerWidth || document.body.scrollWidth > window.innerWidth,
+      brandRight: Math.round(brand.right),
+      statsRight: Math.round(stats.right),
+      width: window.innerWidth,
+    };
+  });
+  assert.strictEqual(narrow.bodyOverflow, false, `narrow viewport should not horizontally overflow: ${JSON.stringify(narrow)}`);
+  assert(narrow.brandRight <= narrow.width, `brand should fit at 320px: ${JSON.stringify(narrow)}`);
+  assert(narrow.statsRight <= narrow.width, `stats should fit at 320px: ${JSON.stringify(narrow)}`);
+  console.log('test 37 ok: 320px layout fits');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

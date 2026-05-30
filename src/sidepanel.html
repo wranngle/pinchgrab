@@ -21,8 +21,8 @@
         </span>
       </div>
       <div class="bar-actions">
-        <button class="iconbtn" type="button" data-action="undo" data-tip="Undo last edit"><span data-icon="undo" data-size="14"></span></button>
-        <button class="iconbtn" type="button" data-action="redo" data-tip="Redo last edit"><span data-icon="redo" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="undo" data-tip="Undo last edit" aria-label="Undo last edit"><span data-icon="undo" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="redo" data-tip="Redo last edit" aria-label="Redo last edit"><span data-icon="redo" data-size="14"></span></button>
         <button class="iconbtn" type="button" data-action="settings" data-tip="Open settings" aria-label="Settings"><span data-icon="settings" data-size="14"></span></button>
         <button class="iconbtn ghost" type="button" data-action="github" data-tip="Open the GitHub repo" aria-label="GitHub">
           <span class="g-pill">
@@ -47,9 +47,9 @@
     <div class="toolbar">
       <div class="search">
         <span class="search-icon" data-icon="search" data-size="13"></span>
-        <input type="text" data-search placeholder="" data-tip="Filter captures by selector, text, or component · ⌘K opens the command palette" />
+        <input type="text" data-search placeholder="Filter captures" data-tip="Filter captures by selector, text, or component. Use ⌘K for commands." />
         <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd>⌘K</kbd></span>
-        <button type="button" class="iconbtn-x" data-search-clear data-tip="Clear search" aria-label="Clear">
+        <button type="button" class="iconbtn-x" data-search-clear data-tip="Clear search" aria-label="Clear search">
           <span data-icon="x" data-size="11"></span>
         </button>
       </div>
@@ -58,9 +58,9 @@
           <span data-icon="download" data-size="14"></span>
           <span class="lbl">Export</span>
         </button>
-        <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file"><span data-icon="upload" data-size="14"></span></button>
-        <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page"><span data-icon="refresh-cw" data-size="14"></span></button>
-        <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file" aria-label="Import file"><span data-icon="upload" data-size="14"></span></button>
+        <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page" aria-label="Validate selectors"><span data-icon="refresh-cw" data-size="14"></span></button>
+        <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures" aria-label="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
       </div>
     </div>
 
@@ -87,8 +87,8 @@
     <!-- ───────────────────────── Composer ──────────────────────── -->
     <footer class="composer">
       <div class="composer-input">
-        <textarea data-composer rows="1" placeholder="Comment · start with `> selector` to capture by CSS selector"></textarea>
-        <div class="composer-meter" data-tip="Word and token estimate of your draft">
+        <textarea data-composer rows="1" placeholder="Add feedback. Use > selector only for manual capture."></textarea>
+        <div class="composer-meter" data-tip="Draft size">
           <span data-comp-words>0</span>w · <span data-comp-tokens>0</span>t
         </div>
       </div>
@@ -109,16 +109,16 @@
         <button class="iconbtn" type="button" data-action="close-drawer" data-tip="Close settings" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
       </header>
       <div class="drawer-body">
-        <section class="prefs">
-          <h4>Workspaces</h4>
+        <details class="prefs" open>
+          <summary>Workspaces</summary>
           <div class="ws-controls">
             <input type="text" data-ws-name placeholder="New workspace name" data-tip="A workspace is a separate bucket of captures, comments, and settings" />
             <button class="primary" type="button" data-action="ws-create" data-tip="Create the workspace and switch to it">Create</button>
           </div>
           <ul class="ws-list" data-ws-list></ul>
-        </section>
-        <section class="prefs">
-          <h4>Export</h4>
+        </details>
+        <details class="prefs">
+          <summary>Export</summary>
           <label data-tip="Keep the captured element's outerHTML in exports"><input type="checkbox" data-pref="includeOuterHTML" checked /> Include <code>outerHTML</code> <small class="contrib" data-contrib="includeOuterHTML"></small></label>
           <label data-tip="Keep matched stylesheet rules that target this element"><input type="checkbox" data-pref="includeMatchedRules" checked /> Include matched CSS rules <small class="contrib" data-contrib="includeMatchedRules"></small></label>
           <label data-tip="Keep resolved browser styles (color, font, layout)"><input type="checkbox" data-pref="includeStyles" checked /> Include computed styles <small class="contrib" data-contrib="includeStyles"></small></label>
@@ -127,9 +127,9 @@
             <small class="minify-explain">Trims whitespace, drops empty objects, removes <code>tokens</code> from page lines, and strips redundant audit fields.</small>
             <small class="minify-stats" data-minify-stats></small>
           </label>
-        </section>
-        <section class="prefs">
-          <h4>UI</h4>
+        </details>
+        <details class="prefs">
+          <summary>Capture</summary>
           <label data-tip="Scroll the canvas to the matching capture on alt-hover"><input type="checkbox" data-pref="autoScrollToHovered" checked /> Auto-scroll to hovered capture</label>
           <label data-tip="Paint margin and padding stripes around alt-hovered elements"><input type="checkbox" data-pref="spacingOverlay" /> Show spacing overlay on hover</label>
           <label data-tip="Snap hover and click to the nearest component · off = capture the deepest element under the cursor"><input type="checkbox" data-pref="hoverSnap" checked /> Snap hover to component</label>
@@ -139,10 +139,11 @@
             <span>Skip screenshots on these hosts</span>
             <textarea data-pref-text="skipScreenshotHosts" rows="2" placeholder="example.com, internal.corp"></textarea>
           </label>
-        </section>
-        <section class="prefs">
+        </details>
+        <details class="prefs">
+          <summary>Templates</summary>
           <h4>DESIGN.md</h4>
-          <p class="prefs-help">Your project's color tokens, typography, motion, copy voice. Bundled inline at <code>./DESIGN.md</code> inside every workspace archive — the consumer LLM grounds visual feedback in this file.</p>
+          <p class="prefs-help">Visual source: color tokens, typography, motion, and copy voice. Bundled as <code>./DESIGN.md</code>.</p>
           <div class="template-banner" data-template-banner="design" hidden>
             ⚠ Shipping the bundled <strong>template DESIGN.md</strong>. Click <em>Edit</em> to customize.
           </div>
@@ -151,19 +152,17 @@
             <input type="text" data-pref-text="designPath" placeholder="~/.agents/DESIGN.md" />
           </label>
           <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="design-edit" data-tip="Edit, upload, or reset the bundled DESIGN.md">
+            <button type="button" class="md-preview" data-action="design-edit" data-tip="Open advanced editor for DESIGN.md">
               <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
-              <span class="md-preview-edit-hint">Edit ↗</span>
+              <span class="md-preview-edit-hint">Advanced edit</span>
             </button>
             <div class="md-preview-meta">
               <span class="design-md-status" data-design-md-status></span>
             </div>
           </div>
           <input type="file" id="design-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/DESIGN.md" hidden />
-        </section>
-        <section class="prefs">
           <h4>PinchGrab UI skill</h4>
-          <p class="prefs-help">Teaches a downstream LLM how to read and triage a PinchGrab export. Bundled inline at <code>./.agents/skills/PinchGrab/SKILL.md</code>.</p>
+          <p class="prefs-help">Triage guide for reading PinchGrab exports. Bundled at <code>./.agents/skills/PinchGrab/SKILL.md</code>.</p>
           <div class="template-banner" data-template-banner="skill" hidden>
             ⚠ Shipping the bundled <strong>template SKILL.md</strong>. Click <em>Edit</em> to customize.
           </div>
@@ -172,18 +171,18 @@
             <input type="text" data-pref-text="skillPath" placeholder="~/.agents/skills/PinchGrab/SKILL.md" />
           </label>
           <div class="md-preview-row">
-            <button type="button" class="md-preview" data-action="skill-edit" data-tip="Edit, upload, or reset the bundled SKILL.md">
+            <button type="button" class="md-preview" data-action="skill-edit" data-tip="Open advanced editor for SKILL.md">
               <pre class="md-preview-body" data-md-preview="skill">(loading…)</pre>
-              <span class="md-preview-edit-hint">Edit ↗</span>
+              <span class="md-preview-edit-hint">Advanced edit</span>
             </button>
             <div class="md-preview-meta">
               <span class="design-md-status" data-skill-md-status></span>
             </div>
           </div>
           <input type="file" id="skill-md-file" accept=".md,.txt,text/markdown,text/plain" data-suggested-path="~/.agents/skills/PinchGrab/SKILL.md" hidden />
-        </section>
-        <section class="prefs">
-          <h4>Hotkeys</h4>
+        </details>
+        <details class="prefs">
+          <summary>Hotkeys</summary>
           <ul class="hotkeys">
             <li data-tip="Outline the element under your cursor."><kbd>Alt+Hover</kbd> — peek</li>
             <li data-tip="Capture the hovered element."><kbd>Alt+Click</kbd> — capture</li>
@@ -194,7 +193,7 @@
             <li data-tip="Submit the composer; shift adds a newline."><kbd>Enter</kbd> — send · <kbd>Shift+Enter</kbd> — newline</li>
             <li data-tip="Clear search, cancel insert, or dismiss palette/drawer."><kbd>Esc</kbd> — clear / cancel</li>
           </ul>
-        </section>
+        </details>
         <section class="star-pitch">
           <span class="emoji" aria-hidden="true">🤏</span>
           <div>
@@ -223,6 +222,7 @@
           <button class="iconbtn" type="button" data-md-modal-close data-tip="Close (Esc)" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
         </header>
         <div class="md-modal-banner" data-md-modal-banner hidden></div>
+        <div class="md-modal-summary" data-md-modal-summary></div>
         <textarea class="md-modal-textarea" data-md-modal-textarea spellcheck="false"></textarea>
         <footer class="md-modal-foot">
           <button class="iconbtn" type="button" data-md-modal-upload data-tip="Upload a .md file from disk">

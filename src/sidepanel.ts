@@ -1108,10 +1108,17 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     return out;
   };
 
+  const centerElementInList = (el: HTMLElement): void => {
+    const listRect = list.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const target = list.scrollTop + elRect.top - listRect.top - (list.clientHeight / 2) + (elRect.height / 2);
+    list.scrollTo({top: Math.max(0, target), behavior: 'smooth'});
+  };
+
   const scrollMessageIntoView = (id: string): void => {
     const el = list.querySelector<HTMLElement>(`[data-id="${id}"]`);
     if (!el) return;
-    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    centerElementInList(el);
     el.classList.remove('flash-into-view');
     void el.offsetWidth;
     el.classList.add('flash-into-view');
@@ -1210,6 +1217,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       btn.type = 'button';
       btn.className = 'add-btn';
       btn.dataset.tip = 'Insert capture or comment here';
+      btn.setAttribute('aria-label', 'Insert capture or comment here');
       btn.innerHTML = PG_ICONS.svgString('plus', 12);
       btn.addEventListener('click', () => { insertBefore.current = beforeId; insertBefore.comment = true; render(); });
       div.append(btn);
@@ -1242,12 +1250,14 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     cancel.type = 'button';
     cancel.className = 'iconbtn';
     cancel.dataset.tip = 'Cancel · Esc';
+    cancel.setAttribute('aria-label', 'Cancel inline comment');
     cancel.innerHTML = PG_ICONS.svgString('x', 20);
     cancel.addEventListener('click', () => onCancel?.());
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'iconbtn primary';
     send.dataset.tip = 'Save · Enter';
+    send.setAttribute('aria-label', 'Save inline comment');
     send.innerHTML = PG_ICONS.svgString('check', 20);
     const submit = (): void => onSubmit?.(ta.value);
     send.addEventListener('click', submit);
@@ -1470,9 +1480,10 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     if (messages.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.innerHTML = `<div style="margin-bottom:8px;font-size:32px">🤏</div>
-        Open any page and <b>Alt+Click</b> an element. Captures land here on the left;<br>
-        type comments below — they appear on the right.`;
+      empty.innerHTML = `<div class="empty-icon">🤏</div>
+        <div class="empty-title">Start with the page you want to critique.</div>
+        <div class="empty-body">Open a page, then capture an element. Comments stay paired with the thing you grabbed.</div>
+        <div class="empty-keys">Alt+Click to capture</div>`;
       list.append(empty);
       if (pendingMulti.length) renderPendingBay();
       return;
@@ -1548,6 +1559,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     cancel.type = 'button';
     cancel.className = 'iconbtn pending-cancel';
     cancel.dataset.tip = 'Cancel pending group';
+    cancel.setAttribute('aria-label', 'Cancel pending group');
     cancel.innerHTML = PG_ICONS.svgString('x', 13);
     cancel.addEventListener('click', () => sendToCS({kind: 'pending-cancel'}));
     row.append(commit, cancel);
@@ -2140,6 +2152,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     b.type = 'button';
     b.className = 'warn';
     b.dataset.tip = 'Delete';
+    b.setAttribute('aria-label', 'Delete capture');
     b.innerHTML = PG_ICONS.svgString('trash-2', 13);
     let parent: HTMLElement | null = null;
     let revertTimer = 0;
@@ -2156,12 +2169,14 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       yes.type = 'button';
       yes.className = 'confirm-yes';
       yes.dataset.tip = 'Confirm delete';
+      yes.setAttribute('aria-label', 'Confirm delete');
       yes.innerHTML = PG_ICONS.svgString('check', 13);
       yes.addEventListener('click', (ev) => { ev.stopPropagation(); revert(); onConfirm(); });
       const no = document.createElement('button');
       no.type = 'button';
       no.className = 'confirm-no';
       no.dataset.tip = 'Cancel delete';
+      no.setAttribute('aria-label', 'Cancel delete');
       no.innerHTML = PG_ICONS.svgString('x', 13);
       no.addEventListener('click', (ev) => { ev.stopPropagation(); revert(); });
       b.replaceWith(yes);
@@ -2282,18 +2297,16 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       requestAnimationFrame(() => {
         const firstHit = list.querySelector<HTMLElement>('.msg.selector.search-hit');
         if (firstHit) {
-          firstHit.scrollIntoView({behavior: 'smooth', block: 'center'});
+          centerElementInList(firstHit);
           const mk = firstHit.querySelector<HTMLElement>('mark');
-          mk?.scrollIntoView({behavior: 'smooth', block: 'center'});
+          if (mk) centerElementInList(mk);
         } else {
           const firstMatch = list.querySelector<HTMLElement>('.msg mark');
-          firstMatch?.scrollIntoView({behavior: 'smooth', block: 'center'});
+          if (firstMatch) centerElementInList(firstMatch);
         }
       });
     }
   });
-  search.addEventListener('focus', () => { if (palette.hidden) openPalette(search.value || ''); });
-  search.addEventListener('click', () => { if (palette.hidden) openPalette(search.value || ''); });
   $('[data-search-clear]').addEventListener('click', () => { search.value = ''; searchQuery = ''; render(); });
 
   const tryManualCaptureFromComposer = async (): Promise<boolean> => {
@@ -3822,20 +3835,30 @@ ORDER BY s.n;
   const updateDesignMdStatus = (): void => { void updateMdStatuses(); };
 
   // ─── Compact preview + modal editor for DESIGN.md / SKILL.md ───────────
-  // Replaces the giant inline textareas with a small preview row showing
-  // the first ~6 lines plus a "Edit / Upload / …" button. Clicking opens
-  // a popout modal with the full editor — keeps the settings drawer
-  // scannable when shipping a 5000-line DESIGN.md.
+  // Replaces the giant inline textareas with small document summaries.
+  type MdKind = 'design' | 'skill';
+  const markdownOverview = (content: string, kind: MdKind, usingTemplate: boolean): string => {
+    const lines = content.trim() ? content.split('\n').length : 0;
+    const bytes = new Blob([content]).size;
+    const headings = content
+      .split('\n')
+      .map((line) => /^#{1,3}\s+(.+)$/.exec(line.trim())?.[1]?.trim())
+      .filter((heading): heading is string => Boolean(heading))
+      .slice(0, 4);
+    const label = kind === 'design' ? 'Visual source' : 'Triage guide';
+    const source = usingTemplate ? 'Template fallback' : 'Custom';
+    const sections = headings.length ? headings.join(' / ') : 'No section headings found';
+    return `${label}\n${source} · ${lines.toLocaleString()} lines · ${(bytes / 1024).toFixed(1)} KB\nSections: ${sections}`;
+  };
+
   const renderMdPreview = async (kind: 'design' | 'skill'): Promise<void> => {
     const previewEl = document.querySelector<HTMLElement>(`[data-md-preview="${kind}"]`);
     if (!previewEl) return;
     const content = kind === 'design' ? await resolveDesignContent() : await resolveSkillContent();
-    const lines = content.split('\n');
-    const head = lines.slice(0, 6).map((l) => l.length > 80 ? l.slice(0, 80) + '…' : l).join('\n');
-    previewEl.textContent = head + (lines.length > 6 ? `\n\n… (+${lines.length - 6} more lines)` : '');
+    const usingTemplate = kind === 'design' ? isUsingTemplateDesign() : isUsingTemplateSkill();
+    previewEl.textContent = markdownOverview(content, kind, usingTemplate);
   };
 
-  type MdKind = 'design' | 'skill';
   const openMdModal = async (kind: MdKind): Promise<void> => {
     const overlay = document.querySelector<HTMLElement>('[data-md-modal]');
     if (!overlay) return;
@@ -3843,6 +3866,7 @@ ORDER BY s.n;
     const taEl = overlay.querySelector<HTMLTextAreaElement>('[data-md-modal-textarea]')!;
     const statsEl = overlay.querySelector<HTMLElement>('[data-md-modal-stats]')!;
     const bannerEl = overlay.querySelector<HTMLElement>('[data-md-modal-banner]')!;
+    const summaryEl = overlay.querySelector<HTMLElement>('[data-md-modal-summary]')!;
     const saveBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-save]')!;
     const resetBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-reset]')!;
     const uploadBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-upload]')!;
@@ -3861,6 +3885,7 @@ ORDER BY s.n;
       const lines = text.split('\n').length;
       const bytes = new Blob([text]).size;
       statsEl.textContent = `${lines} lines · ${(bytes / 1024).toFixed(1)} KB`;
+      summaryEl.textContent = markdownOverview(text, kind, usingTemplate);
     };
     refreshStats();
     bannerEl.hidden = !usingTemplate;
@@ -4003,6 +4028,7 @@ ORDER BY s.n;
         del.type = 'button';
         del.className = 'danger';
         del.dataset.tip = 'Delete this workspace and everything in it';
+        del.setAttribute('aria-label', `Delete workspace ${w.name}`);
         del.innerHTML = PG_ICONS.svgString('trash-2', 13);
         del.addEventListener('click', async (e) => {
           e.stopPropagation();
