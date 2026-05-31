@@ -98,5 +98,5 @@ that version ships.
 ## Contact
 
 Questions about this policy or PinchGrab's data handling:
-**<your-contact-email-here>** (replace before publishing) — or open an issue at
+**hello@wranngle.com** — or open an issue at
 <https://github.com/wranngle/pinchgrab/issues>.
