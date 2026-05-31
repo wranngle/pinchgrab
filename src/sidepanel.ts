@@ -242,7 +242,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     if (rebrandedFm === fm) return md; // no `name:` field; nothing to do
     return md.replace(m[0], `---\n${rebrandedFm}\n---\n`);
   };
-  type Workspace = {name: string; createdAt: string};
+  type Workspace = {name: string; createdAt: string; tabId?: number; url?: string; title?: string};
   // One archived state of a workspace (captured just before a Clear-all).
   // `shots` is the thumbnail map (full-res PNGs are session-only and not
   // archived). Restorable from Settings → Workspaces.
@@ -634,6 +634,46 @@ import {serializeCaptureJson} from './export-capture.mjs';
   };
   const persistWorkspaces = (): void => { void Store.set(WORKSPACES_KEY, workspaces); };
 
+  // ─── Tab ⇄ workspace binding (#18) ───────────────────────────────────────
+  // Background announces each toolbar-click activation via 'pg-tab-activated'.
+  // The first activation adopts the current unbound workspace; later tabs each
+  // get their own. Picking a bound workspace jumps the browser to its tab.
+  const slugForTab = (url: string, title: string): string => {
+    try { const h = new URL(url).hostname.replace(/^www\./, ''); if (h) return h; } catch { /* not a url */ }
+    const t = (title || '').trim();
+    return t ? t.slice(0, 24) : 'tab';
+  };
+  const uniqueWsName = (base: string): string => {
+    if (!workspaces.some((w) => w.name === base)) return base;
+    for (let i = 2; ; i++) { const n = `${base} ${i}`; if (!workspaces.some((w) => w.name === n)) return n; }
+  };
+  const onTabActivated = async ({tabId, url, title}: {tabId: number; url: string; title: string}): Promise<void> => {
+    let ws = workspaces.find((w) => w.tabId === tabId);
+    if (ws) {
+      if (ws.url !== url || ws.title !== title) { ws.url = url; ws.title = title; persistWorkspaces(); }
+    } else {
+      const current = workspaces.find((w) => w.name === activeWs);
+      if (current && current.tabId == null) {
+        ws = current; ws.tabId = tabId; ws.url = url; ws.title = title;
+      } else {
+        ws = {name: uniqueWsName(slugForTab(url, title)), createdAt: new Date().toISOString(), tabId, url, title};
+        workspaces.push(ws);
+      }
+      persistWorkspaces();
+    }
+    if (activeWs !== ws.name) await loadWorkspace(ws.name);
+    renderWsControls();
+    render();
+  };
+  // Bring the browser to a workspace's bound tab when the user picks it.
+  const focusWorkspaceTab = (name: string): void => {
+    const ws = workspaces.find((w) => w.name === name);
+    if (!inExtension || ws?.tabId == null) return;
+    chrome.tabs.update(ws.tabId, {active: true}).then((t) => {
+      if (t?.windowId != null) void chrome.windows?.update(t.windowId, {focused: true})?.catch?.(() => { /* ignore */ });
+    }).catch(() => { /* tab was closed */ });
+  };
+
   // ─── Snapshot / undo / redo ─────────────────────────────────────────────
   const snapshot = (): void => {
     if (suspendSnapshots) return;
@@ -745,6 +785,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
       if (recentMids.includes(msg.__mid)) return;
       recentMids.push(msg.__mid);
       if (recentMids.length > RECENT_MID_CAP) recentMids.shift();
+    }
+    if ((msg as {kind?: string}).kind === 'pg-tab-activated') {
+      void onTabActivated(msg as unknown as {tabId: number; url: string; title: string});
+      return;
     }
     switch (msg.kind) {
       case 'capture': onCapture(msg); return;
@@ -4283,6 +4327,7 @@ ORDER BY s.n;
       li.addEventListener('click', async (e) => {
         // Ignore clicks on inner controls (the delete button below).
         if ((e.target as HTMLElement).closest('button')) return;
+        focusWorkspaceTab(w.name);
         if (w.name === activeWs) return;
         await loadWorkspace(w.name);
         render();
@@ -4379,6 +4424,7 @@ ORDER BY s.n;
       return;
     }
     await loadWorkspace(value);
+    focusWorkspaceTab(value);
     render();
   });
 
@@ -4753,6 +4799,10 @@ ORDER BY s.n;
     chrome.runtime.onMessage.addListener((m: any) => receivePanelMessage(m));
     chrome.tabs?.onActivated?.addListener(() => void runValidation());
     chrome.tabs?.onUpdated?.addListener((_id, info) => { if (info?.status === 'complete') void runValidation(); });
+    chrome.tabs?.onRemoved?.addListener((closedId) => {
+      const ws = workspaces.find((w) => w.tabId === closedId);
+      if (ws) { ws.tabId = undefined; persistWorkspaces(); renderWsControls(); }
+    });
   } else {
     window.addEventListener('pinchgrab:to-panel', (e) => receivePanelMessage((e as CustomEvent).detail));
   }
