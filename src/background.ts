@@ -60,18 +60,19 @@ const quietDownloadsUi = (): void => {
 };
 
 chrome.runtime.onInstalled.addListener(async () => {
-  try { await chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true}); }
+  // openPanelOnActionClick:false so OUR action.onClicked handler runs instead —
+  // it opens the panel AND injects the capture script into the clicked tab via
+  // the activeTab grant from the click gesture (no <all_urls> needed). See #18.
+  try { await chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: false}); }
   catch (e) { console.warn(LOG, 'setPanelBehavior', e); }
   try { chrome.contextMenus.create({id: 'pg-capture', title: 'PinchGrab — capture this element', contexts: ['all']}); }
   catch { /* may already exist */ }
   quietDownloadsUi();
-  void injectIntoOpenTabs();
   void setEmojiIcon();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
   quietDownloadsUi();
-  void injectIntoOpenTabs();
   void setEmojiIcon();
 });
 
@@ -79,32 +80,32 @@ chrome.runtime.onStartup?.addListener(() => {
 // user or other extensions, and SWs go idle aggressively.
 quietDownloadsUi();
 
-async function injectIntoOpenTabs(): Promise<void> {
-  try {
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (!tab.id || !tab.url || !/^https?:/.test(tab.url)) continue;
-      try {
-        await chrome.scripting.executeScript({
-          target: {tabId: tab.id, allFrames: false},
-          files: ['content-script.js'],
-          injectImmediately: true,
-        });
-      } catch { /* protected page; ignore */ }
-    }
-  } catch (e) { console.warn(LOG, 'injectIntoOpenTabs', e); }
-}
-
-chrome.tabs.onActivated.addListener(async ({tabId}) => {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab?.url || !/^https?:/.test(tab.url)) return;
+// ─── Activation (#18): toolbar click attaches PinchGrab to THIS tab ─────────
+// PinchGrab no longer auto-injects into every page — the <all_urls>
+// content_scripts entry and host_permissions are gone. Clicking the toolbar
+// action grants activeTab for the clicked tab; we inject the capture script
+// there and open the side panel. Each activated tab becomes its own workspace,
+// tracked panel-side via the pg-tab-activated message below.
+chrome.action.onClicked.addListener((tab) => {
+  if (!tab?.id) return;
+  const tabId = tab.id;
+  // Both sidePanel.open() and executeScript() consume the click's user gesture,
+  // so fire them synchronously at the top of the handler before any await.
+  chrome.sidePanel.open({tabId}).catch((e) => console.warn(LOG, 'sidePanel.open', e));
+  if (tab.url && /^https?:/.test(tab.url)) {
     chrome.scripting.executeScript({
-      target: {tabId},
+      target: {tabId, allFrames: false},
       files: ['content-script.js'],
       injectImmediately: true,
-    }).catch(() => { /* ignore */ });
-  } catch { /* ignore */ }
+    }).catch((e) => console.warn(LOG, 'activate inject', e));
+  }
+  // Bind this tab to a workspace panel-side. The panel may have just opened and
+  // not be listening yet, so replay a few times; the panel dedups by tabId.
+  const meta = {__pg: true, kind: 'pg-tab-activated', tabId, url: tab.url ?? '', title: tab.title ?? ''};
+  const announce = (): void => { try { void chrome.runtime.sendMessage(meta).catch?.(() => { /* not up yet */ }); } catch { /* ignore */ } };
+  announce();
+  setTimeout(announce, 150);
+  setTimeout(announce, 500);
 });
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
