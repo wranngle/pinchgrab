@@ -62,14 +62,29 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-profile-'));
   const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-dl-'));
 
+  // The production manifest intentionally has NO host_permissions (#18: capture
+  // works via the activeTab grant from the toolbar-click activation). A headless
+  // test can't perform that toolbar click, so we load a COPY of the build with
+  // host_permissions added — standing in for the real activeTab grant so the
+  // screenshot/capture pipeline can be exercised. The shipped extension/ stays
+  // clean; this only affects what Chromium loads in-test.
+  const loadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-ext-'));
+  fs.cpSync(EXTENSION_DIR, loadDir, { recursive: true });
+  {
+    const mfPath = path.join(loadDir, 'manifest.json');
+    const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+    mf.host_permissions = ['<all_urls>'];
+    fs.writeFileSync(mfPath, JSON.stringify(mf, null, 2));
+  }
+
   const ctx = await chromium.launchPersistentContext(profileDir, {
     headless: true,
     channel: 'chromium',
     downloadsPath: downloadsDir,
     acceptDownloads: true,
     args: [
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
+      `--disable-extensions-except=${loadDir}`,
+      `--load-extension=${loadDir}`,
       '--no-first-run',
       '--no-default-browser-check',
     ],
