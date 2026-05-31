@@ -3,7 +3,7 @@
 // single self-contained .js file — content scripts don't load ES modules,
 // so bundling is mandatory.
 
-import {mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync} from 'node:fs';
+import {mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
 import {resolve, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -100,6 +100,26 @@ const PASSTHROUGH = ['manifest.json', 'sidepanel.html', 'sidepanel.css'];
 for (const f of PASSTHROUGH) {
   copyFileSync(resolve(srcDir, f), resolve(distDir, f));
   console.log(`Copied ${basename(f)}`);
+}
+
+// ─── Extension icons ───────────────────────────────────────────────────────
+// The manifest references icons/icon{16,32,48,128}.png for the toolbar action
+// and the Chrome Web Store tile. They're rendered source assets committed under
+// src/icons/ — copy every PNG there into extension/icons/ so the build is a
+// loadable, store-submittable package.
+{
+  const srcIconsDir = resolve(srcDir, 'icons');
+  if (existsSync(srcIconsDir)) {
+    const distIconsDir = resolve(distDir, 'icons');
+    mkdirSync(distIconsDir, {recursive: true});
+    const pngs = readdirSync(srcIconsDir).filter((f) => f.endsWith('.png'));
+    for (const png of pngs) {
+      copyFileSync(resolve(srcIconsDir, png), resolve(distIconsDir, png));
+    }
+    console.log(`Copied ${pngs.length} icon${pngs.length === 1 ? '' : 's'} to extension/icons/`);
+  } else {
+    console.warn('No src/icons/ directory — extension will ship without icons.');
+  }
 }
 
 // Remove any stale content-script that lingered from the old build.
