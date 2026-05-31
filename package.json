@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run scripts/build-extension.ts",
+    "package": "bun run scripts/package-extension.ts",
     "watch": "bun run --watch scripts/build-extension.ts",
     "typecheck": "tsc --noEmit",
     "lint": "xo",
