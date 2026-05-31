@@ -1,0 +1,251 @@
+// Chrome Web Store screenshot generator for PinchGrab's side panel.
+//
+// Mirrors the tests/chat.spec.ts harness: serves extension/sidepanel.html over
+// a tiny static server, loads it in headless Chromium, and drives the panel
+// through window.__pinchgrab_panel to seed a believable capture + comment
+// state. Then it sizes the viewport to the store's required 1280×800 and
+// writes a PNG to store-assets/.
+//
+// Run: bun run scripts/capture-store-shots.ts   (after `bun run build`)
+//
+// The inline preview thumbnails come from the panel's `shots` map, which is
+// hydrated from localStorage (pinchgrab.ws.<ws>.shots.v1) on workspace load.
+// We seed the timeline, write thumbnail dataURLs to that key, then reload the
+// workspace so the previews paint as real screenshots rather than skeletons.
+
+import { chromium, type Browser, type Page } from 'playwright';
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+
+const SRC = path.resolve('./extension');
+const OUT_DIR = path.resolve('./store-assets');
+const ASSETS = ['sidepanel.html', 'sidepanel.css', 'sidepanel.js'];
+
+type Served = { server: http.Server; base: string };
+
+const startServer = (): Promise<Served> =>
+  new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const url = req.url || '/';
+      if (url === '/' || url === '/sidepanel.html') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(fs.readFileSync(path.join(SRC, 'sidepanel.html'), 'utf-8'));
+        return;
+      }
+      const asset = ASSETS.find((a) => url.endsWith('/' + a));
+      if (asset) {
+        const ext = path.extname(asset).slice(1);
+        const ct = ext === 'css' ? 'text/css' : ext === 'html' ? 'text/html' : 'text/javascript';
+        res.writeHead(200, { 'Content-Type': ct + '; charset=utf-8' });
+        res.end(fs.readFileSync(path.join(SRC, asset), 'utf-8'));
+        return;
+      }
+      const m = /\/templates\/([\w.-]+\.md)$/.exec(url);
+      if (m) {
+        const p = path.join(SRC, 'templates', m[1]!);
+        if (fs.existsSync(p)) {
+          res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+          res.end(fs.readFileSync(p, 'utf-8'));
+          return;
+        }
+      }
+      res.writeHead(404); res.end();
+    });
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address() as { port: number };
+      resolve({ server, base: `http://127.0.0.1:${addr.port}` });
+    });
+  });
+
+// Seed a realistic timeline: a page divider, three captured elements on a
+// pricing page, with threaded review comments. Runs entirely in page context.
+const seedState = async (page: Page): Promise<void> => {
+  await page.evaluate(() => {
+    const sp: any = (window as any).__pinchgrab_panel;
+    const now = () => new Date().toISOString();
+    sp.clear();
+    sp.setPrefs({ autoScreenshot: true });
+
+    const url = 'https://acme.example/pricing';
+
+    // Build small, attractive thumbnail dataURLs in-page (canvas), one per
+    // captured selector. These stand in for the side-panel-friendly
+    // downscaled screenshots a real capture would produce.
+    const makeThumb = (w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): string => {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const c = cv.getContext('2d')!;
+      draw(c);
+      return cv.toDataURL('image/png');
+    };
+
+    const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+      if (c.roundRect) { c.beginPath(); c.roundRect(x, y, w, h, r); c.fill(); }
+      else c.fillRect(x, y, w, h);
+    };
+
+    // Thumbnails are rendered at the captured element's own aspect ratio so the
+    // panel's object-fit:contain image fills the textured preview box edge to
+    // edge (rather than letterboxing a mismatched square into it).
+    const heroShot = makeThumb(600, 300, (c) => {
+      const g = c.createLinearGradient(0, 0, 600, 300);
+      g.addColorStop(0, '#171327'); g.addColorStop(1, '#2c2142');
+      c.fillStyle = g; c.fillRect(0, 0, 600, 300);
+      c.fillStyle = '#f4f0ff'; c.font = 'bold 34px sans-serif';
+      c.fillText('Ship UI feedback', 48, 110);
+      c.fillText('your agent can read', 48, 152);
+      c.fillStyle = '#a99dc7'; c.font = '16px sans-serif';
+      c.fillText('Capture any element. Comment in plain English. Export JSONL.', 48, 192);
+      c.fillStyle = '#ff5f00'; rr(c, 48, 222, 190, 48, 8);
+      c.fillStyle = '#fff'; c.font = 'bold 17px sans-serif'; c.fillText('Start free trial', 74, 252);
+    });
+
+    const cardShot = makeThumb(320, 360, (c) => {
+      c.fillStyle = '#14101e'; c.fillRect(0, 0, 320, 360);
+      c.fillStyle = '#211934'; rr(c, 22, 22, 276, 316, 14);
+      c.fillStyle = '#ff5f00'; c.font = 'bold 44px sans-serif'; c.fillText('$29', 44, 96);
+      c.fillStyle = '#9b8fb8'; c.font = '16px sans-serif'; c.fillText('/month', 134, 96);
+      c.fillStyle = '#cfc6e6'; c.font = '15px sans-serif';
+      let y = 140;
+      for (const line of ['Unlimited captures', 'Full screenshot export', 'Team workspaces', 'Priority support']) {
+        c.fillStyle = '#7bd97a'; c.fillText('✓', 44, y);
+        c.fillStyle = '#cfc6e6'; c.fillText(line, 70, y);
+        y += 34;
+      }
+      c.fillStyle = '#3a2d57'; rr(c, 44, 286, 232, 40, 8);
+      c.fillStyle = '#cabfe6'; c.font = 'bold 15px sans-serif'; c.fillText('Choose Pro', 120, 312);
+    });
+
+    const badgeShot = makeThumb(260, 56, (c) => {
+      c.fillStyle = '#0e0d14'; c.fillRect(0, 0, 260, 56);
+      c.fillStyle = '#2bbd6e'; rr(c, 8, 10, 200, 36, 18);
+      c.fillStyle = '#06210f'; c.font = 'bold 16px sans-serif'; c.fillText('Most popular', 40, 33);
+    });
+
+    const captures: Array<{ entry: any; thumb: string; comments: string[] }> = [
+      {
+        entry: {
+          n: 1, ts: now(), url, tag: 'section', selector: '.hero',
+          text: 'Ship UI feedback your agent can read', classes: ['hero'],
+          rect: { x: 80, y: 120, w: 600, h: 300 },
+          viewport: { w: 1280, h: 800, dpr: 2 },
+          outerHTML: '<section class="hero"><h1>Ship UI feedback your agent can read</h1><a class="cta">Start free trial</a></section>',
+        },
+        thumb: heroShot,
+        comments: [
+          'Headline is great, but the CTA contrast is borderline on the dark bg — bump it one step.',
+          'Tighten the gap between H1 and subhead by ~8px so it reads as one block.',
+        ],
+      },
+      {
+        entry: {
+          n: 2, ts: now(), url, tag: 'div', selector: '.plan-card.pro',
+          text: '$29 /month', classes: ['plan-card', 'pro'],
+          rect: { x: 440, y: 480, w: 320, h: 360 },
+          viewport: { w: 1280, h: 800, dpr: 2 },
+          outerHTML: '<div class="plan-card pro"><span class="price">$29</span><ul class="features">…</ul><button>Choose Pro</button></div>',
+        },
+        thumb: cardShot,
+        comments: ['The "Choose Pro" button should be the primary orange — right now it disappears.'],
+      },
+      {
+        entry: {
+          n: 3, ts: now(), url, tag: 'span', selector: '.plan-card.pro .badge',
+          text: 'Most popular', classes: ['badge'],
+          rect: { x: 470, y: 460, w: 130, h: 28 },
+          viewport: { w: 1280, h: 800, dpr: 2 },
+          outerHTML: '<span class="badge">Most popular</span>',
+        },
+        thumb: badgeShot,
+        comments: [],
+      },
+    ];
+
+    // One page divider, then each selector followed by its threaded comments.
+    sp.pushMessage({ type: 'page', id: 'pg-1', ts: now(), url, title: 'Acme — Pricing' });
+    let sidx = 0;
+    for (const cap of captures) {
+      const sid = 'sel-' + (++sidx);
+      sp.pushMessage({ type: 'selector', id: sid, ts: now(), entry: cap.entry });
+      let cidx = 0;
+      for (const text of cap.comments) {
+        sp.pushMessage({ type: 'feedback', id: `${sid}-fb-${++cidx}`, ts: now(), text });
+      }
+    }
+
+    // Hydrate the inline-preview `shots` map via its localStorage backing key,
+    // then reload the workspace so previews paint as real thumbnails.
+    const shotMap: Record<string, string> = {};
+    for (const cap of captures) shotMap[cap.entry.selector] = cap.thumb;
+    localStorage.setItem('pinchgrab.ws.default.shots.v1', JSON.stringify(shotMap));
+  });
+
+  // Reload the default workspace so `shots` rehydrates from localStorage and
+  // the previews render as images (not skeletons). switchWorkspace re-reads
+  // messages from storage too, so the seeded timeline is preserved.
+  await page.evaluate(async () => {
+    await (window as any).__pinchgrab_panel.switchWorkspace('default');
+  });
+
+  // Give the thumbnail <img> elements a beat to decode so .loaded is set and
+  // the skeleton underlay is gone before we screenshot.
+  await page.waitForFunction(() => {
+    const imgs = [...document.querySelectorAll('.msg.selector .preview img.shot')] as HTMLImageElement[];
+    return imgs.length >= 3 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+  }, undefined, { timeout: 10_000 });
+  await page.waitForTimeout(300);
+};
+
+const run = async (): Promise<void> => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const { server, base } = await startServer();
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const ctx = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      deviceScaleFactor: 1,
+    });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => console.error('[pageerror]', e.message));
+    await page.goto(base + '/');
+    await page.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
+
+    await seedState(page);
+
+    // Render auto-scrolls the timeline to the bottom; pull it back to the top
+    // so the page divider and the hero capture (#1, the strongest visual) lead
+    // the shot instead of opening mid-list.
+    await page.evaluate(() => {
+      const list = document.querySelector('[data-list]') as HTMLElement | null;
+      if (list) list.scrollTop = 0;
+    });
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const list = document.querySelector('[data-list]') as HTMLElement | null;
+      if (list) list.scrollTop = 0;
+    });
+
+    const mainPath = path.join(OUT_DIR, 'screenshot-1280x800.png');
+    await page.screenshot({ path: mainPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+    console.log('wrote', mainPath);
+
+    // Small promo tile: re-screenshot at 440×280 by scaling the same panel.
+    const promoPage = await ctx.newPage();
+    await promoPage.setViewportSize({ width: 440, height: 280 });
+    await promoPage.goto(base + '/');
+    await promoPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
+    await seedState(promoPage);
+    const promoPath = path.join(OUT_DIR, 'promo-440x280.png');
+    await promoPage.screenshot({ path: promoPath, clip: { x: 0, y: 0, width: 440, height: 280 } });
+    console.log('wrote', promoPath);
+
+    await ctx.close();
+  } finally {
+    await browser?.close();
+    server.close();
+  }
+};
+
+run().catch((err) => { console.error(err); process.exit(1); });
