@@ -1,93 +1,97 @@
 # PinchGrab
 
-Browser-side UI capture exports for review agents.
+A local Chrome/Edge extension that turns a UI element into structured context for a review agent. Hold `Alt` to outline elements, `Alt+Click` to capture, and the page, selectors, accessibility data, and a screenshot land in a JSONL bundle you can hand to an LLM.
 
 [![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml)
 
-> [!NOTE]
-> PinchGrab is a local-first browser extension. It captures selected UI elements, comments, screenshots, page context, and export bundles for agent review workflows.
+![Alt+Click on any element drops a JSONL capture into the side panel](docs/hero.gif)
 
-![Alt+Click on any element drops a JSONL capture into an in-page scratchpad](docs/hero.gif)
+> Personal tool, built and used by one developer. Loaded unpacked, not published to any store. No telemetry, no server, no external users. Captures stay on disk.
 
-## Quick Start
+## What it captures
 
-```powershell
+Each `Alt+Click` writes one JSONL row describing the clicked element:
+
+- **Selectors** the agent can replay against a live page: a short unique CSS path, an XPath, a `jsPath`, and the DOM breadcrumb. The CSS builder filters Tailwind and CSS-in-JS hash classes, then trims interior path segments while keeping the selector unique.
+- **Framework context** when present: React fiber, Vue vnode, Lit, Stencil, Svelte, and plain web components are sniffed for component name and source file.
+- **Accessibility signals**: computed role, accessible name, ARIA state, tab index, and editable/required/disabled flags.
+- **Page header**: URL, route, viewport, color scheme, reduced-motion, direction, zoom, and a few recent DOM mutations for repro context.
+- **Visuals**: matched CSS rules, the box model, computed styles, and an optional cropped screenshot via `chrome.tabs.captureVisibleTab`.
+
+You can type a comment beside any capture; it rides along in the same row as `feedback`.
+
+## Install
+
+```bash
 bun install
 bun run build
 ```
 
-Load the generated extension:
+Then load the unpacked build:
 
-1. Open `edge://extensions` or `chrome://extensions`.
-2. Enable Developer mode.
-3. Click **Load unpacked**.
-4. Select the repo's `extension/` folder.
-5. Pin PinchGrab, open a page, then hold `Alt` to inspect and `Alt+Click` to capture.
+1. Open `chrome://extensions` or `edge://extensions`.
+2. Turn on Developer mode.
+3. Click **Load unpacked** and pick the repo's `extension/` folder.
+4. Pin PinchGrab, open a page, hold `Alt` to outline, `Alt+Click` to capture.
 
-## What It Does
+`Alt+drag` rubber-bands a region and captures every element inside it. The side panel lists captures, holds comments, and drives exports.
 
-- Captures selector rows with URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML.
-- Lets you add feedback directly beside captured selectors.
-- Saves screenshots and full workspace exports under `Downloads/pinchgrab/<workspace>/...`.
-- Exports JSONL, DuckDB recipes, screenshot indexes, README guidance, and `.tar.zst` workspace bundles.
-- Includes replay/export utilities for Playwright, Puppeteer, plain-English recipes, visual diffs, network replay, and step annotations.
+## Export
 
-## Commands
+The side panel writes captures under `Downloads/pinchgrab/<workspace>/`. A workspace export is a `.tar.zst` archive (the tar encoder and zstd frame writer are pure TypeScript, see `src/tar.ts`) containing:
 
-```powershell
-bun run build
-bun run test
-bun run test:fast
-bun run devserver
-```
-
-Focused checks:
-
-```powershell
-bun run typecheck
-bun run lint
-bun run test:extension
-bun run test:exports
-bun run test:legacy
-```
-
-Legacy utility commands from the CLI/replay surface:
-
-```powershell
-bun run replay
-bun run replay:multi
-bun run export:playwright
-bun run export:puppeteer
-bun run export:english
-bun run visual-diff
-bun run network-capture
-bun run annotator
-```
-
-## Export Shape
-
-The extension emits newline-delimited JSON with a manifest row followed by page, selector, and feedback rows. Workspace archives add:
-
-- `README.md`
-- `repair-index.md`
-- `<workspace>.jsonl`
-- `screenshots.json`
-- `duckdb.sql`
-- `schema.json`
-- screenshot PNGs when available
-- bundled PinchGrab skill/design context
+- `<workspace>.jsonl`: one manifest row, then page, selector, and feedback rows
+- `README.md`: what the bundle is and how to read it
+- `repair-index.md`: a triage punch list for the agent to start from
+- `screenshots.json`: uid-keyed index of captures and pages
+- `schema.json`: JSON Schema (draft 2020-12) for every row type
+- `duckdb.sql`: copy-and-paste SQL recipes for querying the JSONL with DuckDB
+- screenshot PNGs when captured
 
 The older standalone capture schema lives at [docs/capture-schema.json](docs/capture-schema.json), with samples in [docs/capture-sample.jsonl](docs/capture-sample.jsonl).
 
-## Project Layout
+## Replay and recipe utilities
 
-- `src/` TypeScript extension source.
-- `extension/` generated unpacked browser extension.
-- `tests/` Playwright, export, extension, framework-tour, and legacy CLI tests.
-- `scripts/` build and repo automation.
-- `.agents/` dogfooded agent skills and design context.
-- `lib/` dotfiles-managed local orchestration libraries.
+A set of Node scripts work on a capture JSONL after the fact:
+
+```bash
+bun run replay            # resolve every capture against a live page (CSS, then XPath, then a11y)
+bun run replay:multi      # replay across multiple URLs
+bun run export:playwright  # emit a Playwright script from the captures
+bun run export:puppeteer   # emit a Puppeteer script
+bun run export:english     # emit a plain-English, step-by-step recipe
+bun run visual-diff        # diff two capture sets
+bun run network-capture    # capture/replay network rows
+bun run annotator          # annotate capture steps
+```
+
+`bin/pinchgrab replay <capture.jsonl> <url>` opens the URL in headless Chromium and locates every captured element through the CSS, XPath, then accessibility-name fallback chain. It exits 0 only when every entry resolves to exactly one element, and `--auth-state <storage.json>` loads a Playwright storage state so authenticated captures replay on logged-in pages. Entries rescued by a non-CSS strategy get logged to a healing ledger so you can see which selectors are drifting.
+
+## Develop
+
+```bash
+bun run build        # bundle src/*.ts into extension/*.js with Bun
+bun run watch        # rebuild on change
+bun run typecheck    # tsc --noEmit
+bun run lint         # xo
+bun run test         # full suite: typecheck, lint, Playwright specs, legacy export/replay tests
+bun run test:fast    # quicker subset
+bun run devserver    # static server for the test pages
+```
+
+CI runs typecheck, lint, the Playwright and legacy test suites, plus shellcheck, yamllint, actionlint, and a gitleaks scan.
+
+## Layout
+
+- `src/`: TypeScript extension source (content script, side panel, background) and the `.mjs` replay/export utilities.
+- `extension/`: the built unpacked extension you load into the browser.
+- `bin/`: the `pinchgrab` replay CLI.
+- `tests/`: Playwright specs and the legacy export/replay test suite, with JSONL fixtures.
+- `scripts/`: build and repo automation.
+- `docs/`: capture schema, sample JSONL, and the hero gif.
+
+`.agents/`, `lib/`, and parts of `scripts/bin/` are vendored from the author's dotfiles for local agent and Git tooling. They are not part of the extension and are not needed to build or run it.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
