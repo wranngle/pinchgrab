@@ -287,6 +287,60 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
     failures.push(`page-snapshot threw: ${(e as Error).message}`);
   }
 
+  // ─── Test 5: #18 on-demand injection → Alt+Click capture ───────────────
+  // Reproduce the toolbar-click activation end-to-end: the SW injects
+  // content-script.js into the host tab (what action.onClicked does), the
+  // content script must initialize, and a REAL Alt+Click must produce a
+  // capture that reaches the side panel. This is the flow the user reported
+  // broken after #18.
+  try {
+    const hostTabId = await sw.evaluate(async (hostBase) => {
+      const tabs = await chrome.tabs.query({});
+      const t = tabs.find((x) => typeof x.url === 'string' && x.url.startsWith(hostBase));
+      return t?.id ?? null;
+    }, base);
+    if (hostTabId == null) {
+      failures.push('#18 inject: could not find host tab id');
+    } else {
+      const injectErr = await sw.evaluate(async (tabId) => {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'], injectImmediately: true });
+          return null;
+        } catch (e) { return String(e); }
+      }, hostTabId);
+      if (injectErr) {
+        failures.push(`#18 inject: executeScript failed: ${injectErr}`);
+      } else {
+        await sleep(300);
+        // The content script runs in the ISOLATED world, so its window[KEY] is
+        // invisible to host.evaluate() (main world). Detect init via the overlay
+        // host element it appends to the page DOM instead.
+        const csReady = await host.evaluate(() => Boolean(document.getElementById('__pinchgrab_overlay')));
+        if (!csReady) {
+          failures.push('#18 inject: content script did not initialize (no #__pinchgrab_overlay after executeScript)');
+        } else {
+          await panel.evaluate(() => (window as any).__pinchgrab_panel.clear());
+          await host.bringToFront();
+          await host.keyboard.down('Alt');
+          await host.click('#cta');
+          await host.keyboard.up('Alt');
+          await sleep(600);
+          const caps = await panel.evaluate(() =>
+            (window as any).__pinchgrab_panel.getMessages()
+              .filter((m: any) => m.type === 'selector')
+              .map((m: any) => m.entry?.selector));
+          if (!caps.includes('#cta')) {
+            failures.push(`#18 Alt+Click: no #cta capture reached the panel (got ${JSON.stringify(caps)})`);
+          } else {
+            console.log(`extension 5 ok: #18 on-demand injection + Alt+Click capture (selectors=${JSON.stringify(caps)})`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    failures.push(`#18 inject/Alt threw: ${(e as Error).message}`);
+  }
+
   // Print collected console output regardless — visibility while debugging.
   if (collected.length) {
     console.log('--- console capture (last 50 lines) ---');

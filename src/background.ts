@@ -38,47 +38,23 @@ async function setEmojiIcon(): Promise<void> {
   } catch (e) { console.warn(LOG, 'setEmojiIcon', e); }
 }
 
-// Suppress the global Chrome downloads UI ("downloads bubble" / shelf) so
-// per-capture screenshot saves don't pop the panel on every alt-click.
-// The user's complaint: "selecting elements is downloading every screenshot
-// like showing my downloads pane open". Chrome offers two APIs depending on
-// version — we try both (each requires its own permission) and ignore
-// failures so the extension still works without the permissions.
-//
-// Tradeoff: this disables the shelf for ALL downloads while pinchgrab is
-// running. A future "settings → quiet downloads" toggle can make this
-// opt-out.
-const quietDownloadsUi = (): void => {
-  // Newer API (Chrome 96+ via downloads.ui permission).
-  try {
-    (chrome.downloads as any).setUiOptions?.({enabled: false}, () => {
-      if (chrome.runtime.lastError) console.log(LOG, 'setUiOptions:', chrome.runtime.lastError.message);
-    });
-  } catch (e) { console.log(LOG, 'setUiOptions threw', e); }
-  // Older API (still present through Chrome 113ish via downloads.shelf).
-  try { (chrome.downloads as any).setShelfEnabled?.(false); } catch { /* ignore */ }
-};
-
 chrome.runtime.onInstalled.addListener(async () => {
-  // openPanelOnActionClick:false so OUR action.onClicked handler runs instead —
-  // it opens the panel AND injects the capture script into the clicked tab via
-  // the activeTab grant from the click gesture (no <all_urls> needed). See #18.
-  try { await chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: false}); }
-  catch (e) { console.warn(LOG, 'setPanelBehavior', e); }
   try { chrome.contextMenus.create({id: 'pg-capture', title: 'PinchGrab — capture this element', contexts: ['all']}); }
   catch { /* may already exist */ }
-  quietDownloadsUi();
   void setEmojiIcon();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
-  quietDownloadsUi();
   void setEmojiIcon();
 });
 
-// Re-quiet on each cold start of the SW — the setting can be reset by the
-// user or other extensions, and SWs go idle aggressively.
-quietDownloadsUi();
+// Ensure the toolbar click fires OUR action.onClicked (not Chrome's panel
+// auto-open) on EVERY service-worker start — onInstalled alone is unreliable
+// across reloads, and a stale openPanelOnActionClick:true silently swallows the
+// click so the content script never injects (Alt+Click capture goes dead).
+// Idempotent and cheap. (#18)
+void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: false})
+  .catch((e) => console.warn(LOG, 'setPanelBehavior (startup)', e));
 
 // ─── Activation (#18): toolbar click attaches PinchGrab to THIS tab ─────────
 // PinchGrab no longer auto-injects into every page — the <all_urls>
@@ -89,16 +65,21 @@ quietDownloadsUi();
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.id) return;
   const tabId = tab.id;
-  // Both sidePanel.open() and executeScript() consume the click's user gesture,
-  // so fire them synchronously at the top of the handler before any await.
-  chrome.sidePanel.open({tabId}).catch((e) => console.warn(LOG, 'sidePanel.open', e));
-  if (tab.url && /^https?:/.test(tab.url)) {
+  console.log(LOG, 'action click → activate tab', tabId, tab.url ?? '(no url)');
+  // Inject the capture script FIRST, while the click's activeTab grant is
+  // freshest; attempt on http(s) pages (and when the URL is unknown), and skip
+  // restricted schemes where injection would only error.
+  if (!tab.url || /^https?:/.test(tab.url)) {
     chrome.scripting.executeScript({
       target: {tabId, allFrames: false},
       files: ['content-script.js'],
       injectImmediately: true,
-    }).catch((e) => console.warn(LOG, 'activate inject', e));
+    }).catch((e) => console.warn(LOG, 'activate inject FAILED', e));
+  } else {
+    console.warn(LOG, 'activate: cannot inject into', tab.url);
   }
+  // Then open the side panel (also a user-gesture call).
+  chrome.sidePanel.open({tabId}).catch((e) => console.warn(LOG, 'sidePanel.open', e));
   // Bind this tab to a workspace panel-side. The panel may have just opened and
   // not be listening yet, so replay a few times; the panel dedups by tabId.
   const meta = {__pg: true, kind: 'pg-tab-activated', tabId, url: tab.url ?? '', title: tab.title ?? ''};
