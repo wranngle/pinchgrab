@@ -1,0 +1,407 @@
+bytes	mime	path	public_github_assessment	chrome_publish_assessment
+3269	text/plain	.agents/AGENTS.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+5446	text/plain	.agents/DESIGN.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+1653	application/json	.agents/model-rankings.json	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+6325	text/plain	.agents/skills/auth-orchestrator/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+12873	text/plain	.agents/skills/bgagents/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+6503	text/plain	.agents/skills/browser-automation/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+4415	text/html	.agents/skills/career-ops/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+3762	text/plain	.agents/skills/composio-auth/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+3301	text/x-shellscript	.agents/skills/composio-auth/hook-prepend-pending.sh	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+31201	text/plain	.agents/skills/git-awesome/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+2861	text/plain	.agents/skills/markdown-merge/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+15404	text/plain	.agents/skills/pinchtab/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+3771	text/plain	.agents/skills/pinchtab/TRUST.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+226	text/plain	.agents/skills/pinchtab/agents/openai.yaml	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+6960	text/plain	.agents/skills/pinchtab/references/agent-optimization.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+17399	text/plain	.agents/skills/pinchtab/references/api.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+5858	text/plain	.agents/skills/pinchtab/references/commands.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+2148	text/plain	.agents/skills/pinchtab/references/env.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+8804	text/plain	.agents/skills/pinchtab/references/mcp.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+2863	text/plain	.agents/skills/pinchtab/references/profiles.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+5464	text/plain	.agents/skills/subagents/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+5874	text/plain	.agents/skills/transcript-search/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+9234	text/plain	.agents/skills/typescript/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+176645	text/plain	.agents/skills/ui/SKILL.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+30238	text/plain	.agents/wranngle-DESIGN.md	WARN:dogfooded agent instructions/design context; public-safe by scanners, but product-adjacent docs not extension runtime	NOT_CHROME_SURFACE:not included in store ZIP
+1	application/octet-stream	.dotfiles-readme-managed	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+309114	text/x-shellscript	.dotfiles.sh	WARN:large personal dotfiles/bootstrap script; no scanner leak, but high review burden for public repo	NOT_CHROME_SURFACE:not included in store ZIP
+259	text/plain	.editorconfig	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+381	text/plain	.gitattributes	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+49	text/plain	.github/CODEOWNERS	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+1319	text/plain	.github/ISSUE_TEMPLATE/bug_report.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+365	text/plain	.github/ISSUE_TEMPLATE/config.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+1066	text/plain	.github/ISSUE_TEMPLATE/feature_request.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+1047	text/plain	.github/ISSUE_TEMPLATE/research.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+668	text/plain	.github/PULL_REQUEST_TEMPLATE.md	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+953	text/plain	.github/dependabot.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+6372	text/plain	.github/workflows/automerge.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+4537	text/plain	.github/workflows/ci.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+1327	text/plain	.github/workflows/gitleaks.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+2898	text/plain	.github/workflows/issue-triage.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+1192	text/plain	.github/workflows/pr-link-check.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+6612	text/plain	.github/workflows/security.yml	OK:public repo automation/community config	NOT_CHROME_SURFACE:not included in store ZIP
+5551	text/plain	.gitignore	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+959	text/plain	.gitleaks.toml	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+0	inode/x-empty	.symphony/issues/done/.gitkeep	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+0	inode/x-empty	.symphony/issues/in_progress/.gitkeep	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+0	inode/x-empty	.symphony/issues/todo/.gitkeep	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+218	text/plain	.yamllint.yml	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+196	text/plain	CODE_OF_CONDUCT.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2302	text/plain	CONTRIBUTING.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+184005	text/plain	DESIGN.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1071	text/plain	LICENSE	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2711	text/plain	README.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1603	text/plain	SECURITY.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+702	text/plain	WORKFLOW.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3826	application/javascript	bin/pinchgrab	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2161	application/javascript	bin/replay-multi	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1111	text/x-shellscript	bin/symphony	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+120652	application/json	bun.lock	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+348	text/plain	demo/cassette.tape	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+0	inode/x-empty	docs/.gitkeep	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+22426	text/plain	docs/BROWSER-EXTENSION-DEPLOYMENT.md	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+4427	text/plain	docs/PRIVACY.md	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+77468	text/plain	docs/PUBLICATION_FILE_INVENTORY.tsv	AUDIT_ARTIFACT:generated by publication readiness audit	NOT_CHROME_SURFACE:not included in store ZIP
+10078	text/plain	docs/PUBLICATION_READINESS_AUDIT.md	AUDIT_ARTIFACT:generated by publication readiness audit	NOT_CHROME_SURFACE:not included in store ZIP
+14394	application/x-ndjson	docs/capture-sample.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+15104	application/json	docs/capture-schema.json	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+37083	image/gif	docs/hero.gif	OK:binary visual asset	NOT_CHROME_SURFACE:not included in store ZIP
+4884	text/plain	docs/universal-git-agent-spec.md	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+447	text/plain	extension/README.txt	WARN:tracked dev-only generated readme contains local WSL path; package script excludes from Chrome ZIP	EXCLUDED:dev-only; package strips it
+144419	application/javascript	extension/background.js	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+509625	application/javascript	extension/content-script.js	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+11643	image/png	extension/icons/icon128.png	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+833	image/png	extension/icons/icon16.png	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+2143	image/png	extension/icons/icon32.png	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+3728	image/png	extension/icons/icon48.png	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+846	application/json	extension/manifest.json	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+60741	text/plain	extension/sidepanel.css	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+21943	text/html	extension/sidepanel.html	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+760023	application/javascript	extension/sidepanel.js	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+1597	text/plain	extension/templates/DESIGN.template.md	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+176643	text/plain	extension/templates/PinchGrab.SKILL.template.md	OK:generated unpacked extension artifact; useful for load-unpacked repo installs	IN_ZIP:included in dist/pinchgrab-1.1.0.zip
+3775	application/javascript	lib/composio-orchestrator/README.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+15348	application/javascript	lib/composio-orchestrator/bin/composio-orch.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+926	application/javascript	lib/composio-orchestrator/daemon/gcLoop.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6623	application/javascript	lib/composio-orchestrator/daemon/webhookReceiver.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3462	application/javascript	lib/composio-orchestrator/daemon/workerTail.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+76795	application/json	lib/composio-orchestrator/package-lock.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+837	application/json	lib/composio-orchestrator/package.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3285	application/javascript	lib/composio-orchestrator/src/artifactPaths.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2990	application/javascript	lib/composio-orchestrator/src/atomicJsonFile.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3659	application/javascript	lib/composio-orchestrator/src/authConfigCache.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6340	application/javascript	lib/composio-orchestrator/src/authSchemeNegotiator.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1384	application/javascript	lib/composio-orchestrator/src/composioClient.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3807	application/javascript	lib/composio-orchestrator/src/credentialEnvLoader.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+418	application/javascript	lib/composio-orchestrator/src/disableTokenMasking.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6045	application/javascript	lib/composio-orchestrator/src/dynamicCascadeResearcher.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3264	application/javascript	lib/composio-orchestrator/src/dynamicMasking.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8217	application/javascript	lib/composio-orchestrator/src/elevenlabsMegatool.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+20093	application/javascript	lib/composio-orchestrator/src/ensureAuth.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4263	application/javascript	lib/composio-orchestrator/src/envFileMutator.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1137	application/javascript	lib/composio-orchestrator/src/errors.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4271	application/javascript	lib/composio-orchestrator/src/executionPathSelector.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4344	application/javascript	lib/composio-orchestrator/src/gatewayOps.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4962	application/javascript	lib/composio-orchestrator/src/gcStaleConnections.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3022	application/javascript	lib/composio-orchestrator/src/index.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2985	application/javascript	lib/composio-orchestrator/src/jsonlAppender.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6441	application/javascript	lib/composio-orchestrator/src/lintEnvVars.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2345	application/javascript	lib/composio-orchestrator/src/logging.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3680	application/javascript	lib/composio-orchestrator/src/mcpConfig.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3919	application/javascript	lib/composio-orchestrator/src/pendingAuthStore.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2303	application/javascript	lib/composio-orchestrator/src/pendingAuthSync.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1574	application/javascript	lib/composio-orchestrator/src/providerRegistry.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7026	application/javascript	lib/composio-orchestrator/src/reconcile.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1202	application/javascript	lib/composio-orchestrator/src/runWithToolkit.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1760	application/javascript	lib/composio-orchestrator/src/sessionFactory.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1176	application/javascript	lib/composio-orchestrator/src/statePaths.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3629	application/javascript	lib/composio-orchestrator/src/toolingCapabilityRegistry.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3320	application/javascript	lib/composio-orchestrator/src/triggerRegistrar.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10200	application/javascript	lib/composio-orchestrator/src/upstreamCredentialSmoke.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1156	application/javascript	lib/composio-orchestrator/src/validateSlug.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1752	application/javascript	lib/composio-orchestrator/src/webhookSignature.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+335	application/javascript	lib/composio-orchestrator/src/zodV3.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4228	application/javascript	lib/composio-orchestrator/test/artifactPaths.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2153	application/javascript	lib/composio-orchestrator/test/atomicJsonFile.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2698	application/javascript	lib/composio-orchestrator/test/authConfigCache.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4621	application/javascript	lib/composio-orchestrator/test/authSchemeNegotiator.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4116	application/javascript	lib/composio-orchestrator/test/credentialEnvLoader.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3689	application/javascript	lib/composio-orchestrator/test/dynamicCascadeResearcher.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2233	application/javascript	lib/composio-orchestrator/test/dynamicMasking.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+16044	application/javascript	lib/composio-orchestrator/test/ensureAuth.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3152	application/javascript	lib/composio-orchestrator/test/envFileMutator.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2129	application/javascript	lib/composio-orchestrator/test/executionPathSelector.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7684	application/javascript	lib/composio-orchestrator/test/gcStaleConnections.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3021	application/javascript	lib/composio-orchestrator/test/integration.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3671	application/javascript	lib/composio-orchestrator/test/pendingAuthStore.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+760	application/javascript	lib/composio-orchestrator/test/providerRegistry.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1383	application/javascript	lib/composio-orchestrator/test/toolingCapabilityRegistry.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4712	application/javascript	lib/composio-orchestrator/test/upstreamCredentialSmoke.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+854	application/javascript	lib/composio-orchestrator/test/validateSlug.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4170	application/javascript	lib/composio-orchestrator/test/webhookSignature.test.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+436	application/json	lib/composio-orchestrator/tsconfig.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+157	application/javascript	lib/composio-orchestrator/vitest.config.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+49310	application/json	lib/composio-orchestrator/worker/package-lock.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+319	application/json	lib/composio-orchestrator/worker/package.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10753	application/javascript	lib/composio-orchestrator/worker/src/index.ts	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+253	application/json	lib/composio-orchestrator/worker/tsconfig.json	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+140	text/plain	lib/composio-orchestrator/worker/wrangler.toml	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+77	text/plain	lib/symphony-elixir/.formatter.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11558	text/plain	lib/symphony-elixir/LICENSE-APACHE-2.0	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1691	text/plain	lib/symphony-elixir/NOTICE	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6826	text/plain	lib/symphony-elixir/README.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1149	text/plain	lib/symphony-elixir/config/config.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+649	text/plain	lib/symphony-elixir/config/dev.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2029	text/plain	lib/symphony-elixir/config/orchestration.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1059	text/plain	lib/symphony-elixir/config/prod.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+533	text/plain	lib/symphony-elixir/config/test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1607	text/plain	lib/symphony-elixir/docs/logging.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11409	text/plain	lib/symphony-elixir/docs/references/symphony-config-dual-track-audit.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2664	text/plain	lib/symphony-elixir/docs/references/symphony-followups.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3220	text/plain	lib/symphony-elixir/docs/references/symphony-github-issues-adapter.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10461	text/plain	lib/symphony-elixir/docs/references/symphony-orchestration.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11088	text/plain	lib/symphony-elixir/docs/references/symphony-orchestrator-function-audit.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2795	text/plain	lib/symphony-elixir/docs/references/symphony-otp-version-pin.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+31441	text/plain	lib/symphony-elixir/docs/references/symphony-upstream-drift.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9172	text/plain	lib/symphony-elixir/docs/token_accounting.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5779	text/plain	lib/symphony-elixir/lib/mix/tasks/local_shell_probe.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6606	text/plain	lib/symphony-elixir/lib/mix/tasks/pr_body_check.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1924	text/plain	lib/symphony-elixir/lib/mix/tasks/spec_compliance.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1896	text/plain	lib/symphony-elixir/lib/mix/tasks/specs.check.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+15367	text/x-ruby	lib/symphony-elixir/lib/mix/tasks/specs.layers.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1550	text/plain	lib/symphony-elixir/lib/mix/tasks/trace_smoke.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3592	text/plain	lib/symphony-elixir/lib/mix/tasks/workspace_before_remove.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1036	text/plain	lib/symphony-elixir/lib/symphony.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3193	text/plain	lib/symphony-elixir/lib/symphony/agent_runner.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11859	text/x-ruby	lib/symphony-elixir/lib/symphony/agent_runner/codex_app_server.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11702	text/x-ruby	lib/symphony-elixir/lib/symphony/agent_runner/local_shell.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5907	text/x-ruby	lib/symphony-elixir/lib/symphony/application.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+12482	text/x-ruby	lib/symphony-elixir/lib/symphony/cli.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+40590	text/x-ruby	lib/symphony-elixir/lib/symphony/codex/app_server.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+14332	text/plain	lib/symphony-elixir/lib/symphony/codex/dynamic_tool.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+18405	text/x-ruby	lib/symphony-elixir/lib/symphony/config.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+22514	text/plain	lib/symphony-elixir/lib/symphony/config/schema.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+645	text/plain	lib/symphony-elixir/lib/symphony/config/settings.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4318	text/x-ruby	lib/symphony-elixir/lib/symphony/env_loader.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3957	text/plain	lib/symphony-elixir/lib/symphony/http_server.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2163	text/plain	lib/symphony-elixir/lib/symphony/live_session.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8012	text/plain	lib/symphony-elixir/lib/symphony/log_file.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2270	text/plain	lib/symphony-elixir/lib/symphony/logging.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2426	text/x-ruby	lib/symphony-elixir/lib/symphony/logging/sink.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+74781	text/x-ruby	lib/symphony-elixir/lib/symphony/orchestrator.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5701	text/plain	lib/symphony-elixir/lib/symphony/path_safety.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7886	text/x-ruby	lib/symphony-elixir/lib/symphony/prompt_renderer.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+12430	text/x-ruby	lib/symphony-elixir/lib/symphony/providers/anthropic.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10766	text/x-ruby	lib/symphony-elixir/lib/symphony/retry_promoter.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3500	text/plain	lib/symphony-elixir/lib/symphony/retry_queue.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1870	text/plain	lib/symphony-elixir/lib/symphony/run_attempt.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9524	text/x-ruby	lib/symphony-elixir/lib/symphony/spec_compliance.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6741	text/plain	lib/symphony-elixir/lib/symphony/specs_check.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3479	text/plain	lib/symphony-elixir/lib/symphony/ssh.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+65368	text/plain	lib/symphony-elixir/lib/symphony/status_dashboard.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11871	text/plain	lib/symphony-elixir/lib/symphony/tracing.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5814	text/x-ruby	lib/symphony-elixir/lib/symphony/tracker.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7087	text/x-ruby	lib/symphony-elixir/lib/symphony/tracker/github_issues.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3773	text/plain	lib/symphony-elixir/lib/symphony/tracker/linear.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+16238	text/x-ruby	lib/symphony-elixir/lib/symphony/tracker/linear/client.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3084	text/plain	lib/symphony-elixir/lib/symphony/tracker/linear/issue.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2098	text/x-ruby	lib/symphony-elixir/lib/symphony/tracker/linear/memory.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8744	text/x-ruby	lib/symphony-elixir/lib/symphony/tracker/local_markdown.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2549	text/plain	lib/symphony-elixir/lib/symphony/tracker/memory.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+523	text/plain	lib/symphony-elixir/lib/symphony/tracker/noop.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1716	text/html	lib/symphony-elixir/lib/symphony/web/components/layouts.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2541	text/plain	lib/symphony-elixir/lib/symphony/web/controllers/observability_api_controller.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1172	text/plain	lib/symphony-elixir/lib/symphony/web/controllers/static_asset_controller.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1087	text/plain	lib/symphony-elixir/lib/symphony/web/endpoint.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+220	text/plain	lib/symphony-elixir/lib/symphony/web/error_html.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+302	text/plain	lib/symphony-elixir/lib/symphony/web/error_json.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+13817	text/plain	lib/symphony-elixir/lib/symphony/web/live/dashboard_live.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1335	text/plain	lib/symphony-elixir/lib/symphony/web/observability_pubsub.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7006	text/plain	lib/symphony-elixir/lib/symphony/web/presenter.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1951	text/plain	lib/symphony-elixir/lib/symphony/web/router.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1770	text/plain	lib/symphony-elixir/lib/symphony/web/static_assets.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3094	text/plain	lib/symphony-elixir/lib/symphony/workflow.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3145	text/plain	lib/symphony-elixir/lib/symphony/workflow_loader.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9814	text/x-ruby	lib/symphony-elixir/lib/symphony/workflow_store.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5599	text/plain	lib/symphony-elixir/lib/symphony/workflow_watcher.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+12169	text/x-ruby	lib/symphony-elixir/lib/symphony/workspace_manager.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3509	text/plain	lib/symphony-elixir/mix.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+12422	text/plain	lib/symphony-elixir/mix.lock	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+15728	text/plain	lib/symphony-elixir/priv/static/dashboard.css	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2379	text/plain	lib/symphony-elixir/scripts/boot_with_file_sink.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1251	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/backoff_queue.evidence.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1969	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/backoff_queue.snapshot.txt	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+940	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/credits_unlimited.evidence.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1410	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/credits_unlimited.snapshot.txt	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+758	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/idle.evidence.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1085	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/idle.snapshot.txt	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+796	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/idle_with_dashboard_url.evidence.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1145	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/idle_with_dashboard_url.snapshot.txt	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1036	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/super_busy.evidence.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1631	text/plain	lib/symphony-elixir/test/fixtures/status_dashboard_snapshots/super_busy.snapshot.txt	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7854	text/plain	lib/symphony-elixir/test/mix/tasks/pr_body_check_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3003	text/plain	lib/symphony-elixir/test/mix/tasks/specs_check_task_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3411	text/plain	lib/symphony-elixir/test/mix/tasks/specs_layers_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9716	text/plain	lib/symphony-elixir/test/mix/tasks/workspace_before_remove_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2380	text/plain	lib/symphony-elixir/test/support/snapshot_support.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2313	text/plain	lib/symphony-elixir/test/support/stub_tracker.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11798	text/plain	lib/symphony-elixir/test/support/test_support.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2563	text/plain	lib/symphony-elixir/test/support/web_case.ex	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4480	text/plain	lib/symphony-elixir/test/symphony/PARKED_TESTS.md	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+7440	text/plain	lib/symphony-elixir/test/symphony/agent_runner/codex_app_server_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5468	text/plain	lib/symphony-elixir/test/symphony/agent_runner/local_shell_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6448	text/plain	lib/symphony-elixir/test/symphony/agent_runner/local_shell_usage_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+11142	text/plain	lib/symphony-elixir/test/symphony/cli_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+20319	text/plain	lib/symphony-elixir/test/symphony/codex/app_server_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9024	text/plain	lib/symphony-elixir/test/symphony/codex/dynamic_tool_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10311	text/plain	lib/symphony-elixir/test/symphony/codex/symphony_state_dynamic_tool_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2470	text/plain	lib/symphony-elixir/test/symphony/config/state_transition_schema_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10834	text/plain	lib/symphony-elixir/test/symphony/config_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+61712	text/plain	lib/symphony-elixir/test/symphony/core_test.exs.parked_upstream_only_dispatch_helpers	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2492	text/plain	lib/symphony-elixir/test/symphony/env_loader_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+27391	text/plain	lib/symphony-elixir/test/symphony/extensions_test.exs.parked_intentional_adapter_shape	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1697	text/plain	lib/symphony-elixir/test/symphony/http_server_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+26454	text/plain	lib/symphony-elixir/test/symphony/live_e2e_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+820	text/plain	lib/symphony-elixir/test/symphony/live_session_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3819	text/plain	lib/symphony-elixir/test/symphony/log_file_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2791	text/plain	lib/symphony-elixir/test/symphony/logging_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1046	text/plain	lib/symphony-elixir/test/symphony/observability_pubsub_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1990	text/plain	lib/symphony-elixir/test/symphony/orchestrator/adapter_update_state_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+32488	text/plain	lib/symphony-elixir/test/symphony/orchestrator_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3470	text/plain	lib/symphony-elixir/test/symphony/path_safety_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5200	text/plain	lib/symphony-elixir/test/symphony/prompt_renderer_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+10297	text/plain	lib/symphony-elixir/test/symphony/providers/anthropic_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5725	text/plain	lib/symphony-elixir/test/symphony/retry_promoter_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2997	text/plain	lib/symphony-elixir/test/symphony/retry_queue_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+869	text/plain	lib/symphony-elixir/test/symphony/run_attempt_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2565	text/plain	lib/symphony-elixir/test/symphony/spec_compliance_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2172	text/plain	lib/symphony-elixir/test/symphony/specs_check_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6557	text/plain	lib/symphony-elixir/test/symphony/ssh_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8778	text/plain	lib/symphony-elixir/test/symphony/status_dashboard_snapshot_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6024	text/plain	lib/symphony-elixir/test/symphony/status_dashboard_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3928	text/plain	lib/symphony-elixir/test/symphony/tracing_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+3287	text/plain	lib/symphony-elixir/test/symphony/tracker/github_issues_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+19076	text/plain	lib/symphony-elixir/test/symphony/tracker/linear_client_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5662	text/plain	lib/symphony-elixir/test/symphony/tracker/linear_issue_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8540	text/plain	lib/symphony-elixir/test/symphony/tracker/linear_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4325	text/plain	lib/symphony-elixir/test/symphony/tracker/local_markdown_state_transition_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4656	text/plain	lib/symphony-elixir/test/symphony/tracker/local_markdown_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5943	text/plain	lib/symphony-elixir/test/symphony/web/dashboard_live_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+9090	text/plain	lib/symphony-elixir/test/symphony/web/observability_api_controller_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+5965	text/plain	lib/symphony-elixir/test/symphony/web/presenter_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+2506	text/plain	lib/symphony-elixir/test/symphony/workflow_loader_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+4377	text/plain	lib/symphony-elixir/test/symphony/workflow_store_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+8288	text/plain	lib/symphony-elixir/test/symphony/workflow_watcher_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+47126	text/plain	lib/symphony-elixir/test/symphony/workspace_and_config_test.exs.parked_upstream_only_workspace_helpers	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+6433	text/plain	lib/symphony-elixir/test/symphony/workspace_manager_test.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+1606	text/plain	lib/symphony-elixir/test/test_helper.exs	WARN:vendored/local orchestration library; public-safe by scanners, but unrelated to extension product surface	NOT_CHROME_SURFACE:not included in store ZIP
+0	inode/x-empty	old/.gitkeep	OK:placeholder only	NOT_CHROME_SURFACE:not included in store ZIP
+9936	application/json	package.json	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+3133	text/x-shellscript	scripts/bin/claude-enforce-agent-teamname.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2846	text/x-shellscript	scripts/bin/claude-statusline.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2909	text/x-shellscript	scripts/bin/composio-gc-daemon.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1280	text/x-shellscript	scripts/bin/composio-orch	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1649	text/x-shellscript	scripts/bin/composio-orch-smoke.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6652	text/x-shellscript	scripts/bin/composio-webhook-tunnel.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2523	text/x-shellscript	scripts/bin/dotfiles-skills-sync	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4407	text/plain	scripts/bin/edge-cdp-launch.ps1	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1973	text/x-shellscript	scripts/bin/edge-cdp-wrapper.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1283	application/javascript	scripts/bin/edge-cdp-wsl-proxy.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+8250	text/x-shellscript	scripts/bin/file-creation-gate.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+39935	text/x-shellscript	scripts/bin/git-awesome	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2306	text/x-shellscript	scripts/bin/llm-self-test.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6081	text/x-shellscript	scripts/bin/llm.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2960	text/x-shellscript	scripts/bin/openspec-from-issue	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5215	text/x-shellscript	scripts/bin/openspec-init	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+9355	text/x-shellscript	scripts/bin/pinchtab-edge-main.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3024	text/x-shellscript	scripts/bin/public-artifact-audit.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+17321	text/x-shellscript	scripts/bin/symphony-agent.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3573	text/x-shellscript	scripts/bin/symphony-bgagents-prime.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4025	text/x-shellscript	scripts/bin/symphony-browser.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+12366	text/x-shellscript	scripts/bin/symphony-daemon.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+311	application/x-wine-extension-ini	scripts/bin/symphony-daemon.systemd.template	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6023	text/x-shellscript	scripts/bin/symphony-doc-gardener.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+282	application/x-wine-extension-ini	scripts/bin/symphony-doc-gardener.systemd.template	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+516	application/x-wine-extension-ini	scripts/bin/symphony-doc-gardener.timer.template	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3703	text/x-shellscript	scripts/bin/symphony-observability-down.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+12239	text/x-shellscript	scripts/bin/symphony-observability-up.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+17069	text/x-shellscript	scripts/bin/symphony-orch	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2658	text/x-shellscript	scripts/bin/symphony-pending-hook.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+12870	text/x-shellscript	scripts/bin/transcript-search	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+810	application/javascript	scripts/build-bookmarklet.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7680	application/javascript	scripts/build-extension.ts	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+11222	application/javascript	scripts/capture-store-shots.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2445	application/javascript	scripts/extract-export.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2481	text/x-shellscript	scripts/hero.sh	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5388	text/html	scripts/install-selector-capture-bookmarklet.ps1	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2171	text/plain	scripts/install-selector-capture-extension.ps1	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6261	application/javascript	scripts/package-extension.ts	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+2490	application/javascript	scripts/run-parallel.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1982	application/javascript	scripts/static-server.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5755	application/javascript	src/annotator.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+37951	application/javascript	src/background.ts	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+70790	application/javascript	src/content-script.ts	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+98716	application/javascript	src/dom.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6498	application/javascript	src/export-bundle-docs.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+558	application/javascript	src/export-capture.d.mts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+9894	application/javascript	src/export-capture.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7784	application/javascript	src/export-english.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4486	application/javascript	src/export-pages.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7045	application/javascript	src/export-playwright.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7344	application/javascript	src/export-puppeteer.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3182	application/javascript	src/export-save.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4411	application/javascript	src/healing.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+11643	image/png	src/icons/icon128.png	OK:binary visual asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+833	image/png	src/icons/icon16.png	OK:binary visual asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+2143	image/png	src/icons/icon32.png	OK:binary visual asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+3728	image/png	src/icons/icon48.png	OK:binary visual asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+7529	application/javascript	src/lucide.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+846	application/json	src/manifest.json	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+4586	application/javascript	src/network-capture.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4490	application/javascript	src/replay-multi.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5712	application/javascript	src/replay.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+60741	text/plain	src/sidepanel.css	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+21943	text/html	src/sidepanel.html	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+231853	application/javascript	src/sidepanel.ts	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+9703	application/javascript	src/tar.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1597	text/plain	src/templates/DESIGN.template.md	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+176643	text/plain	src/templates/PinchGrab.SKILL.template.md	OK:publishable project file	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+27875	text/plain	src/types.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6554	application/javascript	src/visual-diff.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+34485	image/png	store-assets/promo-440x280.png	OK:store listing image asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+249379	image/png	store-assets/screenshot-1280x800.png	OK:store listing image asset	SOURCE_OR_LISTING:feeds Chrome build/listing but not directly uploaded unless under extension/
+1137	application/javascript	tests/advanced.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7656	application/javascript	tests/annotator.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+42857	application/javascript	tests/chat.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4630	application/javascript	tests/cross-browser.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2015	application/javascript	tests/export-bundle-docs.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5305	application/javascript	tests/export-capture.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5379	application/javascript	tests/export-english.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4034	application/javascript	tests/export-pages.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5908	application/javascript	tests/export-puppeteer.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2953	application/javascript	tests/export-save.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+5691	application/javascript	tests/export.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+31062	application/javascript	tests/exports.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+14718	application/javascript	tests/extension.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+860	application/x-ndjson	tests/fixtures/capture.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+529	application/x-ndjson	tests/fixtures/cross-browser-capture.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+689	application/x-ndjson	tests/fixtures/dom-baseline.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+696	application/x-ndjson	tests/fixtures/dom-current.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2272	application/x-ndjson	tests/fixtures/export-capture.jsonl	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1300	application/json	tests/fixtures/framework-apps.json	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+8345	application/javascript	tests/framework-tour.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+19477	text/plain	tests/git-awesome.bats	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4759	application/javascript	tests/harness/page-tour.js	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+18984	application/javascript	tests/harness/pinchgrab-driver.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7278	application/javascript	tests/healing.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+7151	application/javascript	tests/network-replay.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+1352	application/javascript	tests/react.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+125157	application/javascript	tests/regression.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+8339	application/javascript	tests/replay-auth.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+4294	application/javascript	tests/replay.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+2499	application/javascript	tests/schema.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+3100	application/javascript	tests/smoke.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+11328	application/javascript	tests/snr-audit.spec.ts	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+6126	application/javascript	tests/visual-diff.test.mjs	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP
+777	application/json	tsconfig.json	OK:publishable project file	NOT_CHROME_SURFACE:not included in store ZIP

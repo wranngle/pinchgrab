@@ -25,7 +25,7 @@ const srcManifest = resolve(root, 'src', 'manifest.json');
 const distDir = resolve(root, 'dist');
 
 // Files/globs to strip from the staged copy before zipping.
-const STRIP_EXACT = ['README.txt'];
+const STRIP_EXACT = new Set(['README.txt']);
 const STRIP_TEMPLATE_PREFIX = 'local.'; // templates/local.*
 const STRIP_SUFFIX = ['.map'];
 
@@ -67,7 +67,7 @@ const excluded: string[] = [];
 const shouldStrip = (relPath: string): boolean => {
   const parts = relPath.split('/');
   const name = parts[parts.length - 1] ?? '';
-  if (STRIP_EXACT.includes(relPath)) return true;
+  if (STRIP_EXACT.has(relPath)) return true;
   if (STRIP_SUFFIX.some(s => name.endsWith(s))) return true;
   // templates/local.* — per-user overrides
   if (parts[0] === 'templates' && name.startsWith(STRIP_TEMPLATE_PREFIX)) return true;

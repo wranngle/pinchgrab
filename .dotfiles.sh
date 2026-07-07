@@ -866,7 +866,7 @@ performs design / triage work. They reference each other on purpose:
 
 - **UI skill (mechanic):** `~/.agents/skills/ui/SKILL.md` — how to do
   design work, how to triage inbound feedback (PinchGrab JSONL,
-  Stagewise, screenshots, audit reports), the 9-category flaw taxonomy,
+  screenshots, audit reports), the 9-category flaw taxonomy,
   and the fix-pattern library. The skill defers visual identity to this
   file; this file defers process to the skill. (`~/.dotfiles/.agents/...`
   is the user's personal config source; runtime deployment is `~/.agents/`.)

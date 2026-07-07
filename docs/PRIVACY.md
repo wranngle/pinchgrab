@@ -72,8 +72,12 @@ show a star count in the UI and can be safely blocked.
 | `activeTab` / `tabs` | Acts on the tab you invoked PinchGrab on and targets screenshots correctly. |
 | `scripting` | Injects the outline/capture logic into the page when you use it. |
 | `contextMenus` | Adds PinchGrab's right-click entry points. |
-| `downloads` (and `downloads.ui` / `downloads.shelf`) | Saves your exports and screenshots to your Downloads folder. |
-| `host_permissions: <all_urls>` | PinchGrab is a "capture an element on any page" tool, so it needs to be able to run on whatever page you choose to capture. It only acts when you invoke it. |
+| `downloads` | Saves your exports and screenshots to your Downloads folder. |
+
+PinchGrab does **not** request persistent `host_permissions` such as
+`<all_urls>`. Instead, when you click the toolbar button on a tab, the browser's
+`activeTab` grant lets PinchGrab inject its capture script into that tab for
+that user-initiated session.
 
 ## How to delete your data
 

@@ -117,8 +117,9 @@ Official: <https://developer.chrome.com/docs/webstore/review-process>
   under an hour**; most are reviewed within a **few days**, and ~90% within
   **3 days**. Broad permissions and complex code push you toward **manual review
   and the slower end (up to a few weeks)**.
-- PinchGrab uses `<all_urls>` host access + `scripting` + `downloads`, so expect
-  it to land in the **manual / slower** bucket. Plan for days, not minutes.
+- PinchGrab uses `scripting`, `tabs`, and `downloads`, and handles website
+  content/screenshots when the user activates it, so plan for manual review even
+  though the current manifest avoids persistent `<all_urls>` host access.
 - If you're past **three weeks** with no decision, contact developer support.
 
 ### 2.7 What commonly causes rejection
@@ -179,40 +180,41 @@ is a build copy). Current manifest:
   "description": "Alt+Click DOM elements → structured selector + plain-text comments → JSONL hand-off for LLMs.",
   "version": "1.1.0",
   "homepage_url": "https://github.com/wranngle/pinchgrab",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": ["sidePanel","storage","activeTab","tabs","scripting",
-                  "contextMenus","downloads","downloads.ui","downloads.shelf"],
-  "host_permissions": ["<all_urls>"],
+                  "contextMenus","downloads"],
   "background": { "service_worker": "background.js" },
   "side_panel": { "default_path": "sidepanel.html" },
-  "action": { "default_title": "PinchGrab — open side panel" },
-  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content-script.js"],
-                        "run_at": "document_idle", "all_frames": false }]
+  "action": {
+    "default_title": "PinchGrab — open side panel",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
 }
 ```
 
-### 4.1 Blockers — you cannot submit without these
+### 4.1 Remaining blockers before submission
 
-- **[BLOCKER] No icons.** There is no `icons` key, no `action.default_icon`, and
-  no PNG/SVG files anywhere in `src/`. CWS *and* Edge require an icon, and the
-  store **requires a 128×128 store icon**. Add to the manifest:
-  ```jsonc
-  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png",
-             "48": "icons/icon48.png", "128": "icons/icon128.png" },
-  "action": { "default_title": "PinchGrab — open side panel",
-              "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png",
-                                "48": "icons/icon48.png", "128": "icons/icon128.png" } }
-  ```
-  Create the PNGs (a "pinch/grab" mark on transparent bg), drop them in
-  `src/icons/`, and add an `icons/` copy step to `scripts/build-extension.ts`
-  (the build currently passes through only `manifest.json`, `sidepanel.html`,
-  `sidepanel.css` — see `PASSTHROUGH` in that file; icons must be added there or
-  they won't reach `extension/`).
-- **[BLOCKER] No privacy policy.** No `PRIVACY.md` / privacy URL exists in the
-  repo. You must publish one (e.g. `docs/PRIVACY.md` rendered on GitHub Pages, or
-  a page on your homepage) and paste its URL into both stores. See §4b for what
-  it must honestly say.
-- **[BLOCKER] Store listing assets missing.** No screenshots, no promo tile.
-  Capture at least one **1280×800** screenshot of the side panel in action.
+- **[BLOCKER] Public privacy-policy URL.** `docs/PRIVACY.md` exists and matches
+  the current local-only data model, but the store needs a live URL. Publish it
+  through GitHub Pages or your site and paste that public URL into Chrome and
+  Edge.
+- **[BLOCKER] Store developer account / listing form.** The package and assets
+  exist locally, but no Chrome Web Store item is created from this repo. Create
+  the listing, upload the ZIP, and complete the privacy/distribution tabs.
+- **[RECHECK] Store asset quality.** Required image dimensions are present:
+  `src/icons/icon128.png`, `store-assets/screenshot-1280x800.png`, and
+  `store-assets/promo-440x280.png`. Review them visually in the dashboard before
+  submission.
 
 ### 4.2 Permission hardening — justify or trim each one
 
@@ -228,10 +230,10 @@ review:
 | `scripting` | Keep | Injects the capture/outline logic on demand. |
 | `contextMenus` | Keep | Right-click entry points. |
 | `downloads` | Keep | Exports JSONL + saves screenshots to `Downloads/.pinchgrab/`. Justify as "user-initiated export of their captured data." |
-| `downloads.ui` | **Trim if possible** | Used to suppress the download shelf/UI. Niche; reviewers scrutinize `downloads.*` sub-permissions. Drop if the export still works without it. |
-| `downloads.shelf` | **Trim if possible** | Same — controls the download shelf. Remove unless strictly required; fewer permissions = faster review. |
-| `host_permissions: <all_urls>` | **Justify hard** | This is the biggest review-time/rejection risk. PinchGrab is a "capture elements on any page" tool, so broad host access is defensible — but you must state that explicitly and consider whether `activeTab` + on-demand `scripting` injection could replace the static `content_scripts` `<all_urls>` match to reduce the always-on footprint. |
-| `content_scripts` on `<all_urls>` | **Review** | A content script auto-injected into *every* page is a stronger signal than activeTab. If the outline-on-Alt behavior can be injected on demand via `scripting` when the user activates PinchGrab, you reduce the permission surface and the privacy disclosure scope. |
+
+Already removed: `downloads.ui`, `downloads.shelf`, persistent
+`host_permissions`, and always-on `content_scripts`. Capture is now attached to
+the active tab on toolbar click via `activeTab` + `scripting`.
 
 ### 4.3 Listing / metadata hardening
 
@@ -283,8 +285,9 @@ wrong (or vague) is a top rejection cause.
 What the code actually does (grounded in `src/background.ts` and
 `src/content-script.ts`):
 
-- **Reads DOM** of pages the user interacts with (selectors, element structure,
-  text) — the core capture feature, running under `<all_urls>`.
+- **Reads DOM** of pages the user explicitly activates PinchGrab on (selectors,
+  element structure, text) — the core capture feature, injected on demand via
+  `activeTab` + `scripting`.
 - **Captures screenshots** via `chrome.tabs.captureVisibleTab` (visible-tab and
   full-page scroll-and-stitch). See `src/background.ts` (multiple
   `captureVisibleTab` call sites and the page-shot stitch loop).
@@ -320,8 +323,9 @@ Optional, and more work than Edge. Key differences to know before you commit:
 - **API gaps that affect PinchGrab specifically:**
   - `sidePanel` is a Chrome API; Firefox uses **`sidebar_action`** instead — a
     different manifest key and API. The side panel would need a port.
-  - `downloads.ui` / `downloads.shelf` are **Chrome-only** sub-permissions; drop
-    them for Firefox.
+  - `downloads.ui` / `downloads.shelf` are **Chrome-only** sub-permissions; they
+    are not in the current Chrome manifest and should stay out of any Firefox
+    variant.
 - **AMO** is free to publish (<https://addons.mozilla.org>) and reviews can
   include source-code review for obfuscated/minified bundles — you'd likely
   submit the unminified source alongside.
@@ -369,18 +373,15 @@ everything outside `extension/` (no `node_modules`, no `src/`, no `.git`).
 
 A realistic ordering with rough timelines:
 
-1. **Create the missing assets (≈ half a day).**
-   - Design `icon16/32/48/128.png` → `src/icons/`, wire them into the manifest
-     (`icons` + `action.default_icon`) and into `scripts/build-extension.ts`
-     passthrough.
-   - Capture ≥1 **1280×800** screenshot of the side panel mid-capture; ideally a
-     440×280 small promo tile too.
-2. **Write & host the privacy policy (≈ 1 hour).**
-   - Add `docs/PRIVACY.md` (local-only, no-server framing from §4b), publish via
-     GitHub Pages or your site, note the public URL.
-3. **Harden the manifest (≈ 1–2 hours).**
-   - Trim `downloads.ui` / `downloads.shelf` if export still works without them.
-   - Decide on `<all_urls>` content-script vs. on-demand `scripting` injection.
+1. **Review the existing assets (≈ 30 min).**
+   - Confirm `src/icons/icon16/32/48/128.png`,
+     `store-assets/screenshot-1280x800.png`, and
+     `store-assets/promo-440x280.png` look good in the dashboard.
+2. **Host the existing privacy policy (≈ 1 hour).**
+   - Publish `docs/PRIVACY.md` via GitHub Pages or your site, note the public URL.
+3. **Review the hardened manifest (≈ 30 min).**
+   - Confirm `src/manifest.json` still has no persistent `host_permissions`, no
+     always-on `content_scripts`, and no `downloads.ui` / `downloads.shelf`.
    - Pre-write a one-line justification for every remaining permission.
 4. **Register the Chrome dev account & pay $5 (≈ 15 min + possible verification
    delay of up to ~1 day).** <https://chrome.google.com/webstore/devconsole>
@@ -392,8 +393,9 @@ A realistic ordering with rough timelines:
      permission justifications, data disclosures, 3 Limited-Use certifications,
      privacy-policy URL) → submit.
 7. **Wait for review (hours → up to a few weeks; expect days for PinchGrab given
-   `<all_urls>`).** Watch email/dashboard for the decision; if rejected, the
-   notice names the policy — fix and resubmit (most resubmissions succeed).
+   page-content capture + screenshots).** Watch email/dashboard for the
+   decision; if rejected, the notice names the policy — fix and resubmit (most
+   resubmissions succeed).
 8. **Mirror to Edge Add-ons (≈ 30 min + up to 7 business days review).** Reuse
    the same ZIP, assets, and privacy URL in Partner Center.
 9. **(Later, optional) Port to Firefox/AMO** per §5.
@@ -411,9 +413,9 @@ version bump (remember to increment `version` every upload).
   the dashboard at submission; the policy text is cited above but Google adjusts
   the dashboard copy periodically. Confirm against the live form.
 - Whether Google routes PinchGrab to **manual review** is determined at
-  submission by its permission set; the `<all_urls>` + `scripting` + `downloads`
-  combination makes manual review **likely**, but the exact track isn't
-  guaranteed.
+  submission by its permission set and data disclosures; `scripting`, `tabs`,
+  `downloads`, screenshots, and website-content capture make manual review
+  plausible, but the exact track isn't guaranteed.
 - Edge's **expedited review** eligibility is automatic and not something you can
   request; the up-to-7-business-days figure is the documented standard.
 
