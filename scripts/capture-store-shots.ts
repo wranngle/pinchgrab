@@ -231,12 +231,33 @@ const run = async (): Promise<void> => {
     await page.screenshot({ path: mainPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
     console.log('wrote', mainPath);
 
-    // Small promo tile: re-screenshot at 440×280 by scaling the same panel.
+    // Small promo tile (440×280): a BRAND tile, not a screenshot — CWS image
+    // guidelines: "Don't just use a screenshot; your images should primarily
+    // communicate the brand", "Avoid text", "Assume the image will be on a
+    // light gray background", "Use saturated colors", "Fill the entire
+    // region". Mark + wordmark only, saturated dark gradient, defined edges.
     const promoPage = await ctx.newPage();
     await promoPage.setViewportSize({ width: 440, height: 280 });
-    await promoPage.goto(base + '/');
-    await promoPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
-    await seedState(promoPage);
+    await promoPage.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+      * { margin: 0; box-sizing: border-box; }
+      body {
+        width: 440px; height: 280px; overflow: hidden;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+        font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+        background:
+          radial-gradient(360px 240px at 50% -20%, rgba(255,95,0,.30), transparent 62%),
+          radial-gradient(300px 200px at 50% 120%, rgba(239,75,0,.22), transparent 60%),
+          linear-gradient(160deg, #1a1923 0%, #0e0d14 100%);
+        border: 2px solid rgba(255,95,0,.65);
+      }
+      .mark { font-size: 108px; line-height: 1; filter: drop-shadow(0 6px 22px rgba(255,95,0,.35)); }
+      h1 { font-size: 44px; font-weight: 800; letter-spacing: -1px; color: #fcfaf5; }
+      h1 .grab { color: #ff5f00; }
+    </style></head><body>
+      <div class="mark">🤏</div>
+      <h1>Pinch<span class="grab">Grab</span></h1>
+    </body></html>`);
+    await promoPage.waitForTimeout(300);
     const promoPath = path.join(OUT_DIR, 'promo-440x280.png');
     await promoPage.screenshot({ path: promoPath, clip: { x: 0, y: 0, width: 440, height: 280 } });
     console.log('wrote', promoPath);
