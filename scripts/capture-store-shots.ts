@@ -241,6 +241,70 @@ const run = async (): Promise<void> => {
     await promoPage.screenshot({ path: promoPath, clip: { x: 0, y: 0, width: 440, height: 280 } });
     console.log('wrote', promoPath);
 
+    // Marquee tile (1400×560): a brand banner, not a raw UI shot — mark +
+    // name + tagline on the left, the real panel screenshot framed on the
+    // right. Colors come from the side panel's own tokens (sidepanel.css).
+    const shotB64 = fs.readFileSync(mainPath).toString('base64');
+    const marqueePage = await ctx.newPage();
+    await marqueePage.setViewportSize({ width: 1400, height: 560 });
+    await marqueePage.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+      * { margin: 0; box-sizing: border-box; }
+      body {
+        width: 1400px; height: 560px; overflow: hidden; display: flex;
+        font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color: #fcfaf5;
+        background:
+          radial-gradient(900px 500px at 88% -10%, rgba(255,95,0,.16), transparent 60%),
+          radial-gradient(700px 420px at -8% 110%, rgba(255,95,0,.10), transparent 55%),
+          linear-gradient(135deg, #0e0d14 0%, #15141d 55%, #1a1923 100%);
+      }
+      .left { flex: 0 0 620px; padding: 72px 24px 72px 72px; display: flex; flex-direction: column; justify-content: center; }
+      .mark { font-size: 76px; line-height: 1; margin-bottom: 18px; }
+      h1 { font-size: 64px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+      h1 .grab { color: #ff5f00; }
+      .tag { font-size: 26px; line-height: 1.35; color: #cbc7d3; margin-bottom: 26px; max-width: 480px; }
+      .pills { display: flex; gap: 10px; flex-wrap: wrap; }
+      .pill {
+        font: 600 15px/1 monospace; color: #fcfaf5; padding: 9px 14px;
+        border: 1px solid rgba(255,95,0,.55); border-radius: 999px;
+        background: rgba(255,95,0,.12);
+      }
+      .right { flex: 1; position: relative; }
+      .frame {
+        position: absolute; top: 54px; left: 10px; width: 760px;
+        border-radius: 12px; overflow: hidden;
+        border: 1px solid rgba(252,250,245,.14);
+        box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4);
+        transform: rotate(-1.2deg);
+        background: #0e0d14;
+      }
+      .chrome { height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: #221f2c; }
+      .dot { width: 11px; height: 11px; border-radius: 50%; background: #4a455a; }
+      .dot:first-child { background: #ff5f00; }
+      .frame img { display: block; width: 100%; }
+    </style></head><body>
+      <div class="left">
+        <div class="mark">🤏</div>
+        <h1>Pinch<span class="grab">Grab</span></h1>
+        <div class="tag">UI feedback your AI coding agent can actually act on.</div>
+        <div class="pills">
+          <span class="pill">Alt+Click to capture</span>
+          <span class="pill">Comment in English</span>
+          <span class="pill">Export for your agent</span>
+        </div>
+      </div>
+      <div class="right">
+        <div class="frame">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <img src="data:image/png;base64,${shotB64}" alt="">
+        </div>
+      </div>
+    </body></html>`);
+    await marqueePage.waitForTimeout(400);
+    const marqueePath = path.join(OUT_DIR, 'marquee-1400x560.png');
+    await marqueePage.screenshot({ path: marqueePath, clip: { x: 0, y: 0, width: 1400, height: 560 } });
+    console.log('wrote', marqueePath);
+
     await ctx.close();
   } finally {
     await browser?.close();

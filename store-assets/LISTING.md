@@ -88,10 +88,10 @@ PinchGrab lets you annotate UI elements on a web page and export that feedback a
 ```
 https://wranngle.com/privacy
 ```
-⚠️ Before submitting, confirm that page actually describes PinchGrab's data
-handling (see the ready-to-paste section below). A generic company policy that
-doesn't mention the extension's capture/screenshot behavior is a common
-rejection cause.
+✅ Live and PinchGrab-specific as of 2026-05-31: the page's §14 "PinchGrab
+Browser Extension" covers explicit activation, element-scoped capture,
+local-only storage, and no analytics — matching the extension's actual
+behavior.
 
 ---
 
@@ -129,7 +129,7 @@ Contact: hello@wranngle.com
 - ✅ Screenshot 1280×800 — `store-assets/screenshot-1280x800.png`
 - ✅ Small promo tile 440×280 — `store-assets/promo-440x280.png`
 - ✅ Upload ZIP — `dist/pinchgrab-1.1.0.zip` (run `bun run package` to regenerate)
-- ⬜ Marquee promo 1400×560 (optional, for featuring)
+- ✅ Marquee promo 1400×560 — `store-assets/marquee-1400x560.png`
 
 ## Edge Add-ons
 Reuse the same ZIP, icon, screenshots, description, and privacy URL. Edge
