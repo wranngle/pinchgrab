@@ -27,10 +27,13 @@ import type {
   CsToPanel,
   DomMutation,
   Entry,
+  PageSnapshot,
+  PageSnapshotReply,
   PanelToCs,
   PgEnvelope,
 } from './types.ts';
 import {pg} from './types.ts';
+import {PG_ICONS} from './lucide.ts';
 
 declare global {
   interface Window {
@@ -157,6 +160,7 @@ function init(): void {
     slot.label.remove();
     slot.path.remove();
     rings.delete(key);
+    ringTrackOpts.delete(key);
   };
   const clearRings = (): void => {
     for (const k of [...rings.keys()]) removeRing(k);
@@ -222,17 +226,48 @@ function init(): void {
     const stroke = opts.preview ? '#7bd97a' : opts.gold ? '#ffd166' : '#ff5f00';
     slot.path.setAttribute('stroke', stroke);
   };
-  const trackElement = (key: string, el: Element, opts: RingOpts = {}): void => {
-    const slot = ensureRing(key);
-    slot.target = el;
+  // Overlay-freeze flag. During a screenshot the background tells us to
+  // hide-overlays; while hidden we also FREEZE every ring's rAF reposition
+  // loop. Without this the loops keep firing through the capture cycle —
+  // they reposition rings to the post-scroll offset (a visible jump) and
+  // repaint a burst the instant the host is shown again, which is the
+  // flashing the user saw on grouped captures (more rings = more flicker).
+  // Frozen, the rings hold their last frame and the host is display:none,
+  // so there is nothing to repaint until we thaw. (See hide/show-overlays.)
+  let overlayFrozen = false;
+  // Remember each tracked ring's opts so thaw() can re-arm its loop.
+  const ringTrackOpts = new Map<string, {el: Element; opts: RingOpts}>();
+  const armRingLoop = (key: string, el: Element, opts: RingOpts): void => {
+    const slot = rings.get(key);
+    if (!slot) return;
     if (slot.raf) cancelAnimationFrame(slot.raf);
     const tick = (): void => {
-      if (!el.isConnected) { removeRing(key); return; }
+      if (!el.isConnected) { removeRing(key); ringTrackOpts.delete(key); return; }
+      if (overlayFrozen) { slot.raf = 0; return; } // hold last frame; thaw() re-arms
       positionRing(slot, el, opts);
       slot.raf = requestAnimationFrame(tick);
     };
     tick();
   };
+  const trackElement = (key: string, el: Element, opts: RingOpts = {}): void => {
+    const slot = ensureRing(key);
+    slot.target = el;
+    ringTrackOpts.set(key, {el, opts});
+    armRingLoop(key, el, opts);
+  };
+  // Stop every ring's rAF loop in place (used during screenshot capture).
+  // The slot keeps its current geometry; thawRings re-arms the loops.
+  const freezeRings = (): void => {
+    for (const slot of rings.values()) {
+      if (slot.raf) { cancelAnimationFrame(slot.raf); slot.raf = 0; }
+    }
+  };
+  // Re-arm every tracked ring's loop after a freeze. Each loop's first tick
+  // runs synchronously, so all rings reposition on the same frame.
+  const thawRings = (): void => {
+    for (const [key, {el, opts}] of ringTrackOpts) armRingLoop(key, el, opts);
+  };
+
   const flashElement = (el: Element): void => {
     const slot = ensureRing('flash');
     positionRing(slot, el, {});
@@ -924,6 +959,17 @@ function init(): void {
         // flush, and wait for TWO animation frames before acking. Two
         // RAFs is the standard "next paint has happened" signal in
         // browsers.
+        //
+        // Item 17 (flashing): also FREEZE the ring rAF loops for the whole
+        // capture window. The background hides overlays BEFORE it scrolls
+        // the page to frame the capture; if the loops kept running they'd
+        // chase the scroll offset (a visible jump) and repaint a burst when
+        // the host is shown again. Frozen + display:none = the rings hold
+        // their last frame and there is nothing to flicker. The annotation
+        // box freezes implicitly (its anchor watchdog only repositions, and
+        // the host is hidden), so no extra handling is needed there.
+        overlayFrozen = true;
+        freezeRings();
         overlayHost.style.display = 'none';
         // Force layout flush so the change takes effect.
         void overlayHost.getBoundingClientRect();
@@ -935,6 +981,11 @@ function init(): void {
       case 'show-overlays': {
         overlayHost.style.display = '';
         overlayHost.style.visibility = 'visible';
+        // Thaw: re-arm every ring loop in a single batch so they snap to the
+        // (now restored) scroll position on the SAME frame — one clean
+        // reposition instead of a staggered repaint cascade.
+        overlayFrozen = false;
+        thawRings();
         respond({ok: true});
         return true;
       }
@@ -949,10 +1000,73 @@ function init(): void {
     if (inExtension) {
       try { void chrome.runtime.sendMessage(msg).catch?.(() => { /* ignore */ }); }
       catch { /* ignore */ }
-    } else {
+    }
+    else {
       try { window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {detail: msg})); } catch { /* ignore */ }
     }
+    // Item 18: the first capture on a given page URL triggers a one-time
+    // full-page snapshot (screenshot + metadata) routed to the panel. Dedup
+    // is by URL inside maybeSnapshotPage.
+    if (payload.kind === 'capture') void maybeSnapshotPage(payload.page.url);
   }
+
+  // ─── Page-snapshot (item 18) ──────────────────────────────────────────────
+  // Round-trip request to the background worker (which owns captureVisibleTab).
+  // Resolves to the reply object, or null on any failure / non-extension mode.
+  const requestBg = <R>(payload: {kind: string} & Record<string, unknown>): Promise<R | null> =>
+    new Promise<R | null>((resolve) => {
+      if (!inExtension) { resolve(null); return; }
+      try {
+        chrome.runtime.sendMessage(pg(payload as any), (reply: R) => {
+          if (chrome.runtime.lastError) { resolve(null); return; }
+          resolve((reply ?? null) as R | null);
+        });
+      } catch { resolve(null); }
+    });
+
+  // Dedup set: at most one page-snapshot per distinct URL per page session.
+  const snapshottedUrls = new Set<string>();
+  let snapshotInFlight = false;
+  const maybeSnapshotPage = async (url: string): Promise<void> => {
+    if (!inExtension) return;            // viewport capture needs the worker
+    if (snapshottedUrls.has(url)) return;
+    if (snapshotInFlight) return;        // serialize; the next capture retries
+    snapshottedUrls.add(url);            // optimistic — avoids a duplicate burst
+    snapshotInFlight = true;
+    try {
+      // Metadata is read on the page side (the worker can't see the DOM).
+      // capturedAt is stamped before the (slower) screenshot request so it
+      // reflects when the snapshot was initiated.
+      const capturedAt = new Date().toISOString();
+      const meta = {
+        url: location.href,
+        title: document.title,
+        viewport: {width: window.innerWidth, height: window.innerHeight},
+        scrollWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0),
+        scrollHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0),
+        devicePixelRatio: window.devicePixelRatio || 1,
+        lang: document.documentElement.lang || navigator.language || '',
+      };
+      const reply = await requestBg<PageSnapshotReply>({kind: 'page-snapshot-shot'});
+      if (!reply?.ok || !reply.screenshot) {
+        // Capture failed — drop the dedup entry so a later capture on this
+        // URL can retry rather than permanently skipping the snapshot.
+        snapshottedUrls.delete(url);
+        return;
+      }
+      const snapshot: PageSnapshot = {
+        ...meta,
+        capturedAt,
+        screenshot: reply.screenshot,
+        ...(reply.partial ? {partial: true} : {}),
+      };
+      sendToPanel({kind: 'page-snapshot', payload: snapshot});
+    } catch {
+      snapshottedUrls.delete(url);
+    } finally {
+      snapshotInFlight = false;
+    }
+  };
 
   if (inExtension) {
     chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
@@ -1128,6 +1242,12 @@ type AnnotationApi = {
   hide: () => void;
   isLocked: () => boolean;
   focusTextarea: () => void;
+  // rAF watchdog that keeps the box pinned to its anchor and tears it down
+  // when the anchor leaves the DOM. Internal lifecycle hooks; the public
+  // surface (show/hide) drives them, but they're exposed for the destroy()
+  // teardown path.
+  startWatchdog: () => void;
+  stopWatchdog: () => void;
 };
 
 function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, onHide, onShow}: AnnotationDeps): AnnotationApi {
@@ -1196,16 +1316,37 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     ta.addEventListener('focus', () => { ta.style.borderColor = '#ff5f00'; });
     ta.addEventListener('blur', () => { ta.style.borderColor = 'rgba(255,95,0,.3)'; });
     textarea = ta;
+    // Send button — must MATCH the side panel's main composer Send button
+    // (src/sidepanel.html `.composer .send` + src/sidepanel.css). That button
+    // is the `message-square-plus` lucide icon + a short text label on the
+    // orange→orange-2 primary gradient. We rebuild it here with inline styles
+    // (CSP-safe; no shared stylesheet across the two documents) so it reads as
+    // the same control even though it lives in the page's shadow root.
     const sendBtn = styled<HTMLButtonElement>('button', {
       flex: '0 0 auto',
-      padding: '4px 10px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '4px',
+      padding: '0 10px',
+      // Match the textarea min-height so the button doesn't drag when the
+      // textarea grows (mirrors `.composer .send { height: 36px }`, scaled to
+      // the more compact on-page box).
+      height: '28px',
       background: 'linear-gradient(180deg, #ff5f00 0%, #ef4b00 100%)',
       color: '#fff', border: '0', borderRadius: '6px',
-      font: "700 10px/1 'Bricolage Grotesque','Outfit',system-ui,sans-serif",
-      textTransform: 'uppercase', letterSpacing: '.04em',
+      font: "700 11px/1 'Bricolage Grotesque','Outfit',system-ui,sans-serif",
+      letterSpacing: '.01em',
+      whiteSpace: 'nowrap',
       cursor: 'pointer',
+      boxShadow: '0 0 24px rgba(255,95,0,.25)',
     });
-    sendBtn.textContent = captured ? 'Add' : 'Capture';
+    const sendIcon = styled<HTMLSpanElement>('span', {
+      display: 'inline-flex', lineHeight: '0',
+    });
+    sendIcon.innerHTML = PG_ICONS.svgString('message-square-plus', 16);
+    const sendLabel = styled<HTMLSpanElement>('span', {fontSize: '10px'});
+    sendLabel.textContent = captured ? 'Add' : 'Capture';
+    sendBtn.append(sendIcon, sendLabel);
+    sendBtn.setAttribute('aria-label', captured ? 'Add comment' : 'Capture and comment');
     addRow.append(ta, sendBtn);
     el.append(addRow);
 
@@ -1272,18 +1413,56 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     }
   };
 
+  const GAP = 8;     // gap between anchor edge and box
+  const MARGIN = 8;  // min distance from any viewport edge
+
+  // Deterministic placement relative to `anchor`. Two subtleties the old
+  // version got wrong, which produced the "box in a random spot" reports:
+  //   1. It read `el.offsetHeight` while the box was still `display:none`,
+  //      so height measured as 0 and the above/below decision + the
+  //      Math.max(8, …) clamp were computed against garbage.
+  //   2. It clamped the left edge with a hardcoded 360px width instead of
+  //      the box's real measured width, so a narrower box (short comment)
+  //      drifted and a wider box (long feedback list) overflowed.
+  // We force the box visible but transparent for one synchronous measure,
+  // then place it using its real rendered size. All numbers are clamped so
+  // the whole box always lands inside the viewport.
   const position = (anchor: Element): void => {
     const r = anchor.getBoundingClientRect();
-    const ah = el.offsetHeight || 160;
-    const useAbove = r.bottom + 8 + ah > window.innerHeight;
-    const top = useAbove ? Math.max(8, r.top - 8 - ah) : r.bottom + 8;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - 360 - 8));
-    el.style.left = left + 'px';
-    el.style.top = top + 'px';
+    // Measure the real box size. It's already in the DOM (buildBody ran);
+    // making it `block` lets getBoundingClientRect report true dimensions.
+    // visibility:hidden keeps the measure invisible so there's no flash at
+    // a pre-placement location.
+    const prevVis = el.style.visibility;
+    el.style.visibility = 'hidden';
+    el.style.display = 'block';
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const box = el.getBoundingClientRect();
+    const bw = box.width || 320;
+    const bh = box.height || 160;
+    el.style.visibility = prevVis || 'visible';
+
+    // Vertical: prefer below the anchor; flip above when below would clip
+    // the bottom edge AND there's more room above.
+    const roomBelow = window.innerHeight - r.bottom - GAP;
+    const roomAbove = r.top - GAP;
+    const useAbove = bh > roomBelow && roomAbove > roomBelow;
+    let top = useAbove ? r.top - GAP - bh : r.bottom + GAP;
+    top = Math.max(MARGIN, Math.min(top, window.innerHeight - bh - MARGIN));
+
+    // Horizontal: left-align to the anchor, then clamp the whole box inside
+    // the viewport using its real width.
+    let left = r.left;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - bw - MARGIN));
+
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
     el.style.display = 'block';
   };
 
   const hide = (): void => {
+    stopWatchdog();
     el.style.display = 'none';
     selector = null;
     activeUid = null;
@@ -1292,6 +1471,7 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     textarea = null;
     feedbackList = null;
     wantsFocus = false;
+    lastAnchorKey = '';
     onHide();
   };
 
@@ -1329,6 +1509,7 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     lockedTo = anchor;
     buildBody(payload);
     position(anchor);
+    startWatchdog();
     onShow(anchor);
   };
   // Pending-focus flag: if focus is requested before the textarea exists
@@ -1360,13 +1541,59 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     locked = false;
   });
 
+  // True when the anchor has left the DOM or collapsed to nothing (display
+  // toggled off, removed, detached). A box anchored to a vanished element is
+  // the "tooltip stranded after its anchor leaves" failure — tear it down.
+  const anchorIsGone = (): boolean => {
+    if (!lockedTo) return true;
+    if (!lockedTo.isConnected) return true;
+    const r = lockedTo.getBoundingClientRect();
+    return r.width === 0 && r.height === 0;
+  };
+
   const reposition = (): void => {
-    if (el.style.display === 'block' && lockedTo?.isConnected) position(lockedTo);
+    if (el.style.display !== 'block') return;
+    if (anchorIsGone()) { hide(); return; }
+    position(lockedTo!);
   };
   window.addEventListener('scroll', reposition, true);
   window.addEventListener('resize', reposition);
 
-  return {show, hide, isLocked: () => locked || isTyping(), focusTextarea};
+  // Anchor watchdog. Scroll/resize cover most movement, but an SPA that
+  // swaps the anchored element out (route change, list re-render, modal
+  // close) fires neither — leaving the box stranded at a stale position.
+  // A self-cancelling rAF loop that only runs while the box is visible
+  // catches that: it repositions on layout drift and hides the moment the
+  // anchor is gone. It stops itself when the box hides so there's no
+  // ambient loop on every page.
+  let watchdog = 0;
+  const stopWatchdog = (): void => {
+    if (watchdog) { cancelAnimationFrame(watchdog); watchdog = 0; }
+  };
+  let lastAnchorKey = '';
+  const startWatchdog = (): void => {
+    stopWatchdog();
+    const tick = (): void => {
+      if (el.style.display !== 'block') { watchdog = 0; return; }
+      if (anchorIsGone()) { hide(); return; }
+      // Reposition only when the anchor actually moved, so we don't fight
+      // the user's caret / re-measure every frame.
+      const r = lockedTo!.getBoundingClientRect();
+      const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      if (key !== lastAnchorKey) { lastAnchorKey = key; position(lockedTo!); }
+      watchdog = requestAnimationFrame(tick);
+    };
+    watchdog = requestAnimationFrame(tick);
+  };
+
+  // Escape from anywhere (not just the focused textarea) dismisses the box.
+  // The textarea's own keydown handles Escape while focused; this covers the
+  // case where the box is locked/open but focus is elsewhere on the page.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.style.display === 'block') { hide(); }
+  }, true);
+
+  return {show, hide, isLocked: () => locked || isTyping(), focusTextarea, startWatchdog, stopWatchdog};
 }
 
 // (No shadow stylesheet — every overlay element gets its style applied via

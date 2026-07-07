@@ -149,15 +149,17 @@ Put \[data-screen-label] attrs on elements representing slides and high-level sc
 
 \## React + Babel (for inline JSX)
 
-When writing React prototypes with inline JSX, you MUST use these exact script tags with pinned versions and integrity hashes. Do not use unpinned versions (e.g. react@18) or omit the integrity attributes.
+When writing React prototypes with inline JSX, prefer the bundled starter assets or local helper files generated with the artifact. Do not rely on CDN-hosted React, Babel, Tailwind, Popmotion, or other executable code in artifacts meant for extension review or offline handoff.
 
 ```html
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<!-- Prefer local, bundled runtime scripts when a prototype needs React. -->
 
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="./vendor/react.development.js"></script>
 
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="./vendor/react-dom.development.js"></script>
+
+<script src="./vendor/babel.min.js"></script>
 
 ```
 
@@ -203,7 +205,7 @@ This makes components globally available to other scripts.
 
 \- Start by calling `copy\_starter\_component` with `kind: "animations.jsx"` — it provides `<Stage>` (auto-scale + scrubber + play/pause), `<Sprite start end>`, `useTime()`/`useSprite()` hooks, `Easing`, `interpolate()`, and entry/exit primitives. Build scenes by composing Sprites inside a Stage.
 
-\- Only fall back to Popmotion (`https://unpkg.com/popmotion@11.0.5/dist/popmotion.min.js`) if the starter genuinely can't cover the use case.
+\- Only use Popmotion if it is bundled locally with the artifact; do not load it from a CDN.
 
 \- For interactive prototypes, CSS transitions or simple React state is fine
 
@@ -4435,7 +4437,7 @@ generate\_html\_with\_claude(BASE\_SYSTEM\_PROMPT + "\\n\\n" + DISTILLED\_AESTHE
 
 &#x20;   <title>Momentum — Project Management Reimagined</title>
 
-&#x20;   <script src="https://cdn.tailwindcss.com"></script>
+&#x20;   <!-- Avoid CDN-hosted Tailwind in reviewable artifacts; compile or inline the CSS locally. -->
 
 &#x20;   <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -6101,7 +6103,7 @@ These two modes are different jobs with different defaults:
 Switch into inbound-triage mode when ANY of these triggers fire:
 
 \- The user pastes a JSONL block matching the pinchgrab schema (lines starting with `{"type":"page"...}` or `{"n":N,"ts":...,"selector":...}`)
-\- The user pastes a Stagewise capture, Figma comment, Lighthouse report, axe-core report, or WebPageTest output
+\- The user pastes a Figma comment, Lighthouse report, axe-core report, or WebPageTest output
 \- The user attaches a screenshot of a UI and says anything like "fix this", "this sucks", "doesn't fit", "looks broken", "off", "ugly", "feels wrong", "make this better", "what's wrong"
 \- The user describes a UI flaw verbally without an artifact ("the button on the dashboard is too cramped")
 \- The user references a deployed app with a complaint ("the homepage hero is broken")
@@ -6118,7 +6120,7 @@ The triage flow is independent of input format. Each adapter normalizes its inpu
 
 ```
 {
-  source: "pinchgrab" | "stagewise" | "screenshot" | "verbal" | "audit-report",
+  source: "pinchgrab" | "screenshot" | "verbal" | "audit-report",
   selector?: string,         // CSS / XPath / accessibility ref
   componentHint?: string,    // React component name + source file:line if known
   screenshot?: string,       // file path or base64
@@ -6199,10 +6201,6 @@ When `design.inline: true`, the user pasted/uploaded their DESIGN.md content int
 - Missing `uid` on entries: synthesize one if you need a stable foreign key for feedback parentage.
 - `text` may have been CSS-uppercased on truly old captures (pre-Mar 2026 fix); cross-grep `text` in BOTH source-case and uppercase forms.
 
-\### Stagewise capture adapter
-
-Stagewise sends DOM + screenshots + metadata directly to the connected AI agent rather than via a file. Fields map cleanly because Stagewise carries source-file:line for the React component. When you receive a Stagewise capture, the `componentHint` is usually authoritative — trust it before grepping.
-
 \### Bare screenshot adapter
 
 When the user just attaches a screenshot:
@@ -6259,7 +6257,7 @@ For every triage, do these steps in order:
 2. \*\*Classify.\*\* Pick a primary category and sub-type from the taxonomy. State both. If the user already provided `category` (in a future pinchgrab v4 with category enum), use it as a starting point but override if the evidence contradicts.
 
 3. \*\*Ground.\*\* Locate the element in the codebase:
-   \- If `componentHint` includes a source file:line (Stagewise, future pinchgrab), open that file directly.
+   \- If `componentHint` includes a source file:line(future pinchgrab), open that file directly.
    \- Else if `testId` is set, `grep -r 'data-testid="<value>"'` and open the file.
    \- Else if `selector` includes a unique id, grep for the id.
    \- Else grep for the element's text content (in BOTH source and rendered casing — pinchgrab `text` may be CSS-uppercased).
@@ -6452,7 +6450,7 @@ Every fix proposal you emit when in inbound-triage mode follows this shape:
 ```
 \## [<category>.<subtype>] <one-line description>
 
-\*\*Source:\*\* [pinchgrab|stagewise|screenshot|verbal|audit-report]
+\*\*Source:\*\* [pinchgrab|screenshot|verbal|audit-report]
 \*\*Element:\*\* `<selector or testId>` in `<file>:<line>` (or "unknown — please confirm")
 \*\*User feedback:\*\* > <verbatim quote of user's complaint>
 \*\*Diagnosis:\*\* <2–4 sentences. What is wrong. Why. What evidence supports the diagnosis.>
@@ -6590,7 +6588,7 @@ When triage diagnoses that the right fix is "redesign this component" rather tha
 
 When a UI feedback record arrives:
 
-\- [ ] Identified input adapter (pinchgrab / stagewise / screenshot / verbal / audit)
+\- [ ] Identified input adapter (pinchgrab / screenshot / verbal / audit)
 \- [ ] Normalized into internal record
 \- [ ] Classified into primary category + sub-type
 \- [ ] Located the element in the codebase (grep / file:line / ask)

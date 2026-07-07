@@ -61,6 +61,12 @@ const startServer = () =>
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
   const page = await ctx.newPage();
+  // tsx (CI) transpiles with esbuild keep-names, which wraps named functions
+  // defined inside page.evaluate callbacks in an `__name(...)` helper that
+  // doesn't exist in the browser context (bun doesn't inject it, so the gap
+  // only shows in CI). Polyfill it as identity for every page in this context.
+  // Passed as a raw string so the polyfill itself can't be transpiled.
+  await ctx.addInitScript({ content: 'globalThis.__name = globalThis.__name || ((fn) => fn);' });
   const csSource = fs.readFileSync('./extension/content-script.js', 'utf-8');
 
   // Open the side panel page; we'll also inject the content script into the
@@ -125,13 +131,13 @@ const startServer = () =>
   assert(expanded !== 'none');
   console.log('test 3 ok: click-to-expand');
 
-  // Test 4 ── Selector preview tile was removed (per user request) — verify
-  // the .preview container no longer exists in the rendered bubble.
-  const previewGone = await page.evaluate(() => {
-    return document.querySelector('.msg.selector .preview') === null;
-  });
-  assert(previewGone, 'selector preview tile must be removed');
-  console.log('test 4 ok: selector preview tile removed');
+  // Test 4 ── When no screenshot is available (the headless test harness has
+  // no background screenshot pipeline, so the shot resolves "unavailable"),
+  // the reserved preview placeholder collapses and no .preview tile remains.
+  // A reserved skeleton is only shown while a shot is genuinely expected
+  // (covered by test 40).
+  await page.waitForFunction(() => document.querySelector('.msg.selector .preview') === null);
+  console.log('test 4 ok: preview collapses when no screenshot is available');
 
   // Test 5 ── Selector quality dot was removed; verify no .qdot exists.
   const qdot = await page.evaluate(() => document.querySelector('.msg.selector .qdot'));
@@ -147,12 +153,12 @@ const startServer = () =>
   assert.strictEqual(stats.comments, 2);
   console.log('test 6 ok: stats accurate');
 
-  // Test 7 ── Search filters live.
-  await page.locator('[data-search]').fill('green');
+  // Test 7 ── Visual find (Ctrl+F) filters the list live.
+  await page.evaluate(() => window.__pinchgrab_panel.setSearch('green'));
   const matchCount = await page.locator('.msg').count();
   assert(matchCount === 1, `expected 1 match for "green", got ${matchCount}`);
-  await page.locator('[data-search]').fill('');
-  console.log('test 7 ok: search filter');
+  await page.evaluate(() => window.__pinchgrab_panel.setSearch(''));
+  console.log('test 7 ok: visual find filter');
 
   // Test 8 ── Insert-rail expands inline composer and inserts before next message.
   await page.evaluate(() => {
@@ -282,16 +288,20 @@ const startServer = () =>
   assert(meter.w === 3 && meter.t > 0, `meter should reflect 3 words, got ${JSON.stringify(meter)}`);
   console.log('test 20 ok: composer word/token meter');
 
-  // Test 21 ── Send clears the search.
+  // Test 21 ── Send clears the active visual find.
   await page.evaluate(() => window.__pinchgrab_panel.setSearch('xyz'));
   await page.evaluate(() => {
     const ta = document.querySelector('[data-composer]');
     ta.value = 'final test';
   });
   await page.evaluate(() => window.__pinchgrab_panel.sendFeedback());
-  const searchAfterSend = await page.evaluate(() => document.querySelector('[data-search]').value);
-  assert.strictEqual(searchAfterSend, '', 'send should clear search input');
-  console.log('test 21 ok: send clears search');
+  const findAfterSend = await page.evaluate(() => ({
+    value: document.querySelector('[data-find]')?.value ?? '',
+    open: window.__pinchgrab_panel.isFindOpen(),
+  }));
+  assert.strictEqual(findAfterSend.value, '', 'send should clear the find input');
+  assert.strictEqual(findAfterSend.open, false, 'send should close the find bar');
+  console.log('test 21 ok: send clears visual find');
 
   // Test 22 ── Multi-cursor (grouped) capture appends to previous selector.
   await page.evaluate(() => {
@@ -406,6 +416,362 @@ const startServer = () =>
   assert(starPitch === 1, 'settings drawer should have star pitch');
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 31 ok: drawer star pitch');
+
+  // Test 32 ── Empty state is readable and action-oriented.
+  await page.evaluate(() => window.__pinchgrab_panel.clear());
+  await page.waitForFunction(() => !!document.querySelector('.empty'));
+  const parseRgb = (value: string): [number, number, number] => {
+    const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(value);
+    if (!match) throw new Error(`cannot parse rgb: ${value}`);
+    return [Number(match[1]), Number(match[2]), Number(match[3])];
+  };
+  const srgb = (n: number): number => {
+    const channel = n / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]: [number, number, number]): number => 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
+  const contrast = (a: [number, number, number], b: [number, number, number]): number => {
+    const lighter = Math.max(luminance(a), luminance(b));
+    const darker = Math.min(luminance(a), luminance(b));
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  const emptyState = await page.evaluate(() => {
+    const empty = document.querySelector<HTMLElement>('.empty')!;
+    const text = empty.textContent ?? '';
+    return {
+      text,
+      color: getComputedStyle(empty).color,
+      backgroundColor: getComputedStyle(document.body).backgroundColor,
+      size: Number.parseFloat(getComputedStyle(empty).fontSize),
+    };
+  });
+  const emptyContrast = contrast(parseRgb(emptyState.color), parseRgb(emptyState.backgroundColor));
+  assert(emptyState.text.includes('Alt+Click to capture'), `empty state should include capture action: ${emptyState.text}`);
+  assert(emptyContrast >= 4.5, `empty state contrast should pass WCAG AA, got ${emptyContrast.toFixed(2)}`);
+  assert(emptyState.size >= 13, `empty state text should be at least 13px, got ${emptyState.size}`);
+  console.log('test 32 ok: empty state contrast and copy');
+
+  // Test 33 ── The header search affordance opens the command palette; the
+  // Ctrl+F visual find is a separate surface. They are distinct.
+  await page.evaluate(() => { window.__pinchgrab_panel.closePalette(); window.__pinchgrab_panel.closeFind(); });
+  // Clicking/focusing the header search opens the command palette.
+  await page.locator('[data-search]').click();
+  const paletteAfterSearchClick = await page.evaluate(() => !document.querySelector<HTMLElement>('[data-palette]')!.hidden);
+  assert.strictEqual(paletteAfterSearchClick, true, 'header search click should open the command palette');
+  const findClosedWhilePalette = await page.evaluate(() => window.__pinchgrab_panel.isFindOpen());
+  assert.strictEqual(findClosedWhilePalette, false, 'header search should NOT open the visual find');
+  await page.evaluate(() => window.__pinchgrab_panel.closePalette());
+  // Ctrl+F opens the visual find bar (and not the palette).
+  await page.keyboard.press('Control+f');
+  const findState = await page.evaluate(() => ({
+    findOpen: window.__pinchgrab_panel.isFindOpen(),
+    paletteOpen: !document.querySelector<HTMLElement>('[data-palette]')!.hidden,
+    focusOnFind: document.activeElement === document.querySelector('[data-find]'),
+  }));
+  assert.strictEqual(findState.findOpen, true, 'Ctrl+F should open the visual find bar');
+  assert.strictEqual(findState.paletteOpen, false, 'Ctrl+F should not open the command palette');
+  assert.strictEqual(findState.focusOnFind, true, 'Ctrl+F should focus the find input');
+  await page.evaluate(() => window.__pinchgrab_panel.closeFind());
+  console.log('test 33 ok: header search opens palette, Ctrl+F opens visual find (distinct)');
+
+  // Test 34 ── Icon-only buttons expose accessible names.
+  const unnamedButtons = await page.evaluate(() => [...document.querySelectorAll('button')]
+    .filter((button) => !button.textContent?.trim() && !button.getAttribute('aria-label'))
+    .map((button) => button.outerHTML.slice(0, 120)));
+  assert.deepStrictEqual(unnamedButtons, [], `icon-only buttons need names: ${JSON.stringify(unnamedButtons)}`);
+  console.log('test 34 ok: icon-only buttons named');
+
+  // Test 35 ── Settings are chunked into deliberate disclosure groups.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const settingsGroups = await page.evaluate(() => [...document.querySelectorAll('.drawer details.prefs')].map((details) => ({
+    label: details.querySelector('summary')?.textContent?.trim(),
+    open: (details as HTMLDetailsElement).open,
+  })));
+  assert.deepStrictEqual(settingsGroups.map((group) => group.label), ['Workspaces', 'Export', 'Capture', 'Templates', 'Hotkeys', 'Help & about']);
+  assert.strictEqual(settingsGroups.filter((group) => group.open).length, 1, 'only Workspaces should be open by default');
+  console.log('test 35 ok: settings grouped');
+
+  // Test 36 ── Markdown previews are summaries, not giant inline documents.
+  const mdSummaries = await page.evaluate(() => [...document.querySelectorAll('[data-md-preview]')].map((el) => ({
+    text: el.textContent ?? '',
+    height: el.getBoundingClientRect().height,
+  })));
+  assert(mdSummaries.every((item) => item.text.includes('Sections:')), `markdown previews should summarize sections: ${JSON.stringify(mdSummaries)}`);
+  assert(mdSummaries.every((item) => item.height < 140), `markdown previews should stay compact: ${JSON.stringify(mdSummaries)}`);
+  console.log('test 36 ok: markdown previews summarized');
+
+  // Test 37 ── 320px layout has no horizontal overflow or brand/stat spill.
+  await page.setViewportSize({ width: 320, height: 700 });
+  const narrow = await page.evaluate(() => {
+    const brand = document.querySelector<HTMLElement>('.brand')!.getBoundingClientRect();
+    const stats = document.querySelector<HTMLElement>('.stats')!.getBoundingClientRect();
+    return {
+      bodyOverflow: document.documentElement.scrollWidth > window.innerWidth || document.body.scrollWidth > window.innerWidth,
+      brandRight: Math.round(brand.right),
+      statsRight: Math.round(stats.right),
+      width: window.innerWidth,
+    };
+  });
+  assert.strictEqual(narrow.bodyOverflow, false, `narrow viewport should not horizontally overflow: ${JSON.stringify(narrow)}`);
+  assert(narrow.brandRight <= narrow.width, `brand should fit at 320px: ${JSON.stringify(narrow)}`);
+  assert(narrow.statsRight <= narrow.width, `stats should fit at 320px: ${JSON.stringify(narrow)}`);
+  console.log('test 37 ok: 320px layout fits');
+
+  // Test 38 ── Page/URL divider only renders when the URL changes between
+  // consecutive captures. Two captures on the same URL get one divider; a
+  // third capture on a new URL gets its own.
+  await page.setViewportSize({ width: 420, height: 800 });
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    const mk = (n, url, sel) => {
+      window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'p' + n, ts: new Date().toISOString(), url });
+      window.__pinchgrab_panel.pushMessage({
+        type: 'selector', id: 's' + n, ts: new Date().toISOString(),
+        entry: { n, ts: new Date().toISOString(), url, tag: 'div', selector: sel, rect: { x: 0, y: 0, w: 100, h: 40 } },
+      });
+    };
+    mk(1, 'http://example/a', '#one');
+    mk(2, 'http://example/a', '#two');   // same URL → no repeated divider
+    mk(3, 'http://example/b', '#three'); // new URL → its own divider
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.msg.selector').length === 3);
+  const dividerUrls = await page.evaluate(() =>
+    [...document.querySelectorAll('.page-divider .url')].map((el) => el.textContent));
+  assert.deepStrictEqual(dividerUrls, ['http://example/a', 'http://example/b'],
+    `consecutive same-URL captures should share one divider, got ${JSON.stringify(dividerUrls)}`);
+  console.log('test 38 ok: page divider dedupes consecutive same-URL captures');
+
+  // Test 39 ── Per-capture JSON Wrap toggle. With minify OFF: wrap ON renders
+  // a single (newline-free) minified line that soft-wraps; wrap OFF renders
+  // the pretty-printed multi-line form.
+  await page.evaluate(() => window.__pinchgrab_panel.setPrefs({ minify: false }));
+  await page.evaluate(() => {
+    const sel = document.querySelector('.msg.selector');
+    sel.classList.add('expanded');
+  });
+  const wrapJson = await page.evaluate(() => {
+    const sel = document.querySelector('.msg.selector');
+    const check = sel.querySelector('.json-wrap-toggle input');
+    const body = sel.querySelector('.body-json');
+    // Default is wrap ON → single line.
+    const onText = body.textContent ?? '';
+    const onWhiteSpace = getComputedStyle(body).whiteSpace;
+    // Toggle wrap OFF → multi-line pretty print.
+    check.checked = false;
+    check.dispatchEvent(new Event('change', { bubbles: true }));
+    const offText = sel.querySelector('.body-json').textContent ?? '';
+    return { onSingleLine: !onText.includes('\n'), onWhiteSpace, offMultiLine: offText.includes('\n') };
+  });
+  assert(wrapJson.onSingleLine, 'wrap ON should render JSON as a single line');
+  assert(wrapJson.onWhiteSpace === 'pre-wrap', `wrap ON should soft-wrap (pre-wrap), got ${wrapJson.onWhiteSpace}`);
+  assert(wrapJson.offMultiLine, 'wrap OFF (minify off) should render multi-line pretty JSON');
+  console.log('test 39 ok: per-capture JSON wrap toggle flattens to one soft-wrapping line');
+
+  // Test 40 ── While a screenshot is expected but not yet loaded, the preview
+  // reserves its final height (from the element's aspect ratio) and shows a
+  // skeleton loader, so the timeline doesn't shift when the shot swaps in.
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    window.__pinchgrab_panel.setPrefs({ autoScreenshot: true });
+    window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'pp', ts: new Date().toISOString(), url: 'http://example/c' });
+    window.__pinchgrab_panel.pushMessage({
+      type: 'selector', id: 'ss', ts: new Date().toISOString(),
+      entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/c', tag: 'div', selector: '#shot', rect: { x: 0, y: 0, w: 200, h: 100 } },
+    });
+  });
+  await page.waitForFunction(() => !!document.querySelector('.msg.selector .preview.reserved'));
+  const reserved = await page.evaluate(() => {
+    const prev = document.querySelector('.msg.selector .preview.reserved');
+    const skel = prev?.querySelector('.shot-skeleton');
+    const h = prev?.getBoundingClientRect().height ?? 0;
+    return { hasSkeleton: !!skel, isLoading: prev?.classList.contains('loading'), height: h };
+  });
+  assert(reserved.hasSkeleton, 'expected-shot preview should render a skeleton loader');
+  assert(reserved.isLoading, 'preview should be in loading state before the shot arrives');
+  assert(reserved.height > 20, `reserved preview should commit a non-trivial height up front, got ${reserved.height}`);
+  console.log('test 40 ok: reserved preview height + skeleton before screenshot loads');
+
+  // Test 41 ── Header workspace dropdown exposes a "+ New workspace" action
+  // that creates and switches to a new workspace via the shared flow.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const hasNewOption = await page.evaluate(() => {
+    const sel = document.querySelector('[data-workspace]');
+    return [...sel.options].some((o) => o.value === '__new_workspace__' && o.textContent.includes('New workspace'));
+  });
+  assert(hasNewOption, 'header workspace dropdown should include a "+ New workspace" option');
+  const createdViaDropdown = await page.evaluate(async () => {
+    window.prompt = () => 'from-dropdown';
+    const sel = document.querySelector('[data-workspace]');
+    sel.value = '__new_workspace__';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    // The flow is async (loadWorkspace); poll briefly.
+    for (let i = 0; i < 40; i++) {
+      if (window.__pinchgrab_panel.listWorkspaces().some((w) => w.name === 'from-dropdown')) return true;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
+  });
+  assert(createdViaDropdown, 'selecting "+ New workspace" should create the workspace');
+  await page.evaluate(() => window.__pinchgrab_panel.switchWorkspace('default'));
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 41 ok: header dropdown "+ New workspace" creates a workspace');
+
+  // Test 42 ── Settings labels word-wrap at narrow widths instead of clipping.
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  await page.waitForFunction(() => !document.querySelector('[data-drawer]').hidden);
+  const labelWrap = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('.drawer .prefs label')];
+    const drawerBody = document.querySelector('.drawer-body');
+    const noClip = labels.every((l) => getComputedStyle(l).whiteSpace === 'normal');
+    // No label should extend past the drawer's content box (no right-cutoff).
+    const right = drawerBody.getBoundingClientRect().right;
+    const noOverflow = labels.every((l) => Math.floor(l.getBoundingClientRect().right) <= Math.ceil(right));
+    return { noClip, noOverflow };
+  });
+  assert(labelWrap.noClip, 'settings labels should use white-space:normal (wrap, not clip)');
+  assert(labelWrap.noOverflow, 'settings labels should not overflow the drawer at 320px');
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 42 ok: settings labels word-wrap at narrow width');
+
+  // Test 43 ── Main-pane footer carries a GitHub-star CTA, sits below the
+  // composer, and does not overlap it.
+  await page.setViewportSize({ width: 420, height: 760 });
+  const footer = await page.evaluate(() => {
+    const f = document.querySelector('.pane-footer');
+    if (!f) return null;
+    const cta = f.querySelector('.pane-footer-cta');
+    const composer = document.querySelector('.composer');
+    const fRect = f.getBoundingClientRect();
+    const cRect = composer.getBoundingClientRect();
+    return {
+      text: f.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      action: cta?.getAttribute('data-action'),
+      belowComposer: Math.floor(fRect.top) >= Math.floor(cRect.bottom),
+    };
+  });
+  assert(footer, 'main-pane footer should exist');
+  assert(footer.text.includes('PinchGrab') && footer.text.toLowerCase().includes('star'),
+    `footer should pitch a GitHub star, got "${footer.text}"`);
+  assert.strictEqual(footer.action, 'github', 'footer CTA should trigger the GitHub action');
+  assert(footer.belowComposer, 'footer must sit below the composer, not overlap it');
+  console.log('test 43 ok: main-pane GitHub-star footer below composer');
+
+  // Test 44 ── DESIGN.md is presented as the recommended, brand-education
+  // primary action; SKILL.md is de-emphasized as advanced/optional; and a
+  // Help & about group explains the tool and the Alt+Click → comment → export
+  // flow.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const settingsCopy = await page.evaluate(() => {
+    const designCard = document.querySelector('.md-card-primary');
+    const designText = designCard?.textContent?.toLowerCase() ?? '';
+    const advanced = document.querySelector('.prefs-advanced');
+    const help = [...document.querySelectorAll('.drawer details.prefs summary')]
+      .find((s) => /help/i.test(s.textContent ?? ''))?.closest('details');
+    return {
+      designHasRecommended: !!designCard?.querySelector('.md-badge-recommended'),
+      designEducatesBrand: designText.includes('brand') && designText.includes('build'),
+      skillIsAdvancedDetails: advanced?.tagName.toLowerCase() === 'details',
+      skillCollapsedByDefault: advanced ? !(advanced as HTMLDetailsElement).open : false,
+      skillLabeledAdvanced: /advanced/i.test(advanced?.querySelector('summary')?.textContent ?? ''),
+      helpExists: !!help,
+      helpHasHowTo: /alt\+click/i.test(help?.textContent ?? '') && /export/i.test(help?.textContent ?? ''),
+    };
+  });
+  assert(settingsCopy.designHasRecommended, 'DESIGN.md should carry a Recommended badge');
+  assert(settingsCopy.designEducatesBrand, 'DESIGN.md copy should educate about building UI in the user brand');
+  assert(settingsCopy.skillIsAdvancedDetails, 'SKILL.md should live in an advanced <details> disclosure');
+  assert(settingsCopy.skillCollapsedByDefault, 'SKILL.md advanced disclosure should be collapsed by default');
+  assert(settingsCopy.skillLabeledAdvanced, 'SKILL.md disclosure should be labeled Advanced');
+  assert(settingsCopy.helpExists, 'settings should include a Help & about group');
+  assert(settingsCopy.helpHasHowTo, 'Help should explain the Alt+Click → comment → export flow');
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 44 ok: DESIGN.md recommended, SKILL.md advanced, Help group present');
+
+  // Test 45 ── A page-snapshot message is stored on the page-group record
+  // under `snapshot` and round-trips into the export.
+  await page.evaluate(() => {
+    window.__pinchgrab_panel.clear();
+    const snap = {
+      url: 'http://example/snap', title: 'Snap Page', capturedAt: new Date().toISOString(),
+      viewport: { width: 1280, height: 720 }, scrollWidth: 1280, scrollHeight: 3200,
+      devicePixelRatio: 2, lang: 'en', screenshot: 'data:image/png;base64,AAAA', partial: false,
+    };
+    // Snapshot arrives BEFORE any capture on this URL — exercises the pending
+    // path; it should attach when the page header is created.
+    window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {
+      detail: { __pg: true, kind: 'page-snapshot', payload: snap },
+    }));
+    window.dispatchEvent(new CustomEvent('pinchgrab:to-panel', {
+      detail: {
+        __pg: true, kind: 'capture',
+        entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/snap', tag: 'div', selector: '#snap-el', rect: { x: 0, y: 0, w: 80, h: 40 } },
+        page: { url: 'http://example/snap', title: 'Snap Page', viewport: { w: 1280, h: 720, dpr: 2 }, tokens: {} },
+      },
+    }));
+  });
+  await page.waitForFunction(() => window.__pinchgrab_panel.getMessages().some((m) => m.type === 'page' && m.url === 'http://example/snap'));
+  const snapStored = await page.evaluate(() => {
+    const pageMsg = window.__pinchgrab_panel.getMessages().find((m) => m.type === 'page' && m.url === 'http://example/snap');
+    const snap = pageMsg?.snapshot;
+    const jsonl = window.__pinchgrab_panel.buildJsonl();
+    const pageLine = jsonl.trim().split('\n').map(JSON.parse).find((l) => l.type === 'page' && l.url === 'http://example/snap');
+    return {
+      stored: !!snap,
+      scrollHeight: snap?.scrollHeight,
+      dpr: snap?.devicePixelRatio,
+      exported: !!pageLine?.snapshot,
+      exportedScreenshot: pageLine?.snapshot?.screenshot,
+    };
+  });
+  assert(snapStored.stored, 'page-snapshot should be stored on the page record');
+  assert.strictEqual(snapStored.scrollHeight, 3200, 'snapshot scrollHeight should persist');
+  assert.strictEqual(snapStored.dpr, 2, 'snapshot devicePixelRatio should persist');
+  assert(snapStored.exported, 'page-snapshot should be included in the export');
+  assert.strictEqual(snapStored.exportedScreenshot, 'data:image/png;base64,AAAA', 'exported snapshot should carry the screenshot');
+  console.log('test 45 ok: page-snapshot stored on page record and exported');
+
+  // Test 46 ── Clear-all archives a restorable workspace snapshot; the
+  // snapshot is listed in Settings → Workspaces and can be restored.
+  await page.evaluate(() => {
+    window.confirm = () => true;
+    window.__pinchgrab_panel.clear();
+    window.__pinchgrab_panel.pushMessage({ type: 'page', id: 'sp1', ts: new Date().toISOString(), url: 'http://example/hist' });
+    window.__pinchgrab_panel.pushMessage({
+      type: 'selector', id: 'ss1', ts: new Date().toISOString(),
+      entry: { n: 1, ts: new Date().toISOString(), url: 'http://example/hist', tag: 'div', selector: '#hist-el', rect: { x: 0, y: 0, w: 60, h: 30 } },
+    });
+    window.__pinchgrab_panel.pushMessage({ type: 'feedback', id: 'fb1', ts: new Date().toISOString(), text: 'fix this' });
+  });
+  const beforeClear = await page.evaluate(() => window.__pinchgrab_panel.getMessages().length);
+  assert(beforeClear === 3, `expected 3 messages before clear, got ${beforeClear}`);
+  // Clear-all should archive a snapshot then wipe.
+  await page.evaluate(() => window.__pinchgrab_panel.clearAll());
+  const afterClear = await page.evaluate(() => ({
+    messages: window.__pinchgrab_panel.getMessages().length,
+    snapshots: window.__pinchgrab_panel.listSnapshots(),
+  }));
+  assert.strictEqual(afterClear.messages, 0, 'clear-all should wipe messages');
+  assert(afterClear.snapshots.length >= 1, 'clear-all should archive a snapshot');
+  assert.strictEqual(afterClear.snapshots[0].selectors, 1, 'snapshot should record selector count');
+  assert.strictEqual(afterClear.snapshots[0].comments, 1, 'snapshot should record comment count');
+  // The snapshot list should be visible in the settings drawer.
+  await page.evaluate(() => window.__pinchgrab_panel.openDrawer());
+  const listVisible = await page.evaluate(() => {
+    const host = document.querySelector('[data-ws-snapshots]');
+    return { hidden: host.hidden, restoreBtns: host.querySelectorAll('.ws-snap-restore').length };
+  });
+  assert.strictEqual(listVisible.hidden, false, 'snapshot history should be visible in settings');
+  assert(listVisible.restoreBtns >= 1, 'snapshot history should expose a Restore action');
+  // Restore brings the captures back.
+  const restoredCount = await page.evaluate(() => {
+    const snaps = window.__pinchgrab_panel.listSnapshots();
+    window.__pinchgrab_panel.restoreSnapshot(snaps[0].id);
+    return window.__pinchgrab_panel.getMessages().length;
+  });
+  assert.strictEqual(restoredCount, 3, `restore should bring back all 3 messages, got ${restoredCount}`);
+  await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
+  console.log('test 46 ok: clear-all archives restorable workspace snapshot');
 
   console.log('chat.spec all tests passed');
   await browser.close();

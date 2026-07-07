@@ -10,12 +10,13 @@
 
 import type {
   AnnotationPayload, CsToPanel, Entry, ExportDiagnostic, ExportManifest, FeedbackMessage, PageMessage,
-  PanelMessage, PanelToBg, PanelToCs, PgEnvelope, SaveReply, SelectorMessage, ShotReply, Viewport,
+  PageSnapshot, PanelMessage, PanelToBg, PanelToCs, PgEnvelope, SaveReply, SelectorMessage, ShotReply, Viewport,
 } from './types.ts';
 import {pg} from './types.ts';
 import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
+import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
   const LOG = '[PinchGrab/sp]';
@@ -110,11 +111,22 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   const composer = $<HTMLTextAreaElement>('[data-composer]');
   const status = $('[data-status]');
   const search = $<HTMLInputElement>('[data-search]');
-  // Update the overlaid kbd pill to use the right modifier per platform.
+  // Ctrl+F visual-find bar (distinct from the header search, which opens the
+  // command palette). May be absent in very old cached markup, so consumers
+  // null-guard.
+  const findBar = document.querySelector<HTMLElement>('[data-find-bar]');
+  const findInput = document.querySelector<HTMLInputElement>('[data-find]');
+  const findCount = document.querySelector<HTMLElement>('[data-find-count]');
+  // Canonicalize keyboard-shortcut pills per platform. Every shortcut pill
+  // is authored in the canonical Cmd-form (each token capitalized, joined
+  // with '+': Alt+Click, Cmd+K, Cmd+Shift+Z); on non-Mac we swap the leading
+  // Cmd modifier for Ctrl. Pills opt in via data-mod-* so a string like the
+  // 'Alt+…' pills (which never carry Cmd) are left untouched.
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
   if (!isMac) {
-    const kbdEl = document.querySelector<HTMLElement>('[data-search-kbd] kbd');
-    if (kbdEl) kbdEl.textContent = 'Ctrl+K';
+    for (const el of document.querySelectorAll<HTMLElement>('kbd[data-mod-k], kbd[data-mod-z], kbd[data-mod-shift-z]')) {
+      el.textContent = (el.textContent ?? '').replace(/^Cmd\b/, 'Ctrl');
+    }
   }
   const importFile = $<HTMLInputElement>('#import-file');
   const statsEl = $('[data-stats]');
@@ -190,7 +202,10 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     includeOuterHTML: true,
     includeMatchedRules: true,
     includeStyles: true,
-    minify: false,
+    // Default to minified exports — most agents want the smallest
+    // token-footprint payload. Existing users' saved prefs are merged over
+    // this default in loadAll(), so only NEW/unset installs see the flip.
+    minify: true,
     autoScrollToHovered: true,
     useScreenshots: true,
     spacingOverlay: false,
@@ -227,7 +242,18 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     if (rebrandedFm === fm) return md; // no `name:` field; nothing to do
     return md.replace(m[0], `---\n${rebrandedFm}\n---\n`);
   };
-  type Workspace = {name: string; createdAt: string};
+  type Workspace = {name: string; createdAt: string; tabId?: number; url?: string; title?: string};
+  // One archived state of a workspace (captured just before a Clear-all).
+  // `shots` is the thumbnail map (full-res PNGs are session-only and not
+  // archived). Restorable from Settings → Workspaces.
+  type WorkspaceSnapshot = {
+    id: string;
+    ts: string;
+    messages: PanelMessage[];
+    shots: Record<string, string>;
+    selectors: number;
+    comments: number;
+  };
 
   let messages: PanelMessage[] = [];
   let liveTabUrl: string | null = null;
@@ -268,6 +294,13 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   let sessionId: string = '';
   const wsMsgKey = (n: string): string => `pinchgrab.ws.${n}.messages.v1`;
   const wsShotsKey = (n: string): string => `pinchgrab.ws.${n}.shots.v1`;
+  // Persistent snapshot history per workspace — a Clear-all archives the wiped
+  // captures+comments+thumbnails here so they can be restored later from
+  // Settings → Workspaces. Lives in the same chrome.storage layer as the rest
+  // of the workspace data.
+  const wsSnapshotsKey = (n: string): string => `pinchgrab.ws.${n}.snapshots.v1`;
+  // Cap so the history can't balloon storage; oldest snapshots drop off.
+  const WS_SNAPSHOT_CAP = 10;
   const wsShotsFullKey = (n: string): string => `pinchgrab.ws.${n}.shotsFull.v1`;
   // chrome.storage.local has a 10 MB default quota; we budget half of
   // that for full-resolution PNGs (the rest is messages, prefs, thumbs).
@@ -530,6 +563,8 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     // earlier captures. FIFO order is preserved by Object key order.
     const storedFull = (await Store.get<Record<string, string>>(wsShotsFullKey(name), {})) || {};
     for (const [k, v] of Object.entries(storedFull)) shotsFull.set(k, v);
+    // Load this workspace's persistent snapshot history (Clear-all archives).
+    await loadWsSnapshots(name);
     selectorValidity.clear();
     selectorErrors.clear();
     undoStack.length = 0;
@@ -598,6 +633,46 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     void Store.set(wsShotsFullKey(activeWs), obj);
   };
   const persistWorkspaces = (): void => { void Store.set(WORKSPACES_KEY, workspaces); };
+
+  // ─── Tab ⇄ workspace binding (#18) ───────────────────────────────────────
+  // Background announces each toolbar-click activation via 'pg-tab-activated'.
+  // The first activation adopts the current unbound workspace; later tabs each
+  // get their own. Picking a bound workspace jumps the browser to its tab.
+  const slugForTab = (url: string, title: string): string => {
+    try { const h = new URL(url).hostname.replace(/^www\./, ''); if (h) return h; } catch { /* not a url */ }
+    const t = (title || '').trim();
+    return t ? t.slice(0, 24) : 'tab';
+  };
+  const uniqueWsName = (base: string): string => {
+    if (!workspaces.some((w) => w.name === base)) return base;
+    for (let i = 2; ; i++) { const n = `${base} ${i}`; if (!workspaces.some((w) => w.name === n)) return n; }
+  };
+  const onTabActivated = async ({tabId, url, title}: {tabId: number; url: string; title: string}): Promise<void> => {
+    let ws = workspaces.find((w) => w.tabId === tabId);
+    if (ws) {
+      if (ws.url !== url || ws.title !== title) { ws.url = url; ws.title = title; persistWorkspaces(); }
+    } else {
+      const current = workspaces.find((w) => w.name === activeWs);
+      if (current && current.tabId == null) {
+        ws = current; ws.tabId = tabId; ws.url = url; ws.title = title;
+      } else {
+        ws = {name: uniqueWsName(slugForTab(url, title)), createdAt: new Date().toISOString(), tabId, url, title};
+        workspaces.push(ws);
+      }
+      persistWorkspaces();
+    }
+    if (activeWs !== ws.name) await loadWorkspace(ws.name);
+    renderWsControls();
+    render();
+  };
+  // Bring the browser to a workspace's bound tab when the user picks it.
+  const focusWorkspaceTab = (name: string): void => {
+    const ws = workspaces.find((w) => w.name === name);
+    if (!inExtension || ws?.tabId == null) return;
+    chrome.tabs.update(ws.tabId, {active: true}).then((t) => {
+      if (t?.windowId != null) void chrome.windows?.update(t.windowId, {focused: true})?.catch?.(() => { /* ignore */ });
+    }).catch(() => { /* tab was closed */ });
+  };
 
   // ─── Snapshot / undo / redo ─────────────────────────────────────────────
   const snapshot = (): void => {
@@ -711,6 +786,10 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       recentMids.push(msg.__mid);
       if (recentMids.length > RECENT_MID_CAP) recentMids.shift();
     }
+    if ((msg as {kind?: string}).kind === 'pg-tab-activated') {
+      void onTabActivated(msg as unknown as {tabId: number; url: string; title: string});
+      return;
+    }
     switch (msg.kind) {
       case 'capture': onCapture(msg); return;
       case 'hover': onHover(msg as Extract<CsToPanel, {kind: 'hover'}>); return;
@@ -719,6 +798,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       case 'pending-clear': onPendingClear(); return;
       case 'feedback-add': onFeedbackAdd(msg); return;
       case 'preference-change': onPreferenceChange(msg as Extract<CsToPanel, {kind: 'preference-change'}>); return;
+      case 'page-snapshot': onPageSnapshot((msg as Extract<CsToPanel, {kind: 'page-snapshot'}>).payload); return;
       default: return;
     }
   };
@@ -730,6 +810,36 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     // selector capture from this page will carry the new viewport/state and
     // insert a page header only if needed.
     setStatus(`${reason} changed`, {kind: 'info'});
+  };
+
+  // Page-group records may carry a full-page snapshot (viewport, scroll
+  // extents, dpr, lang, full-page screenshot). PageMessage in types.ts doesn't
+  // yet declare the field, so we widen it locally — the value persists with
+  // the rest of the message JSON and round-trips through export.
+  type PageMessageWithSnapshot = PageMessage & {snapshot?: PageSnapshot};
+  // Snapshots that arrived before a page-group record exists for their URL.
+  // Applied when the page header is later created (see onCapture).
+  const pendingSnapshots = new Map<string, PageSnapshot>();
+  const applySnapshotToPage = (snap: PageSnapshot): boolean => {
+    // Attach to the most recent page-group record for this URL.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.type === 'page' && m.url === snap.url) {
+        (m as PageMessageWithSnapshot).snapshot = snap;
+        return true;
+      }
+    }
+    return false;
+  };
+  const onPageSnapshot = (payload: PageSnapshot): void => {
+    if (!payload?.url) return;
+    if (applySnapshotToPage(payload)) {
+      persist();
+      render();
+    } else {
+      // No page record yet — stash for the next capture on this URL.
+      pendingSnapshots.set(payload.url, payload);
+    }
   };
 
   const onFeedbackAdd = ({selector, text, url, parentUid}: {selector: string; text: string; url?: string; parentUid?: string}): void => {
@@ -907,6 +1017,12 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         state: (page as any).state,
         sessionId,
       };
+      // Attach any page-snapshot that arrived before this page header existed.
+      const pending = pendingSnapshots.get(page.url);
+      if (pending) {
+        (pageMsg as PageMessageWithSnapshot).snapshot = pending;
+        pendingSnapshots.delete(page.url);
+      }
       messages.splice(position, 0, pageMsg);
       position++;
     }
@@ -933,11 +1049,15 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       console.log(LOG, 'fireElementShot skipped: autoScreenshot=false');
       // Bug #2: tell the export why the shot is missing.
       msg.entry.screenshot = {...(msg.entry.screenshot ?? {}), unavailableReason: 'autoScreenshotOff'};
+      // Re-render so the reserved skeleton (which assumed a shot was coming)
+      // collapses now that we know one won't arrive.
+      render();
       return;
     }
     if (shouldSkipScreenshot(msg.entry.url)) {
       console.log(LOG, 'fireElementShot skipped: host on skip list', msg.entry.url);
       msg.entry.screenshot = {...(msg.entry.screenshot ?? {}), unavailableReason: 'skipScreenshotHosts'};
+      render();
       return;
     }
     console.log(LOG, 'fireElementShot →', msg.entry.selector);
@@ -961,6 +1081,8 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         ...(msg.entry.screenshot ?? {}),
         unavailableReason: reply?.error ?? 'captureFailed',
       };
+      // Collapse the reserved skeleton — no shot is coming for this capture.
+      render();
       return;
     }
     // Successful retry — strip any prior unavailableReason since we now
@@ -1108,10 +1230,17 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     return out;
   };
 
+  const centerElementInList = (el: HTMLElement): void => {
+    const listRect = list.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const target = list.scrollTop + elRect.top - listRect.top - (list.clientHeight / 2) + (elRect.height / 2);
+    list.scrollTo({top: Math.max(0, target), behavior: 'smooth'});
+  };
+
   const scrollMessageIntoView = (id: string): void => {
     const el = list.querySelector<HTMLElement>(`[data-id="${id}"]`);
     if (!el) return;
-    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    centerElementInList(el);
     el.classList.remove('flash-into-view');
     void el.offsetWidth;
     el.classList.add('flash-into-view');
@@ -1210,6 +1339,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       btn.type = 'button';
       btn.className = 'add-btn';
       btn.dataset.tip = 'Insert capture or comment here';
+      btn.setAttribute('aria-label', 'Insert capture or comment here');
       btn.innerHTML = PG_ICONS.svgString('plus', 12);
       btn.addEventListener('click', () => { insertBefore.current = beforeId; insertBefore.comment = true; render(); });
       div.append(btn);
@@ -1242,12 +1372,14 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     cancel.type = 'button';
     cancel.className = 'iconbtn';
     cancel.dataset.tip = 'Cancel · Esc';
+    cancel.setAttribute('aria-label', 'Cancel inline comment');
     cancel.innerHTML = PG_ICONS.svgString('x', 20);
     cancel.addEventListener('click', () => onCancel?.());
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'iconbtn primary';
     send.dataset.tip = 'Save · Enter';
+    send.setAttribute('aria-label', 'Save inline comment');
     send.innerHTML = PG_ICONS.svgString('check', 20);
     const submit = (): void => onSubmit?.(ta.value);
     send.addEventListener('click', submit);
@@ -1470,9 +1602,10 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     if (messages.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.innerHTML = `<div style="margin-bottom:8px;font-size:32px">🤏</div>
-        Open any page and <b>Alt+Click</b> an element. Captures land here on the left;<br>
-        type comments below — they appear on the right.`;
+      empty.innerHTML = `<div class="empty-icon">🤏</div>
+        <div class="empty-title">Start with the page you want to critique.</div>
+        <div class="empty-body">Open a page, then capture an element. Comments stay paired with the thing you grabbed.</div>
+        <div class="empty-keys">Alt+Click to capture</div>`;
       list.append(empty);
       if (pendingMulti.length) renderPendingBay();
       return;
@@ -1492,10 +1625,21 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
     list.append(insertRail(messages[0]!.id));
     let lastSelectorSel: string | null = null;
+    // Track the URL of the most recently rendered page divider so we can
+    // suppress a repeated header when consecutive captures share the same
+    // page. Restating the URL above every capture in a same-URL run is
+    // noise — the divider only earns its space when the URL actually
+    // changes from the previous capture in sequence.
+    let lastRenderedPageUrl: string | null = null;
     let renderedAny = false;
     for (let i = 0; i < ordered.length; i++) {
       const m = ordered[i]!;
       if (!matchesSearch(m)) continue;
+      // Collapse consecutive same-URL page dividers into the first one.
+      if (m.type === 'page') {
+        if (m.url === lastRenderedPageUrl) continue;
+        lastRenderedPageUrl = m.url;
+      }
       const node = renderMessage(m, lastSelectorSel);
       list.append(node);
       if (m.type === 'selector') lastSelectorSel = m.entry.selector;
@@ -1548,6 +1692,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     cancel.type = 'button';
     cancel.className = 'iconbtn pending-cancel';
     cancel.dataset.tip = 'Cancel pending group';
+    cancel.setAttribute('aria-label', 'Cancel pending group');
     cancel.innerHTML = PG_ICONS.svgString('x', 13);
     cancel.addEventListener('click', () => sendToCS({kind: 'pending-cancel'}));
     row.append(commit, cancel);
@@ -1792,18 +1937,50 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       div.append(crumbs);
     }
 
-    // Preview tile — only when we have a thumbnail dataUrl in the in-memory
-    // shots map. The full PNG lives on disk under .pinchgrab/<ws>/screenshots/;
-    // the dataUrl is just a side-panel-friendly downscale (≤320px wide).
+    // Preview tile. The full PNG lives on disk under
+    // .pinchgrab/<ws>/screenshots/; the dataUrl is a side-panel-friendly
+    // downscale (≤320px wide). To stop the layout from jumping when a shot
+    // arrives a second after capture, we RESERVE the final image height up
+    // front using the captured element's known aspect ratio and paint a
+    // skeleton loader in that space, then swap the screenshot in with no
+    // reflow. The reservation only happens when a shot is actually expected
+    // (autoScreenshot on, host not skipped, no recorded failure) so captures
+    // that will never get a shot don't carry an empty box.
     const shotDataUrl = shots.get(m.entry.selector);
-    if (shotDataUrl) {
+    const shotExpected = prefs.autoScreenshot
+      && !shouldSkipScreenshot(m.entry.url ?? '')
+      && !m.entry.screenshot?.unavailableReason;
+    if (shotDataUrl || shotExpected) {
       const preview = document.createElement('div');
       preview.className = 'preview';
-      const img = document.createElement('img');
-      img.className = 'shot';
-      img.src = shotDataUrl;
-      img.alt = `Screenshot of #${m.entry.n}`;
-      preview.append(img);
+      // Reserve vertical space immediately from the element's width/height.
+      // The thumbnail is rendered at the bubble's content width, so the box
+      // height tracks the element's aspect ratio. Clamp so a very tall
+      // element doesn't reserve an absurd amount of space.
+      const r = m.entry.rect;
+      if (r && r.w > 0 && r.h > 0) {
+        const ratio = Math.min(Math.max(r.h / r.w, 0.12), 2.2);
+        preview.style.setProperty('--shot-ratio', String(ratio));
+        preview.classList.add('reserved');
+      }
+      if (shotDataUrl) {
+        const img = document.createElement('img');
+        img.className = 'shot';
+        img.alt = `Screenshot of #${m.entry.n}`;
+        // Reveal only once decoded so the swap is instant and reflow-free;
+        // the skeleton stays visible underneath until then.
+        img.addEventListener('load', () => preview.classList.add('loaded'));
+        img.src = shotDataUrl;
+        if (img.complete) preview.classList.add('loaded');
+        preview.append(img);
+      } else {
+        // No shot yet — show a skeleton shimmer occupying the reserved space.
+        preview.classList.add('loading');
+        const skel = document.createElement('div');
+        skel.className = 'shot-skeleton';
+        skel.setAttribute('aria-label', `Loading screenshot of #${m.entry.n}`);
+        preview.append(skel);
+      }
       div.append(preview);
     }
 
@@ -1844,10 +2021,13 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     const jsonBar = document.createElement('div');
     jsonBar.className = 'body-json-bar';
 
-    // Line-wrap checkbox (per-bubble local state, default ON).
+    // Line-wrap checkbox (per-bubble local state, default ON). When ON the
+    // JSON is flattened to ONE minified line that soft-wraps to the bubble
+    // width (no horizontal scroll); when OFF it falls back to the global
+    // minify-respecting pretty/compact form with horizontal scroll.
     const wrapLabel = document.createElement('label');
     wrapLabel.className = 'json-wrap-toggle';
-    wrapLabel.dataset.tip = 'Wrap long lines instead of horizontal scroll';
+    wrapLabel.dataset.tip = 'Flatten to a single soft-wrapping line instead of horizontal scroll';
     const wrapCheck = document.createElement('input');
     wrapCheck.type = 'checkbox';
     wrapCheck.checked = true;
@@ -1865,23 +2045,34 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     copyBtn.innerHTML = PG_ICONS.svgString('copy', 13);
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      // Honor the same shape the JSON below shows.
-      const payload = prefs.minify ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, prefs.minify ? 0 : 2));
-      setStatus('Copied JSON');
-      showCopied('Copied JSON', `#${m.entry.n}`);
+      // Full single-capture export: identity + paths + text/content + every
+      // attached note/comment — the same depth as a full export, scoped to
+      // this one capture (item 7). Distinct from the raw entry shown below.
+      const feedback = messages.flatMap((x) => x.type === 'feedback' && x.parentUid === m.entry.uid
+        ? [{text: x.text, ts: x.ts, uid: x.id, parentUid: x.parentUid}] : []);
+      await navigator.clipboard.writeText(serializeCaptureJson({entry: m.entry, feedback}));
+      setStatus('Copied capture export');
+      showCopied('Copied capture', `#${m.entry.n}`);
     });
     jsonBar.append(copyBtn);
     jsonWrap.append(jsonBar);
 
     const body = document.createElement('div');
     body.className = 'body-json wrap-on';
-    // Reflect the minify pref: when minified, show the slimEntry-shaped
-    // export form (compact, single-line). Otherwise pretty-print the full
-    // entry so it's readable.
+    // Render the JSON to match the wrap state:
+    //   wrap ON  → a single minified line (indent 0) that soft-wraps to the
+    //              bubble width (CSS handles the visual wrapping via
+    //              overflow-wrap:anywhere), so the whole object is one
+    //              continuous string with no horizontal scroll.
+    //   wrap OFF → the global minify-respecting form: pretty-printed full
+    //              entry, or the slimEntry compact form when minify is on,
+    //              with horizontal scroll for long lines.
     const renderJson = (): void => {
-      const payload = prefs.minify ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
-      const text = JSON.stringify(payload, null, prefs.minify ? 0 : 2);
+      body.textContent = '';
+      const wrapped = wrapCheck.checked;
+      const payload = (wrapped || prefs.minify) ? slimEntry(m.entry, {includeGroup: true}) : m.entry;
+      const indent = (wrapped || prefs.minify) ? 0 : 2;
+      const text = JSON.stringify(payload, null, indent);
       appendJsonHighlight(body, text);
       if (searchQuery) wrapSearchHitsInTextNodes(body, searchQuery);
     };
@@ -1889,6 +2080,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     wrapCheck.addEventListener('change', () => {
       body.classList.toggle('wrap-on', wrapCheck.checked);
       body.classList.toggle('wrap-off', !wrapCheck.checked);
+      renderJson();
     });
     // Stop the click on the toolbar from collapsing the bubble — the head's
     // click handler toggles `.expanded` on click, and the bar lives inside
@@ -1996,10 +2188,12 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 
       } else setStatus('Re-capture failed', {kind: 'warn'});
     }));
-    actions.append(actionBtn('copy', 'Copy this capture as JSON', async () => {
-      await navigator.clipboard.writeText(JSON.stringify(m.entry));
-      setStatus('Copied entry');
-      showCopied('Copied entry', `#${m.entry.n}`);
+    actions.append(actionBtn('copy', 'Copy this capture as a full export (paths, text, comments)', async () => {
+      const feedback = messages.flatMap((x) => x.type === 'feedback' && x.parentUid === m.entry.uid
+        ? [{text: x.text, ts: x.ts, uid: x.id, parentUid: x.parentUid}] : []);
+      await navigator.clipboard.writeText(serializeCaptureJson({entry: m.entry, feedback}));
+      setStatus('Copied capture export');
+      showCopied('Copied capture', `#${m.entry.n}`);
     }));
     actions.append(deleteBtn(() => removeMessage(m.id)));
     div.append(actions);
@@ -2140,6 +2334,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     b.type = 'button';
     b.className = 'warn';
     b.dataset.tip = 'Delete';
+    b.setAttribute('aria-label', 'Delete capture');
     b.innerHTML = PG_ICONS.svgString('trash-2', 13);
     let parent: HTMLElement | null = null;
     let revertTimer = 0;
@@ -2156,12 +2351,14 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
       yes.type = 'button';
       yes.className = 'confirm-yes';
       yes.dataset.tip = 'Confirm delete';
+      yes.setAttribute('aria-label', 'Confirm delete');
       yes.innerHTML = PG_ICONS.svgString('check', 13);
       yes.addEventListener('click', (ev) => { ev.stopPropagation(); revert(); onConfirm(); });
       const no = document.createElement('button');
       no.type = 'button';
       no.className = 'confirm-no';
       no.dataset.tip = 'Cancel delete';
+      no.setAttribute('aria-label', 'Cancel delete');
       no.innerHTML = PG_ICONS.svgString('x', 13);
       no.addEventListener('click', (ev) => { ev.stopPropagation(); revert(); });
       b.replaceWith(yes);
@@ -2242,7 +2439,9 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
     });
     composer.value = '';
     updateComposerMeter();
-    if (searchQuery) { searchQuery = ''; search.value = ''; }
+    // Sending clears any active visual find so the new comment isn't hidden
+    // behind a stale filter.
+    if (searchQuery) closeFind();
     persist();
     render();
     setStatus('Sent');
@@ -2273,28 +2472,64 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   };
   composer.addEventListener('input', updateComposerMeter);
 
-  search.addEventListener('input', () => {
-    searchQuery = search.value.trim();
-    render();
-    // Bring the first matched bubble + its first <mark> into view, so the
-    // user sees where the hit is without scrolling manually.
-    if (searchQuery) {
-      requestAnimationFrame(() => {
-        const firstHit = list.querySelector<HTMLElement>('.msg.selector.search-hit');
-        if (firstHit) {
-          firstHit.scrollIntoView({behavior: 'smooth', block: 'center'});
-          const mk = firstHit.querySelector<HTMLElement>('mark');
-          mk?.scrollIntoView({behavior: 'smooth', block: 'center'});
-        } else {
-          const firstMatch = list.querySelector<HTMLElement>('.msg mark');
-          firstMatch?.scrollIntoView({behavior: 'smooth', block: 'center'});
-        }
-      });
-    }
+  // ── Header search → command palette ────────────────────────────────────
+  // The header search affordance no longer runs its own filter; clicking or
+  // focusing it opens the Cmd+K command palette (which searches captures AND
+  // runs commands). It's a readonly trigger, so we just open the palette and
+  // drop focus so the palette input takes over cleanly.
+  const triggerPaletteFromSearch = (): void => {
+    if (!palette.hidden) return;
+    openPalette();
+    search.blur();
+  };
+  search.addEventListener('focus', triggerPaletteFromSearch);
+  search.addEventListener('click', triggerPaletteFromSearch);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); triggerPaletteFromSearch(); }
   });
-  search.addEventListener('focus', () => { if (palette.hidden) openPalette(search.value || ''); });
-  search.addEventListener('click', () => { if (palette.hidden) openPalette(search.value || ''); });
-  $('[data-search-clear]').addEventListener('click', () => { search.value = ''; searchQuery = ''; render(); });
+
+  // ── Ctrl+F visual find (in-list filter + highlight) ────────────────────
+  const scrollFirstFindHitIntoView = (): void => {
+    if (!searchQuery) return;
+    requestAnimationFrame(() => {
+      const firstHit = list.querySelector<HTMLElement>('.msg.selector.search-hit');
+      if (firstHit) {
+        centerElementInList(firstHit);
+        const mk = firstHit.querySelector<HTMLElement>('mark');
+        if (mk) centerElementInList(mk);
+      } else {
+        const firstMatch = list.querySelector<HTMLElement>('.msg mark');
+        if (firstMatch) centerElementInList(firstMatch);
+      }
+    });
+  };
+  const updateFindCount = (): void => {
+    if (!findCount) return;
+    findCount.textContent = searchQuery ? `${list.querySelectorAll('.msg').length} match` : '';
+  };
+  const applyFind = (value: string): void => {
+    searchQuery = value.trim();
+    render();
+    updateFindCount();
+    scrollFirstFindHitIntoView();
+  };
+  const openFind = (): void => {
+    if (!findBar || !findInput) return;
+    findBar.hidden = false;
+    document.querySelector('.panel')?.classList.add('find-open');
+    findInput.focus();
+    findInput.select();
+  };
+  const closeFind = (): void => {
+    if (findBar) findBar.hidden = true;
+    document.querySelector('.panel')?.classList.remove('find-open');
+    if (findInput) findInput.value = '';
+    if (searchQuery) { searchQuery = ''; render(); }
+    updateFindCount();
+  };
+  findInput?.addEventListener('input', () => applyFind(findInput.value));
+  findInput?.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeFind(); } });
+  document.querySelector('[data-find-clear]')?.addEventListener('click', closeFind);
 
   const tryManualCaptureFromComposer = async (): Promise<boolean> => {
     const m = /^>\s*(.+)$/.exec(composer.value.trim());
@@ -2462,7 +2697,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
   //     PLUS bundled `feedback` arrays on selectors (so old single-line
   //     readers still see them adjacent).
   //   • A leading manifest line carries workspace + counts + filename.
-  type SlimPage = {v: 2; type: 'page'; ts: string; url: string; title?: string; viewport?: Viewport; tokens?: Record<string, string>; userAgent?: string; lang?: string; gitContext?: {commit?: string; branch?: string; build?: string}; route?: any; state?: any; sessionId?: string};
+  type SlimPage = {v: 2; type: 'page'; ts: string; url: string; title?: string; viewport?: Viewport; tokens?: Record<string, string>; userAgent?: string; lang?: string; gitContext?: {commit?: string; branch?: string; build?: string}; route?: any; state?: any; sessionId?: string; snapshot?: PageSnapshot};
   // Severity was removed from the UI (2026-05). Tolerant readers may still
   // see `severity` on legacy JSONL — denormalizeEntry preserves it on
   // FeedbackMessage so re-export round-trips, but new sessions never set
@@ -2558,6 +2793,11 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
         if (m.route) slim.route = m.route;
         if (m.state) slim.state = m.state;
         if (m.sessionId) slim.sessionId = m.sessionId;
+        // Full-page snapshot (viewport, scroll extents, dpr, lang, screenshot)
+        // captured for this URL. Part of the export deliverable so a downstream
+        // agent has whole-page context, not just element crops.
+        const snap = (m as PageMessage & {snapshot?: PageSnapshot}).snapshot;
+        if (snap) slim.snapshot = snap;
         lines.push(slim);
       } else if (m.type === 'selector') { flush(); pendingSel = m; }
       else if (m.type === 'feedback') {
@@ -3707,8 +3947,61 @@ ORDER BY s.n;
     setStatus(`Imported ${imported.length} message${imported.length === 1 ? '' : 's'}`);
     importFile.value = '';
   });
+  // ─── Workspace snapshot history ─────────────────────────────────────────
+  // Persistent (not the in-session undo stack). A Clear-all archives the
+  // current workspace state so it can be restored from Settings later.
+  let wsSnapshots: WorkspaceSnapshot[] = [];
+  const loadWsSnapshots = async (name: string): Promise<void> => {
+    wsSnapshots = (await Store.get<WorkspaceSnapshot[]>(wsSnapshotsKey(name), [])) || [];
+  };
+  const persistWsSnapshots = (): void => { void Store.set(wsSnapshotsKey(activeWs), wsSnapshots); };
+  // Archive the CURRENT workspace state (before it's wiped). No-op if empty.
+  const archiveWorkspaceSnapshot = (): WorkspaceSnapshot | null => {
+    if (!messages.length) return null;
+    const snap: WorkspaceSnapshot = {
+      id: secureToken(8),
+      ts: new Date().toISOString(),
+      messages: structuredClone(messages),
+      shots: Object.fromEntries(shots),
+      selectors: messages.filter((m) => m.type === 'selector').length,
+      comments: messages.filter((m) => m.type === 'feedback').length,
+    };
+    // Newest first; cap the history.
+    wsSnapshots.unshift(snap);
+    if (wsSnapshots.length > WS_SNAPSHOT_CAP) wsSnapshots = wsSnapshots.slice(0, WS_SNAPSHOT_CAP);
+    persistWsSnapshots();
+    return snap;
+  };
+  const restoreWorkspaceSnapshot = (id: string): boolean => {
+    const snap = wsSnapshots.find((s) => s.id === id);
+    if (!snap) return false;
+    // Push the live state onto the in-session undo stack so a mistaken
+    // restore is itself undoable.
+    snapshot();
+    messages = structuredClone(snap.messages);
+    shots.clear();
+    for (const [k, v] of Object.entries(snap.shots)) shots.set(k, v);
+    shotsFull.clear();
+    selectorValidity.clear();
+    insertBefore.current = null;
+    persistShots();
+    persistShotsFull();
+    persist();
+    render();
+    renderWsControls();
+    setStatus(`Restored snapshot · ${snap.selectors} selectors`);
+    return true;
+  };
+  const deleteWorkspaceSnapshot = (id: string): void => {
+    wsSnapshots = wsSnapshots.filter((s) => s.id !== id);
+    persistWsSnapshots();
+    renderWsControls();
+  };
+
   const onClear = (): void => {
     if (!confirm('Clear all captures and comments?')) return;
+    // Archive the workspace BEFORE wiping so it can be restored later.
+    archiveWorkspaceSnapshot();
     snapshot();
     messages = [];
     liveTabUrl = null;
@@ -3720,7 +4013,8 @@ ORDER BY s.n;
     persistShotsFull();
     persist();
     render();
-    setStatus('Cleared');
+    renderWsControls();
+    setStatus('Cleared · snapshot saved');
   };
 
   // ─── Validation ─────────────────────────────────────────────────────────
@@ -3822,20 +4116,39 @@ ORDER BY s.n;
   const updateDesignMdStatus = (): void => { void updateMdStatuses(); };
 
   // ─── Compact preview + modal editor for DESIGN.md / SKILL.md ───────────
-  // Replaces the giant inline textareas with a small preview row showing
-  // the first ~6 lines plus a "Edit / Upload / …" button. Clicking opens
-  // a popout modal with the full editor — keeps the settings drawer
-  // scannable when shipping a 5000-line DESIGN.md.
+  // Replaces the giant inline textareas with small document summaries.
+  type MdKind = 'design' | 'skill';
+  const markdownOverview = (content: string, kind: MdKind, usingTemplate: boolean): string => {
+    const lines = content.trim() ? content.split('\n').length : 0;
+    const bytes = new Blob([content]).size;
+    const headings = content
+      .split('\n')
+      .map((line) => /^#{1,3}\s+(.+)$/.exec(line.trim())?.[1]?.trim())
+      .filter((heading): heading is string => Boolean(heading))
+      .slice(0, 4);
+    // Warm, plain-language framing of what each file teaches the agent.
+    // DESIGN.md is the headline artifact: it's where you describe your own
+    // brand and UI taste so the agent builds in *your* voice rather than a
+    // generic default. SKILL.md is the advanced triage guide for reading
+    // exports — useful, but not where most people should start.
+    const label = kind === 'design'
+      ? 'Teaches your agent to build UI in your brand'
+      : 'Advanced: how your agent should read PinchGrab exports';
+    const source = usingTemplate
+      ? (kind === 'design' ? 'Starter template — make it yours' : 'Bundled template')
+      : 'Customized';
+    const sections = headings.length ? headings.join(' / ') : 'No section headings found';
+    return `${label}\n${source} · ${lines.toLocaleString()} lines · ${(bytes / 1024).toFixed(1)} KB\nSections: ${sections}`;
+  };
+
   const renderMdPreview = async (kind: 'design' | 'skill'): Promise<void> => {
     const previewEl = document.querySelector<HTMLElement>(`[data-md-preview="${kind}"]`);
     if (!previewEl) return;
     const content = kind === 'design' ? await resolveDesignContent() : await resolveSkillContent();
-    const lines = content.split('\n');
-    const head = lines.slice(0, 6).map((l) => l.length > 80 ? l.slice(0, 80) + '…' : l).join('\n');
-    previewEl.textContent = head + (lines.length > 6 ? `\n\n… (+${lines.length - 6} more lines)` : '');
+    const usingTemplate = kind === 'design' ? isUsingTemplateDesign() : isUsingTemplateSkill();
+    previewEl.textContent = markdownOverview(content, kind, usingTemplate);
   };
 
-  type MdKind = 'design' | 'skill';
   const openMdModal = async (kind: MdKind): Promise<void> => {
     const overlay = document.querySelector<HTMLElement>('[data-md-modal]');
     if (!overlay) return;
@@ -3843,6 +4156,7 @@ ORDER BY s.n;
     const taEl = overlay.querySelector<HTMLTextAreaElement>('[data-md-modal-textarea]')!;
     const statsEl = overlay.querySelector<HTMLElement>('[data-md-modal-stats]')!;
     const bannerEl = overlay.querySelector<HTMLElement>('[data-md-modal-banner]')!;
+    const summaryEl = overlay.querySelector<HTMLElement>('[data-md-modal-summary]')!;
     const saveBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-save]')!;
     const resetBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-reset]')!;
     const uploadBtn = overlay.querySelector<HTMLButtonElement>('[data-md-modal-upload]')!;
@@ -3861,6 +4175,7 @@ ORDER BY s.n;
       const lines = text.split('\n').length;
       const bytes = new Blob([text]).size;
       statsEl.textContent = `${lines} lines · ${(bytes / 1024).toFixed(1)} KB`;
+      summaryEl.textContent = markdownOverview(text, kind, usingTemplate);
     };
     refreshStats();
     bannerEl.hidden = !usingTemplate;
@@ -3964,6 +4279,25 @@ ORDER BY s.n;
   const openDrawer = (): void => { drawer.hidden = false; renderWsControls(); };
   const closeDrawer = (): void => { drawer.hidden = true; };
 
+  // Reusable create-workspace flow: validates uniqueness, persists, switches.
+  // Shared by the settings Create button and the header dropdown's
+  // "+ New workspace" action so both paths behave identically.
+  const createWorkspaceFlow = async (name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (workspaces.find((w) => w.name === trimmed)) {
+      setStatus('Already exists', {kind: 'warn'});
+      return false;
+    }
+    workspaces.push({name: trimmed, createdAt: new Date().toISOString()});
+    persistWorkspaces();
+    await loadWorkspace(trimmed);
+    render();
+    renderWsControls();
+    setStatus(`Created workspace "${trimmed}"`);
+    return true;
+  };
+
   const renderWsControls = (): void => {
     if (!wsSelect) return;
     wsSelect.innerHTML = '';
@@ -3974,6 +4308,13 @@ ORDER BY s.n;
       if (w.name === activeWs) opt.selected = true;
       wsSelect.append(opt);
     }
+    // Inline "+ New workspace" action so users can spin up a workspace
+    // straight from the header switcher without opening settings. Handled
+    // as a sentinel value in the change listener below.
+    const newOpt = document.createElement('option');
+    newOpt.value = '__new_workspace__';
+    newOpt.textContent = '+ New workspace';
+    wsSelect.append(newOpt);
     if (!wsList) return;
     wsList.innerHTML = '';
     for (const w of workspaces) {
@@ -3986,6 +4327,7 @@ ORDER BY s.n;
       li.addEventListener('click', async (e) => {
         // Ignore clicks on inner controls (the delete button below).
         if ((e.target as HTMLElement).closest('button')) return;
+        focusWorkspaceTab(w.name);
         if (w.name === activeWs) return;
         await loadWorkspace(w.name);
         render();
@@ -4003,13 +4345,14 @@ ORDER BY s.n;
         del.type = 'button';
         del.className = 'danger';
         del.dataset.tip = 'Delete this workspace and everything in it';
+        del.setAttribute('aria-label', `Delete workspace ${w.name}`);
         del.innerHTML = PG_ICONS.svgString('trash-2', 13);
         del.addEventListener('click', async (e) => {
           e.stopPropagation();
           if (!confirm(`Delete workspace "${w.name}" and all its captures?`)) return;
           workspaces = workspaces.filter((x) => x.name !== w.name);
           persistWorkspaces();
-          if (inExtension) chrome.storage.local.remove([wsMsgKey(w.name), wsShotsKey(w.name), wsShotsFullKey(w.name)]).catch(() => { /* ignore */ });
+          if (inExtension) chrome.storage.local.remove([wsMsgKey(w.name), wsShotsKey(w.name), wsShotsFullKey(w.name), wsSnapshotsKey(w.name)]).catch(() => { /* ignore */ });
           if (activeWs === w.name) await loadWorkspace(workspaces[0]!.name);
           render();
         });
@@ -4017,9 +4360,71 @@ ORDER BY s.n;
       }
       wsList.append(li);
     }
+    renderWsSnapshotHistory();
+  };
+
+  // Render the active workspace's snapshot history (Clear-all archives) with
+  // a Restore action. Appended under the workspace list in Settings.
+  const renderWsSnapshotHistory = (): void => {
+    const host = document.querySelector<HTMLElement>('[data-ws-snapshots]');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!wsSnapshots.length) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    const head = document.createElement('div');
+    head.className = 'ws-snap-head';
+    head.textContent = `Snapshot history · ${wsSnapshots.length}`;
+    head.dataset.tip = 'Restorable snapshots saved before each Clear-all';
+    host.append(head);
+    const ul = document.createElement('ul');
+    ul.className = 'ws-snap-list';
+    for (const snap of wsSnapshots) {
+      const li = document.createElement('li');
+      const meta = document.createElement('span');
+      meta.className = 'ws-snap-meta';
+      meta.textContent = `${new Date(snap.ts).toLocaleString()} · ${snap.selectors} sel · ${snap.comments} cmt`;
+      li.append(meta);
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'ws-snap-restore';
+      restore.textContent = 'Restore';
+      restore.dataset.tip = 'Restore this snapshot into the current workspace (current state is kept on the undo stack)';
+      restore.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (messages.length && !confirm('Restore this snapshot? The current captures will be replaced (undoable).')) return;
+        restoreWorkspaceSnapshot(snap.id);
+      });
+      li.append(restore);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'danger ws-snap-del';
+      del.dataset.tip = 'Delete this snapshot';
+      del.setAttribute('aria-label', 'Delete snapshot');
+      del.innerHTML = PG_ICONS.svgString('trash-2', 12);
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteWorkspaceSnapshot(snap.id);
+      });
+      li.append(del);
+      ul.append(li);
+    }
+    host.append(ul);
   };
   wsSelect?.addEventListener('change', async (e) => {
-    await loadWorkspace((e.target as HTMLSelectElement).value);
+    const value = (e.target as HTMLSelectElement).value;
+    if (value === '__new_workspace__') {
+      // Reset the select back to the active workspace first so the sentinel
+      // never sticks as the displayed value if the prompt is cancelled.
+      renderWsControls();
+      const name = (window.prompt('New workspace name') ?? '').trim();
+      if (name) await createWorkspaceFlow(name);
+      return;
+    }
+    await loadWorkspace(value);
+    focusWorkspaceTab(value);
     render();
   });
 
@@ -4134,6 +4539,17 @@ ORDER BY s.n;
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
     if (t && t === tipFor && !t.contains(e.relatedTarget as Node)) hideTip();
   });
+  // The panel re-renders aggressively (render() resets list.innerHTML, confirm
+  // buttons replaceWith, delete-confirm reverts on a timer) and the list
+  // scrolls — in all of those the anchored node leaves the DOM or moves
+  // without ever firing mouseout, which used to strand the tooltip on screen
+  // (covering other elements, never dismissing). Dismiss on any such signal.
+  window.addEventListener('scroll', hideTip, true);
+  document.addEventListener('pointerdown', hideTip, true);
+  const tipGuard = new MutationObserver(() => {
+    if (tipFor && !tipFor.isConnected) hideTip();
+  });
+  tipGuard.observe(document.body, {childList: true, subtree: true});
 
   // ─── Stat drilldowns ────────────────────────────────────────────────────
   const appendHeading = (root: ParentNode, text: string): void => {
@@ -4329,11 +4745,7 @@ ORDER BY s.n;
       case 'ws-create': {
         const name = (wsName.value ?? '').trim();
         if (!name) return;
-        if (workspaces.find((w) => w.name === name)) { setStatus('Already exists', {kind: 'warn'}); return; }
-        workspaces.push({name, createdAt: new Date().toISOString()});
-        persistWorkspaces();
-        wsName.value = '';
-        void loadWorkspace(name).then(render);
+        void createWorkspaceFlow(name).then((ok) => { if (ok) wsName.value = ''; });
       }
     }
   });
@@ -4348,6 +4760,10 @@ ORDER BY s.n;
     const editableTarget = isEditableKeyboardTarget(e.target);
     if (editableTarget && (e.metaKey || e.ctrlKey) && ['a', 'z', 'y'].includes(e.key.toLowerCase())) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palette.hidden ? openPalette() : closePalette(); return; }
+    // Ctrl+F (and Cmd+F) opens the in-list visual find — distinct from the
+    // Cmd+K command palette. Override the browser's native find so the panel
+    // owns the gesture.
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
     if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
     if (e.key === 'Escape') {
@@ -4355,9 +4771,10 @@ ORDER BY s.n;
       if (mdModal && !mdModal.hidden) { closeMdModal(); return; }
       if (!palette.hidden) { closePalette(); return; }
       if (!drawer.hidden) { closeDrawer(); return; }
+      if (findBar && !findBar.hidden) { closeFind(); return; }
       if (pendingMulti.length) { void sendToCS({kind: 'pending-cancel'}); pendingMulti = []; render(); setStatus('Pending group cancelled'); return; }
       if (insertBefore.current) { insertBefore.current = null; render(); setStatus('Insert mode cancelled'); return; }
-      if (searchQuery) { search.value = ''; searchQuery = ''; render(); }
+      if (searchQuery) closeFind();
     }
     if (e.key === 'Alt' || e.altKey) void sendToCS({kind: 'alt-state', on: true});
   });
@@ -4382,6 +4799,10 @@ ORDER BY s.n;
     chrome.runtime.onMessage.addListener((m: any) => receivePanelMessage(m));
     chrome.tabs?.onActivated?.addListener(() => void runValidation());
     chrome.tabs?.onUpdated?.addListener((_id, info) => { if (info?.status === 'complete') void runValidation(); });
+    chrome.tabs?.onRemoved?.addListener((closedId) => {
+      const ws = workspaces.find((w) => w.tabId === closedId);
+      if (ws) { ws.tabId = undefined; persistWorkspaces(); renderWsControls(); }
+    });
   } else {
     window.addEventListener('pinchgrab:to-panel', (e) => receivePanelMessage((e as CustomEvent).detail));
   }
@@ -4390,7 +4811,7 @@ ORDER BY s.n;
   const installTestApi = (): void => {
     (window as any).__pinchgrab_panel = {
       pushMessage: (m: PanelMessage) => { messages.push(m); persist(); render(); },
-      onCapture, onHover, onHoverEnd,
+      onCapture, onHover, onHoverEnd, onPageSnapshot,
       getMessages: () => [...messages],
       getPrefs: () => ({...prefs}),
       setPrefs: (p: Partial<Prefs>) => { prefs = {...prefs, ...p}; persistPrefs(); applyPrefsToUI(); render(); },
@@ -4410,7 +4831,14 @@ ORDER BY s.n;
         persistShotsFull();
       },
       __getShotsFull: () => shotsFull,
-      setSearch: (q: string) => { searchQuery = q; search.value = q; render(); },
+      // setSearch drives the Ctrl+F visual-find path (the header search now
+      // opens the command palette instead of filtering).
+      setSearch: (q: string) => {
+        if (q) { openFind(); if (findInput) findInput.value = q; applyFind(q); }
+        else closeFind();
+      },
+      openFind, closeFind,
+      isFindOpen: () => Boolean(findBar && !findBar.hidden),
       setValidity: (sel: string, ok: boolean | 'diff-page', reason?: string) => {
         selectorValidity.set(sel, ok);
         if (reason) selectorErrors.set(sel, reason);
@@ -4437,6 +4865,9 @@ ORDER BY s.n;
       setLastActive,
       createWorkspace: (n: string) => { workspaces.push({name: n, createdAt: new Date().toISOString()}); persistWorkspaces(); return loadWorkspace(n).then(render); },
       switchWorkspace: (n: string) => loadWorkspace(n).then(render),
+      clearAll: onClear,
+      listSnapshots: () => wsSnapshots.map((s) => ({id: s.id, ts: s.ts, selectors: s.selectors, comments: s.comments})),
+      restoreSnapshot: (id: string) => restoreWorkspaceSnapshot(id),
     };
   };
 

@@ -38,73 +38,55 @@ async function setEmojiIcon(): Promise<void> {
   } catch (e) { console.warn(LOG, 'setEmojiIcon', e); }
 }
 
-// Suppress the global Chrome downloads UI ("downloads bubble" / shelf) so
-// per-capture screenshot saves don't pop the panel on every alt-click.
-// The user's complaint: "selecting elements is downloading every screenshot
-// like showing my downloads pane open". Chrome offers two APIs depending on
-// version — we try both (each requires its own permission) and ignore
-// failures so the extension still works without the permissions.
-//
-// Tradeoff: this disables the shelf for ALL downloads while pinchgrab is
-// running. A future "settings → quiet downloads" toggle can make this
-// opt-out.
-const quietDownloadsUi = (): void => {
-  // Newer API (Chrome 96+ via downloads.ui permission).
-  try {
-    (chrome.downloads as any).setUiOptions?.({enabled: false}, () => {
-      if (chrome.runtime.lastError) console.log(LOG, 'setUiOptions:', chrome.runtime.lastError.message);
-    });
-  } catch (e) { console.log(LOG, 'setUiOptions threw', e); }
-  // Older API (still present through Chrome 113ish via downloads.shelf).
-  try { (chrome.downloads as any).setShelfEnabled?.(false); } catch { /* ignore */ }
-};
-
 chrome.runtime.onInstalled.addListener(async () => {
-  try { await chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: true}); }
-  catch (e) { console.warn(LOG, 'setPanelBehavior', e); }
   try { chrome.contextMenus.create({id: 'pg-capture', title: 'PinchGrab — capture this element', contexts: ['all']}); }
   catch { /* may already exist */ }
-  quietDownloadsUi();
-  void injectIntoOpenTabs();
   void setEmojiIcon();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
-  quietDownloadsUi();
-  void injectIntoOpenTabs();
   void setEmojiIcon();
 });
 
-// Re-quiet on each cold start of the SW — the setting can be reset by the
-// user or other extensions, and SWs go idle aggressively.
-quietDownloadsUi();
+// Ensure the toolbar click fires OUR action.onClicked (not Chrome's panel
+// auto-open) on EVERY service-worker start — onInstalled alone is unreliable
+// across reloads, and a stale openPanelOnActionClick:true silently swallows the
+// click so the content script never injects (Alt+Click capture goes dead).
+// Idempotent and cheap. (#18)
+void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: false})
+  .catch((e) => console.warn(LOG, 'setPanelBehavior (startup)', e));
 
-async function injectIntoOpenTabs(): Promise<void> {
-  try {
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (!tab.id || !tab.url || !/^https?:/.test(tab.url)) continue;
-      try {
-        await chrome.scripting.executeScript({
-          target: {tabId: tab.id, allFrames: false},
-          files: ['content-script.js'],
-          injectImmediately: true,
-        });
-      } catch { /* protected page; ignore */ }
-    }
-  } catch (e) { console.warn(LOG, 'injectIntoOpenTabs', e); }
-}
-
-chrome.tabs.onActivated.addListener(async ({tabId}) => {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab?.url || !/^https?:/.test(tab.url)) return;
+// ─── Activation (#18): toolbar click attaches PinchGrab to THIS tab ─────────
+// PinchGrab no longer auto-injects into every page — the <all_urls>
+// content_scripts entry and host_permissions are gone. Clicking the toolbar
+// action grants activeTab for the clicked tab; we inject the capture script
+// there and open the side panel. Each activated tab becomes its own workspace,
+// tracked panel-side via the pg-tab-activated message below.
+chrome.action.onClicked.addListener((tab) => {
+  if (!tab?.id) return;
+  const tabId = tab.id;
+  console.log(LOG, 'action click → activate tab', tabId, tab.url ?? '(no url)');
+  // Inject the capture script FIRST, while the click's activeTab grant is
+  // freshest; attempt on http(s) pages (and when the URL is unknown), and skip
+  // restricted schemes where injection would only error.
+  if (!tab.url || /^https?:/.test(tab.url)) {
     chrome.scripting.executeScript({
-      target: {tabId},
+      target: {tabId, allFrames: false},
       files: ['content-script.js'],
       injectImmediately: true,
-    }).catch(() => { /* ignore */ });
-  } catch { /* ignore */ }
+    }).catch((e) => console.warn(LOG, 'activate inject FAILED', e));
+  } else {
+    console.warn(LOG, 'activate: cannot inject into', tab.url);
+  }
+  // Then open the side panel (also a user-gesture call).
+  chrome.sidePanel.open({tabId}).catch((e) => console.warn(LOG, 'sidePanel.open', e));
+  // Bind this tab to a workspace panel-side. The panel may have just opened and
+  // not be listening yet, so replay a few times; the panel dedups by tabId.
+  const meta = {__pg: true, kind: 'pg-tab-activated', tabId, url: tab.url ?? '', title: tab.title ?? ''};
+  const announce = (): void => { try { void chrome.runtime.sendMessage(meta).catch?.(() => { /* not up yet */ }); } catch { /* ignore */ } };
+  announce();
+  setTimeout(announce, 150);
+  setTimeout(announce, 500);
 });
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
@@ -403,17 +385,21 @@ const shotElementCommon = async (
 ): Promise<{blob: Blob; bitmap: ImageBitmap; tabUrl: string; cropMeta: ShotReply['crop']} | null> => {
   const tab = await chrome.tabs.get(tabId);
   const tabUrl = tab?.url ?? '';
-  const bbox = await computeAndScroll(tabId, selectors, padding);
-  if (!bbox) return null;
-  await yieldRaf(tabId);
-
-  // Hide overlays + ack.
+  // Item 17 (flashing): hide + freeze overlays BEFORE we scroll the page to
+  // frame the capture. The old order scrolled first, so the content script's
+  // ring rAF loops chased the new scroll offset (a visible jump) before they
+  // were hidden, and a grouped capture's many rings amplified the flicker.
+  // Hiding first means the whole scroll→yield→capture→restore window happens
+  // with the overlay frozen and out of layout — no on-screen flash.
   await tellCs(tabId, {kind: 'hide-overlays'});
   let dataUrl: string;
+  let bbox: BboxResult | null = null;
   try {
+    bbox = await computeAndScroll(tabId, selectors, padding);
+    if (!bbox) return null;
+    await yieldRaf(tabId);
     dataUrl = await chrome.tabs.captureVisibleTab(windowId, {format: 'png'});
   } catch (e) {
-    await tellCs(tabId, {kind: 'show-overlays'});
     console.warn(LOG, 'captureVisibleTab failed', e);
     return null;
   } finally {
@@ -665,6 +651,51 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
     return true;
   }
 
+  // Full-page snapshot for the page-snapshot feature. Reuses the same
+  // hide-overlays → stitch → restore path as shot-page, but returns the PNG
+  // as a data URL instead of writing a file. Serialized per tab through the
+  // same queue so it can't race a concurrent element/group capture.
+  if (msg.kind === 'page-snapshot-shot') {
+    void (async () => {
+      try {
+        const tabId = msg.tabId ?? sender.tab?.id;
+        let resolvedTabId = tabId;
+        let windowId: number | undefined;
+        if (resolvedTabId == null) {
+          const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+          resolvedTabId = tabs[0]?.id;
+          windowId = tabs[0]?.windowId;
+        } else {
+          const t = await chrome.tabs.get(resolvedTabId);
+          windowId = t?.windowId;
+        }
+        if (resolvedTabId == null || windowId == null) {
+          sendResponse({ok: false, error: 'no active tab'});
+          return;
+        }
+        const tabIdFinal = resolvedTabId;
+        const windowIdFinal = windowId;
+        await enqueue(tabIdFinal, async () => {
+          try {
+            const got = await shotPageCommon(tabIdFinal, windowIdFinal);
+            if (!got) { sendResponse({ok: false, error: 'capture failed'}); return; }
+            const screenshot = await blobToFullDataUrl(got.blob);
+            got.bitmap.close?.();
+            // `truncated` here means the stitch stopped early (chunk/pixel
+            // cap) — the PNG covers only part of the document, which is
+            // exactly the `partial` signal the PageSnapshot contract wants.
+            sendResponse({ok: true, screenshot, partial: got.truncated});
+          } catch (e) {
+            sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
+          }
+        });
+      } catch (e) {
+        sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
+      }
+    })();
+    return true;
+  }
+
   if (msg.kind === 'save-text' || msg.kind === 'save-bytes') {
     void (async () => {
       try {
@@ -705,8 +736,33 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
   // the user activation through chrome.runtime.sendMessage so this doesn't
   // throw — the click that triggered the capture in the content script is
   // still considered "live" here in the worker.
+  //
+  // INVESTIGATE-1 (first-capture race): on the VERY FIRST Alt+Click the panel
+  // document doesn't exist yet, so its chrome.runtime.onMessage listener isn't
+  // registered. chrome.runtime.sendMessage only reaches listeners that are
+  // already live, so this first capture is dropped — the user has to click a
+  // second time (panel now listening) to see it. The robust fix is a panel→bg
+  // "panel-ready, send me anything pending" handshake, but that needs a
+  // sidepanel.ts change (reported separately). As a background-only, low-risk
+  // mitigation we re-broadcast the first capture(s) a few times over a short
+  // window AFTER opening the panel. The panel registers its onMessage listener
+  // synchronously at script-eval (before its async loadAll), and it already
+  // buffers messages until ready AND dedupes by __mid — so a replay that lands
+  // after the listener exists is processed exactly once, and replays that lose
+  // the race are harmless no-ops.
+  //
+  // We guard on `sender.tab?.id != null` so our OWN replays (which have no
+  // sender.tab) never re-enter this branch — no open/replay loop.
   if ((msg.kind === 'capture' || msg.kind === 'pending-add') && sender.tab?.id != null) {
     chrome.sidePanel.open({tabId: sender.tab.id}).catch(() => { /* already open */ });
+    // Always replay — we can't reliably tell from here whether the panel was
+    // already listening (sidePanel has no "is-open" API, and open() resolving
+    // vs rejecting is not a clean signal across Chrome versions / gesture
+    // states). Over-replaying when the panel is already up is harmless: the
+    // panel dedupes by __mid, so the redundant broadcasts collapse to nothing.
+    // Under-replaying would resurrect the dropped-first-capture bug, so we err
+    // toward always replaying. The window is short and bounded (3 sends).
+    replayFirstCapture(msg as PgEnvelope<AnyMessage>);
   }
 
   // No port relay: the side panel listens directly on chrome.runtime.onMessage,
@@ -715,6 +771,25 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
   // duplicated multi-select entries in production.
   return false;
 });
+
+// Re-broadcast a capture/pending-add envelope a few times over a short window
+// so a freshly-opened side panel (whose listener registers a few ms after the
+// document starts loading) catches it. Same __mid each time → the panel's
+// recentMids ring dedupes to a single processed message. Bounded (no loop):
+// three attempts inside ~450ms, then we stop. Resending the SAME envelope is
+// important — a new __mid would defeat the dedup and double-insert.
+const REPLAY_DELAYS_MS = [60, 180, 450];
+const replayFirstCapture = (envelope: PgEnvelope<AnyMessage>): void => {
+  for (const delay of REPLAY_DELAYS_MS) {
+    setTimeout(() => {
+      // sendMessage with no callback; the panel consumes it. Wrapped so a
+      // "receiving end does not exist" rejection (panel still not up on the
+      // earliest attempt) is swallowed rather than logged as an error.
+      try { void chrome.runtime.sendMessage(envelope).catch?.(() => { /* not up yet */ }); }
+      catch { /* ignore */ }
+    }, delay);
+  }
+};
 
 // Encode a PNG blob into a base64 data URL using the same chunked-btoa
 // path saveDownload uses. The result is two purposes-in-one: the

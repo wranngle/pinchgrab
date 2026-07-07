@@ -62,14 +62,29 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-profile-'));
   const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-dl-'));
 
+  // The production manifest intentionally has NO host_permissions (#18: capture
+  // works via the activeTab grant from the toolbar-click activation). A headless
+  // test can't perform that toolbar click, so we load a COPY of the build with
+  // host_permissions added — standing in for the real activeTab grant so the
+  // screenshot/capture pipeline can be exercised. The shipped extension/ stays
+  // clean; this only affects what Chromium loads in-test.
+  const loadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchgrab-ext-'));
+  fs.cpSync(EXTENSION_DIR, loadDir, { recursive: true });
+  {
+    const mfPath = path.join(loadDir, 'manifest.json');
+    const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+    mf.host_permissions = ['<all_urls>'];
+    fs.writeFileSync(mfPath, JSON.stringify(mf, null, 2));
+  }
+
   const ctx = await chromium.launchPersistentContext(profileDir, {
     headless: true,
     channel: 'chromium',
     downloadsPath: downloadsDir,
     acceptDownloads: true,
     args: [
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
+      `--disable-extensions-except=${loadDir}`,
+      `--load-extension=${loadDir}`,
       '--no-first-run',
       '--no-default-browser-check',
     ],
@@ -229,6 +244,123 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
     }
   } catch (e) {
     failures.push(`screenshot threw: ${(e as Error).message}`);
+  }
+
+  // ─── Test 4: page-snapshot generation (item 18) ───────────────────────
+  // The content script asks the bg for a full-page snapshot via the new
+  // `page-snapshot-shot` request; the bg returns a PNG data URL (best-effort
+  // full page, `partial` when stitch was capped). We exercise the generation
+  // half directly against the real worker — same path the content script
+  // drives on the first capture of a new URL.
+  try {
+    await host.bringToFront();
+    await sleep(150);
+    const hostTabId = await panel.evaluate(async () => {
+      const tabs = await new Promise<any[]>((resolve) => chrome.tabs.query({}, (ts) => resolve(ts)));
+      const hostTab = tabs.find((t: any) => typeof t.url === 'string' && t.url.startsWith('http://127.0.0.1'));
+      return hostTab?.id ?? null;
+    });
+    if (hostTabId == null) {
+      failures.push('page-snapshot: could not locate host tab id');
+    } else {
+      const reply = await panel.evaluate(async (tabId) =>
+        new Promise<any>((resolve) => {
+          chrome.runtime.sendMessage(
+            { __pg: true, __mid: 'test-snap', kind: 'page-snapshot-shot', tabId },
+            (r) => resolve(r),
+          );
+        }), hostTabId) as { ok?: boolean; screenshot?: string; partial?: boolean; error?: string };
+      if (!reply || reply.ok !== true) {
+        failures.push(`page-snapshot reply was not ok: ${JSON.stringify(reply)}`);
+      } else if (typeof reply.screenshot !== 'string' || !reply.screenshot.startsWith('data:image/png;base64,')) {
+        failures.push(`page-snapshot screenshot is not a PNG data URL: ${String(reply.screenshot).slice(0, 40)}`);
+      } else {
+        // Decode the base64 PNG and check the magic bytes.
+        const b64 = reply.screenshot.slice('data:image/png;base64,'.length);
+        const bytes = Buffer.from(b64, 'base64');
+        const magicOk = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+        assert(magicOk, 'page-snapshot PNG magic missing');
+        console.log(`extension 4 ok: page-snapshot PNG (${bytes.length} bytes, partial=${reply.partial === true})`);
+      }
+    }
+  } catch (e) {
+    failures.push(`page-snapshot threw: ${(e as Error).message}`);
+  }
+
+  // ─── Test 5: #18 on-demand injection → Alt+Click capture ───────────────
+  // Reproduce the toolbar-click activation end-to-end: the SW injects
+  // content-script.js into the host tab (what action.onClicked does), the
+  // content script must initialize, and a REAL Alt+Click must produce a
+  // capture that reaches the side panel. This is the flow the user reported
+  // broken after #18.
+  try {
+    const hostTabId = await sw.evaluate(async (hostBase) => {
+      const tabs = await chrome.tabs.query({});
+      const t = tabs.find((x) => typeof x.url === 'string' && x.url.startsWith(hostBase));
+      return t?.id ?? null;
+    }, base);
+    if (hostTabId == null) {
+      failures.push('#18 inject: could not find host tab id');
+    } else {
+      const injectErr = await sw.evaluate(async (tabId) => {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId }, files: ['content-script.js'], injectImmediately: true });
+          return null;
+        } catch (e) { return String(e); }
+      }, hostTabId);
+      if (injectErr) {
+        failures.push(`#18 inject: executeScript failed: ${injectErr}`);
+      } else {
+        await sleep(300);
+        // The content script runs in the ISOLATED world, so its window[KEY] is
+        // invisible to host.evaluate() (main world). Detect init via the overlay
+        // host element it appends to the page DOM instead.
+        const csReady = await host.evaluate(() => Boolean(document.getElementById('__pinchgrab_overlay')));
+        if (!csReady) {
+          failures.push('#18 inject: content script did not initialize (no #__pinchgrab_overlay after executeScript)');
+        } else {
+          await panel.evaluate(() => (window as any).__pinchgrab_panel.clear());
+          await host.bringToFront();
+          await host.keyboard.down('Alt');
+          await host.click('#cta');
+          await host.keyboard.up('Alt');
+          await sleep(600);
+          const caps = await panel.evaluate(() =>
+            (window as any).__pinchgrab_panel.getMessages()
+              .filter((m: any) => m.type === 'selector')
+              .map((m: any) => m.entry?.selector));
+          if (!caps.includes('#cta')) {
+            failures.push(`#18 Alt+Click: no #cta capture reached the panel (got ${JSON.stringify(caps)})`);
+          } else {
+            console.log(`extension 5 ok: #18 on-demand injection + Alt+Click capture (selectors=${JSON.stringify(caps)})`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    failures.push(`#18 inject/Alt threw: ${(e as Error).message}`);
+  }
+
+  // ─── Test 6: SW boot leaves openPanelOnActionClick=false ────────────────
+  // The bug that killed Alt+Click: a stale openPanelOnActionClick:true makes
+  // the toolbar click auto-open the panel WITHOUT firing action.onClicked, so
+  // the content script never injects. The fix sets it false at SW TOP LEVEL —
+  // onInstalled no longer touches it at all — so a booted SW showing false
+  // proves the top-level call ran. (A stronger restart-the-SW variant is not
+  // possible in this harness: chrome.runtime.reload() under Playwright
+  // headless kills the extension without respawning the worker — verified.
+  // Chrome's own toolbar-click → onClicked dispatch when the flag is false is
+  // platform behavior and needs a manual check.)
+  try {
+    const bootVal = await sw.evaluate(async () =>
+      (await chrome.sidePanel.getPanelBehavior()).openPanelOnActionClick ?? null);
+    if (bootVal !== false) {
+      failures.push(`panel-behavior: expected openPanelOnActionClick=false after SW boot, got ${String(bootVal)}`);
+    } else {
+      console.log('extension 6 ok: SW boot set openPanelOnActionClick=false (toolbar click reaches onClicked)');
+    }
+  } catch (e) {
+    failures.push(`panel-behavior test threw: ${(e as Error).message}`);
   }
 
   // Print collected console output regardless — visibility while debugging.

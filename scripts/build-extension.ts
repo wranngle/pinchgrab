@@ -3,7 +3,7 @@
 // single self-contained .js file — content scripts don't load ES modules,
 // so bundling is mandatory.
 
-import {mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync} from 'node:fs';
+import {mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
 import {resolve, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -102,11 +102,37 @@ for (const f of PASSTHROUGH) {
   console.log(`Copied ${basename(f)}`);
 }
 
+// ─── Extension icons ───────────────────────────────────────────────────────
+// The manifest references icons/icon{16,32,48,128}.png for the toolbar action
+// and the Chrome Web Store tile. They're rendered source assets committed under
+// src/icons/ — copy every PNG there into extension/icons/ so the build is a
+// loadable, store-submittable package.
+{
+  const srcIconsDir = resolve(srcDir, 'icons');
+  if (existsSync(srcIconsDir)) {
+    const distIconsDir = resolve(distDir, 'icons');
+    mkdirSync(distIconsDir, {recursive: true});
+    const pngs = readdirSync(srcIconsDir).filter((f) => f.endsWith('.png'));
+    for (const png of pngs) {
+      copyFileSync(resolve(srcIconsDir, png), resolve(distIconsDir, png));
+    }
+    console.log(`Copied ${pngs.length} icon${pngs.length === 1 ? '' : 's'} to extension/icons/`);
+  } else {
+    console.warn('No src/icons/ directory — extension will ship without icons.');
+  }
+}
+
 // Remove any stale content-script that lingered from the old build.
 const stale = resolve(distDir, 'selector-capture-mode.js');
 if (existsSync(stale)) { rmSync(stale); console.log(`Removed ${stale}`); }
 
-// README install instructions.
+// README install instructions. The extension is loaded from a Windows browser,
+// so when building under WSL the "Load unpacked" path must be the \\wsl.localhost
+// UNC path, not the Linux distDir. Off WSL (native Win/macOS/Linux) distDir is
+// already the right path for that host.
+const loadPath = process.env.WSL_DISTRO_NAME
+  ? `\\\\wsl.localhost\\${process.env.WSL_DISTRO_NAME}${distDir.replace(/\//g, '\\')}`
+  : distDir;
 const installHints = [
   'PinchGrab extension',
   '',
@@ -114,7 +140,7 @@ const installHints = [
   '2. Open edge://extensions or chrome://extensions.',
   '3. Enable Developer mode.',
   '4. Click "Load unpacked" and select:',
-  `   ${distDir}`,
+  `   ${loadPath}`,
   '5. Pin PinchGrab in the toolbar; click its icon to open the side panel.',
   '6. Open any web page, hold Alt to live-outline elements, Alt+Click to capture.',
   '',

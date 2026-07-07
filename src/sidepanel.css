@@ -52,8 +52,8 @@ body {
 
 .panel {
   display: grid;
-  /* bar / shortcuts / toolbar / stats / body(1fr) / composer / status-row */
-  grid-template-rows: auto auto auto auto 1fr auto auto;
+  /* bar / shortcuts / toolbar / stats / body(1fr) / composer / status-row / footer */
+  grid-template-rows: auto auto auto auto 1fr auto auto auto;
   height: 100vh;
   border-left: 4px solid var(--orange);
   background: var(--bg);
@@ -256,7 +256,7 @@ body {
 .manual-row .primary {
   height: 28px; padding: 0 12px;
   font-family: var(--sans); font-weight: 700;
-  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 11px; letter-spacing: 0.01em;
   border-radius: var(--r);
 }
 
@@ -279,7 +279,7 @@ body {
 }
 .stat .stat-label {
   font: 8px/1 var(--sans);
-  letter-spacing: 0.06em; text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text-3);
   margin-bottom: 2px;
 }
@@ -304,6 +304,33 @@ body {
   background: var(--bg);
   scroll-behavior: smooth;
 }
+
+/* Ctrl+F visual find bar. Placed in the body's grid row, pinned to the top
+   as an overlay so it never disturbs the fixed panel grid (it's display:none
+   when hidden). The body gets extra top padding while find is open so the
+   first capture isn't covered. */
+.find-bar {
+  grid-row: 5; grid-column: 1;
+  align-self: start;
+  z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 12px 0;
+  padding: 5px 8px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--orange);
+  border-radius: var(--r);
+  box-shadow: 0 4px 14px rgba(0,0,0,.35);
+}
+.find-bar[hidden] { display: none; }
+.find-icon { color: var(--text-3); display: inline-flex; }
+.find-bar input {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; outline: 0;
+  color: var(--text); font: 12px/1.4 var(--mono);
+}
+.find-bar input::placeholder { color: var(--text-3); }
+.find-count { color: var(--text-3); font: 10px/1 var(--mono); white-space: nowrap; }
+.panel.find-open .body { padding-top: 52px; }
 .body::-webkit-scrollbar { width: 10px; }
 .body::-webkit-scrollbar-track { background: transparent; }
 .body::-webkit-scrollbar-thumb {
@@ -314,9 +341,39 @@ body {
 
 .empty {
   margin: auto;
-  color: var(--text-4);
-  text-align: center; line-height: 1.6;
-  max-width: 240px; font-size: 12px;
+  color: var(--text-2);
+  text-align: center; line-height: 1.55;
+  max-width: 280px; font-size: 13px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, rgba(255,95,0,.08) 0%, rgba(26,25,35,.86) 100%);
+}
+.empty-icon {
+  margin-bottom: 8px;
+  font-size: 34px;
+  line-height: 1;
+}
+.empty-title {
+  margin-bottom: 5px;
+  color: var(--text);
+  font: 700 14px/1.25 var(--sans);
+  letter-spacing: 0.01em;
+}
+.empty-body {
+  color: var(--text-2);
+}
+.empty-keys {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  color: var(--gold);
+  font: 11px/1 var(--mono);
 }
 
 /* Page divider ───────────────────────────────────────────── */
@@ -704,6 +761,38 @@ body {
   overflow: hidden;
   box-sizing: border-box;
 }
+/* Reserved variant: the box height is derived from the captured element's
+   aspect ratio (--shot-ratio = height/width) so the final image height is
+   committed BEFORE the screenshot decodes. This keeps the timeline from
+   shifting when the shot swaps in a moment after capture. Clamped so a very
+   tall element doesn't reserve an absurd amount of space. */
+.msg.selector .preview.reserved {
+  height: auto;
+  aspect-ratio: 1 / var(--shot-ratio, 0.6);
+  min-height: 64px;
+  max-height: 260px;
+}
+/* Skeleton shimmer fills the reserved space until the shot arrives. */
+.msg.selector .preview .shot-skeleton {
+  position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(100deg,
+    rgba(255,255,255,0.02) 30%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.02) 70%);
+  background-size: 200% 100%;
+  animation: shot-shimmer 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg.selector .preview .shot-skeleton { animation: none; }
+}
+@keyframes shot-shimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+/* While the img element exists but hasn't decoded, keep it transparent so
+   the skeleton (or textured mesh) shows through; reveal on .loaded. */
+.msg.selector .preview img.shot { opacity: 0; transition: opacity 120ms ease-out; }
+.msg.selector .preview.loaded img.shot { opacity: 1; }
 .msg.selector .preview iframe,
 .inline-comment .preview iframe {
   border: 0; pointer-events: none;
@@ -766,7 +855,7 @@ body {
 }
 .msg.selector .ent-stats .ent-stat .lbl {
   font: 8px/1 var(--sans);
-  letter-spacing: 0.06em; text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text-3);
   margin-bottom: 2px;
   white-space: nowrap;
@@ -822,10 +911,11 @@ body {
   overscroll-behavior: auto;
   user-select: text;
 }
-/* Wrap toggle: 'wrap-on' (default) — break long lines so the JSON fits the
-   bubble width. 'wrap-off' — keep one logical line per JSON line and let
-   the user scroll horizontally. */
-.msg.selector .body-json.wrap-on { white-space: pre-wrap; word-break: break-word; }
+/* Wrap toggle: 'wrap-on' (default) — the JSON is rendered as one minified
+   line that soft-wraps to the bubble width, breaking anywhere so no token
+   forces horizontal scroll. 'wrap-off' — pretty/compact form kept on one
+   logical line per JSON line with horizontal scroll. */
+.msg.selector .body-json.wrap-on { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
 .msg.selector .body-json.wrap-off { white-space: pre; }
 .msg.selector .body-json::-webkit-scrollbar { width: 8px; }
 .msg.selector .body-json::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -848,8 +938,11 @@ body {
 .msg.selector.expanded.diff-page .peek-error { display: block !important; }
 .msg.selector.expanded .ent-stats { display: flex !important; }
 /* Collapsed bubbles use a smaller preview height to keep the timeline
-   scannable. Expanded bubbles get the full 110px preview. */
-.msg.selector:not(.expanded) .preview { height: 64px; }
+   scannable. Expanded bubbles get the full 110px preview. Reserved
+   (aspect-ratio) previews keep their committed height in both states so the
+   shot swap stays reflow-free. */
+.msg.selector:not(.expanded) .preview:not(.reserved) { height: 64px; }
+.msg.selector:not(.expanded) .preview.reserved { max-height: 140px; }
 
 /* Feedback bubble ─────────────────────────────────────────── */
 .msg.feedback {
@@ -869,11 +962,73 @@ body {
   margin-left: 24px; max-width: min(calc(86% - 24px), 92vw - 32px);
 }
 @media (max-width: 360px) {
+  .bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .title-stack {
+    width: 100%;
+    overflow: visible;
+  }
+  .brand {
+    gap: 6px;
+    letter-spacing: 0.03em;
+    font-size: 13px;
+  }
+  .brand .name {
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .ws-pill {
+    max-width: 100%;
+  }
+  .bar-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .shortcuts {
+    gap: 4px 6px;
+    padding: 6px 10px;
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .search {
+    min-width: 0;
+    width: 100%;
+  }
+  .toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .toolbar-actions .iconbtn.export-full {
+    margin-right: auto;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 7px 10px;
+  }
+  .stat,
+  .stat.right {
+    min-width: 0;
+    margin-left: 0;
+    align-items: flex-start;
+  }
   .msg.feedback { max-width: 92%; }
   .msg.feedback.threaded { margin-left: 16px; max-width: calc(92% - 16px); }
   .msg.selector { width: 92%; }
-  .composer .send-label { display: none; }
-  .composer .send { padding: 0 8px; }
+  .composer {
+    padding: 8px;
+  }
+  .composer .send { padding: 0 9px; }
   .toolbar-actions .iconbtn { width: 26px; height: 26px; }
 }
 .msg.feedback.editing {
@@ -930,7 +1085,7 @@ body {
   outline: 0;
 }
 .composer textarea:focus { border-color: var(--orange); }
-.composer textarea::placeholder { color: var(--text-4); }
+.composer textarea::placeholder { color: var(--text-3); }
 .composer textarea.cmd-mode {
   border-color: var(--gold);
   background: rgba(255,209,102,.05);
@@ -953,8 +1108,7 @@ body {
   font-family: var(--sans);
   font-weight: 700;
   font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 .composer textarea { min-height: 36px; }
@@ -982,6 +1136,30 @@ body {
   flex: 0 1 auto;
 }
 .status-row { min-width: 0; }
+
+/* Main-pane footer — subtle GitHub-star CTA pinned at the bottom. Sits in
+   its own grid row below the composer/status, so it never overlaps them.
+   Low-contrast by design; the star CTA inherits the orange accent on hover. */
+.pane-footer {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 22px;
+  padding: 0 12px;
+  background: var(--bg-elev-2);
+  border-top: 1px solid var(--border);
+  font: 10px/1 var(--mono);
+  color: var(--text-3);
+  white-space: nowrap; overflow: hidden;
+}
+.pane-footer .emoji { font-size: 11px; }
+.pane-footer-text { letter-spacing: 0.04em; }
+.pane-footer-dot { color: var(--text-3); opacity: 0.6; }
+.pane-footer-cta {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--text-2); text-decoration: none;
+  transition: color 0.12s;
+}
+.pane-footer-cta:hover { color: var(--orange); }
+.pane-footer-cta [data-icon] { color: inherit; }
 
 .copy-toast {
   position: fixed;
@@ -1114,7 +1292,7 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 }
 .drilldown h5 {
   font: 700 11px/1 var(--sans);
-  letter-spacing: 0.05em; text-transform: uppercase;
+  letter-spacing: 0.01em;
   color: var(--orange); margin-bottom: 6px;
 }
 .drilldown ul { list-style: none; padding: 0; max-height: 220px; overflow: auto; }
@@ -1137,12 +1315,63 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   background: var(--bg-elev-2);
 }
 .drawer-title { color: var(--orange); font-weight: 700; font-family: var(--sans); letter-spacing: 0.05em; }
-.drawer-body { padding: 14px 16px; overflow: auto; flex: 1; text-align: left; }
+.drawer-body { padding: 12px 14px; overflow: auto; flex: 1; text-align: left; }
 .drawer-body * { text-align: left; }
-.prefs { margin-bottom: 18px; text-align: left; }
-.prefs h4 { color: var(--text-3); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
-.prefs label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.prefs {
+  margin-bottom: 8px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(21,20,29,.62);
+  overflow: hidden;
+}
+.prefs summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  color: var(--text);
+  font: 700 12px/1 var(--sans);
+  cursor: pointer;
+  user-select: none;
+}
+.prefs summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--orange);
+  border-bottom: 1.5px solid var(--orange);
+  transform: rotate(-45deg);
+  transition: transform .12s ease;
+}
+.prefs[open] summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev-2);
+}
+.prefs[open] summary::before { transform: rotate(45deg); }
+.prefs > :not(summary) {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+.prefs > :last-child { margin-bottom: 10px; }
+.prefs h4 {
+  color: var(--text-2);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin: 12px 0 8px;
+}
+.prefs label { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 12px; }
+/* Checkbox-bearing rows: keep the box fixed and let the label text word-wrap
+   so nothing is clipped at narrow panel widths. The label text is a bare
+   flex item — give it room to wrap rather than overflow horizontally. */
+.prefs label { white-space: normal; overflow-wrap: anywhere; word-break: normal; min-width: 0; }
+.prefs label > input[type=checkbox] { flex: 0 0 auto; margin-top: 2px; }
 .prefs input[type=checkbox] { accent-color: var(--orange); }
+/* Inline <code>/<small> contributions inside a label must also wrap, not
+   force the row wider than the drawer. */
+.prefs label code,
+.prefs label small { overflow-wrap: anywhere; word-break: normal; min-width: 0; }
 .hotkeys { list-style: none; margin: 0; padding: 0; font-size: 11px; line-height: 1.7; color: var(--text-2); }
 .hotkeys kbd {
   display: inline-block;
@@ -1156,7 +1385,7 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   user-select: text;
 }
 .ws-controls {
-  display: flex; gap: 6px; margin-bottom: 8px;
+  display: flex; gap: 6px; margin-top: 10px; margin-bottom: 8px;
 }
 .ws-controls input {
   flex: 1; padding: 6px 8px;
@@ -1165,7 +1394,7 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   font: 12px/1 var(--mono); outline: 0;
 }
 .ws-controls input:focus { border-color: var(--orange); }
-.ws-controls .primary { padding: 4px 10px; font: 700 11px/1 var(--sans); text-transform: uppercase; letter-spacing: 0.04em; border-radius: var(--r-sm); }
+.ws-controls .primary { padding: 4px 10px; font: 700 11px/1 var(--sans); letter-spacing: 0.01em; border-radius: var(--r-sm); }
 .ws-list { list-style: none; }
 .ws-list li {
   display: flex; align-items: center; gap: 8px;
@@ -1189,6 +1418,43 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 .ws-list li button { background: transparent; border: 0; color: var(--text-3); cursor: pointer; padding: 2px 4px; }
 .ws-list li button:hover { color: var(--orange); }
 .ws-list li button.danger:hover { color: var(--red); }
+
+/* Workspace snapshot history (Clear-all archives). */
+.ws-snapshots { margin-top: 10px; }
+.ws-snap-head {
+  font: 700 10px/1 var(--sans);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+.ws-snap-list { list-style: none; margin: 0; padding: 0; }
+.ws-snap-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 4px;
+  background: var(--bg-elev-2);
+}
+.ws-snap-meta {
+  flex: 1; min-width: 0;
+  font: 10px/1.4 var(--mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.ws-snap-restore {
+  background: transparent;
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  border-radius: var(--r-xs);
+  padding: 3px 8px;
+  font: 700 10px/1 var(--sans);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ws-snap-restore:hover { background: var(--orange); color: var(--bg); }
+.ws-snap-del { background: transparent; border: 0; color: var(--text-3); cursor: pointer; padding: 2px 4px; }
+.ws-snap-del:hover { color: var(--red); }
 
 /* `.prefs label` higher up sets `align-items: center` (label+class > class
  * only), which on a column flex container centers each row HORIZONTALLY —
@@ -1303,7 +1569,7 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   background: var(--bg-elev-2, #1a1822);
   border: 1px solid var(--border, #2a2735);
   border-radius: var(--r-sm, 6px);
-  padding: 8px 10px;
+  padding: 10px 10px 30px;
   color: var(--text-2, #cfc9d8);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
@@ -1314,27 +1580,81 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   margin: 0;
   padding: 0;
   font: inherit;
-  color: var(--text-3, #847d9a);
+  color: var(--text-2, #cbc7d3);
   white-space: pre-wrap;
   overflow: hidden;
-  max-height: 8em;
+  max-height: 6.4em;
 }
 .md-preview-edit-hint {
   position: absolute;
-  top: 6px; right: 8px;
-  font: 600 10px/1 var(--display, system-ui);
+  right: 8px; bottom: 8px;
+  font: 700 10px/1 var(--sans, system-ui);
   color: var(--orange, #ff5f00);
   background: var(--bg, #14111a);
   padding: 3px 6px;
   border-radius: var(--r-xs, 3px);
   border: 1px solid var(--border, #2a2735);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 .md-preview:hover .md-preview-edit-hint { border-color: var(--orange, #ff5f00); }
 .md-preview-meta {
   display: flex; align-items: center;
   font-size: 10px;
+}
+
+/* Templates: DESIGN.md is the recommended primary card; SKILL.md is an
+   advanced, de-emphasized disclosure. */
+.md-card-primary {
+  border: 1px solid var(--orange);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, var(--bg-elev) 0%, rgba(255,95,0,.05) 100%);
+  padding: 10px 10px 4px;
+  margin: 6px 0 12px;
+}
+.md-card-head { display: flex; align-items: center; justify-content: space-between; }
+.md-card-head h4 { margin: 2px 0 6px; display: flex; align-items: center; gap: 6px; }
+.md-badge {
+  font: 700 9px/1 var(--sans);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 999px;
+}
+.md-badge-recommended { color: var(--bg); background: var(--orange); }
+.md-badge-advanced {
+  color: var(--text-3); background: transparent;
+  border: 1px solid var(--border);
+}
+/* Make the primary DESIGN editor button read as the call to action. */
+.md-preview-primary { border-color: var(--orange); }
+.md-preview-primary .md-preview-edit-hint {
+  color: var(--bg); background: var(--orange); border-color: var(--orange);
+}
+/* Advanced SKILL.md disclosure — quieter than a top-level prefs group. */
+.prefs-advanced {
+  margin: 4px 0 6px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  padding: 0 8px;
+  background: transparent;
+}
+.prefs-advanced > summary {
+  cursor: pointer; list-style: none;
+  padding: 7px 2px;
+  font: 600 11px/1.3 var(--sans);
+  color: var(--text-3);
+  display: flex; align-items: center; gap: 6px;
+}
+.prefs-advanced > summary::-webkit-details-marker { display: none; }
+.prefs-advanced[open] > summary { color: var(--text-2); }
+.prefs-advanced > :not(summary) { margin-bottom: 8px; }
+/* Help & about step list. */
+.help-steps {
+  list-style: none; margin: 4px 0 8px; padding: 0;
+  font-size: 12px; line-height: 1.6; color: var(--text-2);
+}
+.help-steps li { padding: 2px 0 2px 16px; position: relative; }
+.help-steps li::before {
+  content: "›"; position: absolute; left: 2px;
+  color: var(--orange);
 }
 
 /* The modal — fullscreen-within-sidepanel overlay so the textarea has
@@ -1381,6 +1701,17 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   color: var(--gold, #ffd166);
   font-size: 11px;
   line-height: 1.45;
+}
+.md-modal-summary {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #2a2735);
+  background: rgba(21, 20, 29, 0.78);
+  color: var(--text-2, #cbc7d3);
+  font: 11px/1.45 var(--mono, ui-monospace, monospace);
+}
+.md-modal-summary b {
+  color: var(--text, #fcfaf5);
+  font-family: var(--sans, system-ui);
 }
 .md-modal-textarea {
   flex: 1 1 auto;
@@ -1443,9 +1774,8 @@ mark {
 }
 .pending-bay .pending-head {
   font: 700 10px/1.2 var(--sans);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   color: var(--gold);
-  text-transform: uppercase;
 }
 .pending-bay .pending-card {
   display: flex; align-items: center; gap: 8px;
@@ -1468,8 +1798,7 @@ mark {
   flex: 1;
   padding: 6px 10px;
   font: 700 11px/1 var(--sans);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   border-radius: var(--r-sm);
 }
 .pending-bay .pending-cancel {
