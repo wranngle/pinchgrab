@@ -341,6 +341,28 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
     failures.push(`#18 inject/Alt threw: ${(e as Error).message}`);
   }
 
+  // ─── Test 6: SW boot leaves openPanelOnActionClick=false ────────────────
+  // The bug that killed Alt+Click: a stale openPanelOnActionClick:true makes
+  // the toolbar click auto-open the panel WITHOUT firing action.onClicked, so
+  // the content script never injects. The fix sets it false at SW TOP LEVEL —
+  // onInstalled no longer touches it at all — so a booted SW showing false
+  // proves the top-level call ran. (A stronger restart-the-SW variant is not
+  // possible in this harness: chrome.runtime.reload() under Playwright
+  // headless kills the extension without respawning the worker — verified.
+  // Chrome's own toolbar-click → onClicked dispatch when the flag is false is
+  // platform behavior and needs a manual check.)
+  try {
+    const bootVal = await sw.evaluate(async () =>
+      (await chrome.sidePanel.getPanelBehavior()).openPanelOnActionClick ?? null);
+    if (bootVal !== false) {
+      failures.push(`panel-behavior: expected openPanelOnActionClick=false after SW boot, got ${String(bootVal)}`);
+    } else {
+      console.log('extension 6 ok: SW boot set openPanelOnActionClick=false (toolbar click reaches onClicked)');
+    }
+  } catch (e) {
+    failures.push(`panel-behavior test threw: ${(e as Error).message}`);
+  }
+
   // Print collected console output regardless — visibility while debugging.
   if (collected.length) {
     console.log('--- console capture (last 50 lines) ---');
