@@ -61,6 +61,12 @@ const startServer = () =>
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
   const page = await ctx.newPage();
+  // tsx (CI) transpiles with esbuild keep-names, which wraps named functions
+  // defined inside page.evaluate callbacks in an `__name(...)` helper that
+  // doesn't exist in the browser context (bun doesn't inject it, so the gap
+  // only shows in CI). Polyfill it as identity for every page in this context.
+  // Passed as a raw string so the polyfill itself can't be transpiled.
+  await ctx.addInitScript({ content: 'globalThis.__name = globalThis.__name || ((fn) => fn);' });
   const csSource = fs.readFileSync('./extension/content-script.js', 'utf-8');
 
   // Open the side panel page; we'll also inject the content script into the
