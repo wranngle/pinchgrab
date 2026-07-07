@@ -131,6 +131,35 @@ Contact: hello@wranngle.com
 - ✅ Upload ZIP — `dist/pinchgrab-1.1.0.zip` (run `bun run package` to regenerate)
 - ✅ Marquee promo 1400×560 — `store-assets/marquee-1400x560.png`
 
+## Remaining dashboard fields (Store listing tab)
+
+| Field | Value |
+|---|---|
+| Summary (from package) | Pulled from manifest description — fixed in v1.1.1: "Click any element on a page to capture it with a comment, then export the whole UI critique for your AI coding agent." Re-upload the package to refresh it. |
+| Homepage URL | `https://wranngle.com` |
+| Support URL | `https://wranngle.com/about` |
+| Official URL | Leave **None** for now (requires wranngle.com verified in Google Search Console; optional badge — DNS TXT can be added via Cloudflare later) |
+| Global promo video | Leave empty (optional) |
+| Mature content | Leave **unchecked** |
+| Language | English |
+
+## Test instructions (dashboard → Test instructions tab)
+```
+PinchGrab needs no account or external service.
+
+1. Open any normal webpage (e.g. https://example.com).
+2. Click the PinchGrab toolbar icon — the side panel opens and capture mode
+   activates on that tab.
+3. Hold Alt and click any element on the page — a capture (selector, text,
+   screenshot) appears in the side panel.
+4. Type a comment in the composer at the bottom — it pairs with the capture.
+5. Click Export in the panel header — a JSONL bundle is saved to
+   Downloads/pinchgrab/ (uses the downloads permission).
+
+All captured data stays local (browser storage + the user's Downloads folder);
+the extension makes no network calls with user data.
+```
+
 ## Edge Add-ons
 Reuse the same ZIP, icon, screenshots, description, and privacy URL. Edge
 supports the same MV3 APIs PinchGrab uses; no code changes needed.
