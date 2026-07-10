@@ -2,7 +2,7 @@
 
 # PinchGrab
 
-> browser-side UI capture exports for review agents.
+> alt+click what's wrong, note it inline, export a bundle your agent can act on.
 
 [![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/wranngle/pinchgrab?color=A371F7)](LICENSE) ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
 
@@ -27,32 +27,30 @@ Load the generated extension:
 
 ## What it does
 
-- Captures selector rows with URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML.
-- Lets you add feedback directly beside captured selectors.
-- Saves screenshots and full workspace exports under `Downloads/pinchgrab/<workspace>/...`.
-- Exports JSONL, DuckDB recipes, screenshot indexes, README guidance, and `.tar.zst` workspace bundles.
-- Includes replay/export utilities for Playwright, Puppeteer, plain-English recipes, visual diffs, network replay, and step annotations.
+Instead of screenshotting a broken page and describing it by hand, you hold Alt, click the element, and say what's wrong in a comment right beside the capture. Each capture pins the exact element for a coding agent: URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML. When the critique is done, PinchGrab writes screenshots and the whole per-tab workspace to `Downloads/pinchgrab/<workspace>/` as JSONL, a DuckDB recipe, a screenshot index, README guidance, and a `.tar.zst` bundle an agent can act on directly. A legacy CLI surface adds replay, visual diffs, network replay, step annotations, and export to Playwright, Puppeteer, or plain-English recipes.
 
 ## Commands
 
-```bash
-bun run build
-bun run test
-bun run test:fast
-bun run devserver
-```
-
-Focused checks:
+Day to day you rebuild the extension, prove it still works, and serve pages to capture against:
 
 ```bash
-bun run typecheck
-bun run lint
-bun run test:extension
-bun run test:exports
-bun run test:legacy
+bun run build       # rebuild extension/ from src/ (scripts/build-extension.ts)
+bun run test        # full suite: build, static checks, every spec, legacy CLI tests
+bun run test:fast   # same coverage minus legacy, specs run in parallel
+bun run devserver   # local static server (scripts/static-server.mjs)
 ```
 
-Legacy utility commands from the CLI/replay surface:
+When you changed one thing, check one thing:
+
+```bash
+bun run typecheck        # tsc --noEmit
+bun run lint             # xo
+bun run test:extension   # extension spec only
+bun run test:exports     # export spec only
+bun run test:legacy      # schema, replay, export, visual-diff, network-replay, annotator tests
+```
+
+The legacy CLI keeps one entry point per replay and export utility, covering Playwright and Puppeteer script export, plain-English recipes, visual diffs, network capture, and step annotations:
 
 ```bash
 bun run replay
