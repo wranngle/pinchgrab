@@ -7,7 +7,7 @@ Browser-side UI capture exports for review agents.
 > [!NOTE]
 > PinchGrab is a local-first browser extension. It captures selected UI elements, comments, screenshots, page context, and export bundles for agent review workflows.
 
-![Alt+Click on any element drops a JSONL capture into an in-page scratchpad](docs/hero.gif)
+![Real PinchGrab capture on a demo page: holding Alt and clicking an element rings it and drops its selector into the docked side panel](docs/hero.webp)
 
 ## Quick Start
 
