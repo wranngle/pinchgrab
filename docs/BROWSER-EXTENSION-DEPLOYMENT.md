@@ -212,7 +212,7 @@ is a build copy). Current manifest:
   exist locally, but no Chrome Web Store item is created from this repo. Create
   the listing, upload the ZIP, and complete the privacy/distribution tabs.
 - **[RECHECK] Store asset quality.** Required image dimensions are present:
-  `src/icons/icon128.png`, `store-assets/screenshot-1280x800.png`, and
+  `src/icons/icon128.png`, `store-assets/screenshot-1-1280x800.png`, and
   `store-assets/promo-440x280.png`. Review them visually in the dashboard before
   submission.
 
@@ -375,7 +375,7 @@ A realistic ordering with rough timelines:
 
 1. **Review the existing assets (≈ 30 min).**
    - Confirm `src/icons/icon16/32/48/128.png`,
-     `store-assets/screenshot-1280x800.png`, and
+     `store-assets/screenshot-1-1280x800.png`, and
      `store-assets/promo-440x280.png` look good in the dashboard.
 2. **Host the existing privacy policy (≈ 1 hour).**
    - Publish `docs/PRIVACY.md` via GitHub Pages or your site, note the public URL.
