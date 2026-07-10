@@ -126,7 +126,7 @@ Contact: hello@wranngle.com
 
 ## Assets checklist (in `store-assets/` and the build)
 - ✅ Store icon 128×128 — `extension/icons/icon128.png`
-- ✅ Screenshot 1280×800 — `store-assets/screenshot-1280x800.png`
+- ✅ Screenshots ×5 (1280×800, composed frames, story order) — `store-assets/screenshot-1..5-1280x800.png`
 - ✅ Small promo tile 440×280 — `store-assets/promo-440x280.png`
 - ✅ Upload ZIP — `dist/pinchgrab-1.1.0.zip` (run `bun run package` to regenerate)
 - ✅ Marquee promo 1400×560 — `store-assets/marquee-1400x560.png`

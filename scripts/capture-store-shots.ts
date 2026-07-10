@@ -267,7 +267,10 @@ const run = async (): Promise<void> => {
       if (list) list.scrollTop = 0;
     });
 
-    const mainPath = path.join(OUT_DIR, 'screenshot-1280x800.png');
+    // Raw panel capture is a SOURCE (embedded in the marquee frame), not a
+    // shipped listing screenshot — full-app captures read as tiny noise at
+    // carousel scale. The shipped screenshots are the composed frames below.
+    const mainPath = path.join(OUT_DIR, 'src-panel-1280x800.png');
     await page.screenshot({ path: mainPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
     console.log('wrote', mainPath);
 
@@ -366,31 +369,93 @@ const run = async (): Promise<void> => {
     await marqueePage.screenshot({ path: marqueePath, clip: { x: 0, y: 0, width: 1400, height: 560 } });
     console.log('wrote', marqueePath);
 
-    // Screenshot 2 — the ON-PAGE capture experience: the real content script
-    // injected into a light-mode demo page, a genuinely captured element
-    // (orange ring via Alt+Click) with the on-page comment box open, and a
-    // live Alt-hover outline on a second element. This is the signature
-    // visual the panel-only shot can't show.
-    const onpage = await ctx.newPage();
-    await onpage.setViewportSize({ width: 1280, height: 800 });
+    // ─── Store screenshots: composed frames, not raw app dumps ────────────
+    // At carousel scale (~640×400) a full-app capture is illegible noise.
+    // Each shipped screenshot is ONE idea: a real UI crop captured at 2×
+    // (crisp when shown large) set on the brand-dark gradient with a short
+    // outcome headline. Same visual system as the promo tile + marquee so
+    // the whole listing reads as one designed set.
+    const px = (n: number | undefined): number => Math.round(n ?? 0);
+    const grabRegion = async (
+      p: import('playwright').Page,
+      rect: { x: number; y: number; w: number; h: number },
+      pad = 14,
+    ): Promise<string> => {
+      const vp = p.viewportSize()!;
+      const x = Math.max(0, rect.x - pad);
+      const y = Math.max(0, rect.y - pad);
+      const buf = await p.screenshot({ clip: {
+        x, y,
+        width: Math.min(vp.width - x, rect.w + pad * 2),
+        height: Math.min(vp.height - y, rect.h + pad * 2),
+      } });
+      return buf.toString('base64');
+    };
+
+    const composeFrame = async (
+      out: string,
+      opts: { kicker: string; headline: string; sub: string; imgB64: string; imgWidth: number; tilt?: number },
+    ): Promise<void> => {
+      const fp = await ctx.newPage();
+      await fp.setViewportSize({ width: 1280, height: 800 });
+      await fp.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+        * { margin:0; box-sizing:border-box; }
+        body {
+          width:1280px; height:800px; overflow:hidden;
+          display:flex; flex-direction:column; align-items:center;
+          font-family:-apple-system,'Segoe UI',Roboto,sans-serif; color:#fcfaf5;
+          background:
+            radial-gradient(820px 460px at 85% -12%, rgba(255,95,0,.17), transparent 60%),
+            radial-gradient(640px 420px at 2% 112%, rgba(239,75,0,.12), transparent 55%),
+            linear-gradient(150deg, #16151f 0%, #0e0d14 60%, #131019 100%);
+        }
+        .top { width:100%; padding:56px 84px 26px; }
+        .kicker { font:700 15px/1 ui-monospace,monospace; color:#ff5f00; letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px; }
+        h1 { font-size:56px; font-weight:800; letter-spacing:-1.2px; line-height:1.06; }
+        h1 .a { color:#ff5f00; }
+        .sub { margin-top:12px; font-size:21px; color:#cbc7d3; max-width:900px; }
+        .stage { flex:1; width:100%; display:flex; justify-content:center; align-items:flex-start; padding:6px 84px 0; }
+        .card {
+          border-radius:14px; overflow:hidden;
+          border:1px solid rgba(255,95,0,.35);
+          box-shadow: 0 34px 90px rgba(0,0,0,.65), 0 0 60px rgba(255,95,0,.10);
+          transform: rotate(var(--tilt, -0.7deg));
+          background:#0e0d14;
+        }
+        .card img { display:block; width:var(--w); }
+      </style></head><body>
+        <div class="top">
+          <div class="kicker">${opts.kicker}</div>
+          <h1>${opts.headline}</h1>
+          <div class="sub">${opts.sub}</div>
+        </div>
+        <div class="stage"><div class="card" style="--w:${opts.imgWidth}px; --tilt:${opts.tilt ?? -0.7}deg">
+          <img src="data:image/png;base64,${opts.imgB64}" alt="">
+        </div></div>
+      </body></html>`);
+      await fp.waitForTimeout(250);
+      await fp.screenshot({ path: out, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+      await fp.close();
+      console.log('wrote', out);
+    };
+
+    // 2× context for crisp crops.
+    const hi = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+
+    // ── Source A: on-page capture (ring + comment box) on the demo page ──
+    const onpage = await hi.newPage();
     await onpage.goto(base + '/demo');
     await onpage.addScriptTag({ content: fs.readFileSync(path.join(SRC, 'content-script.js'), 'utf-8') });
     await onpage.waitForFunction(() => Boolean((window as any).__pinchgrab));
-    // Real Alt+Click on the hero CTA → capture + ring.
     await onpage.keyboard.down('Alt');
     await onpage.hover('#cta');
     await onpage.waitForTimeout(250);
     await onpage.click('#cta');
     await onpage.waitForTimeout(200);
-    // Settle the pointer on the captured element FIRST — any mousemove after
-    // annotation.show() dismisses an unlocked box (the deliberate stranded-
-    // box hardening). Then ack via the standalone bridge, which opens the
-    // on-page comment box with a real comment, and screenshot with no
-    // further pointer movement.
-    await onpage.hover('#choose-pro');
-    await onpage.waitForTimeout(250);
     await onpage.hover('#cta');
     await onpage.waitForTimeout(250);
+    // Panel-side ack via the standalone bridge opens the on-page comment box;
+    // no pointer movement afterward (movement dismisses an unlocked box).
     await onpage.evaluate(() => {
       const cap = (window as any).__pinchgrab.captures[0];
       window.dispatchEvent(new CustomEvent('pinchgrab:to-cs', {
@@ -401,19 +466,61 @@ const run = async (): Promise<void> => {
       }));
     });
     await onpage.waitForTimeout(600);
-    const onpagePath = path.join(OUT_DIR, 'screenshot-2-onpage-1280x800.png');
-    await onpage.screenshot({ path: onpagePath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+    const onpageRect = await onpage.evaluate(() => {
+      const cta = document.querySelector('#cta')!.getBoundingClientRect();
+      const box = document.getElementById('__pinchgrab_overlay')?.shadowRoot
+        ?.querySelector('.annotation')?.getBoundingClientRect();
+      const l = Math.min(cta.left, box?.left ?? cta.left);
+      const t = Math.min(cta.top, box?.top ?? cta.top);
+      const r = Math.max(cta.right, box?.right ?? cta.right);
+      const b = Math.max(cta.bottom, box?.bottom ?? cta.bottom);
+      return { x: l, y: t, w: r - l, h: b - t };
+    });
+    const srcOnpage = await grabRegion(onpage, {
+      x: px(onpageRect.x), y: px(onpageRect.y), w: px(onpageRect.w), h: px(onpageRect.h),
+    }, 36);
     await onpage.keyboard.up('Alt');
-    console.log('wrote', onpagePath);
 
-    // Screenshot 3 — workspaces: one workspace per tab/site, snapshot history
-    // visible in the settings drawer's Workspaces group.
-    const wsPage = await ctx.newPage();
-    await wsPage.setViewportSize({ width: 1280, height: 800 });
-    await wsPage.goto(base + '/');
-    await wsPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
-    await seedState(wsPage);
-    await wsPage.evaluate(async () => {
+    // ── Panel sources at real side-panel width (460px) so cards read true ──
+    const panel = await hi.newPage();
+    await panel.setViewportSize({ width: 460, height: 900 });
+    await panel.goto(base + '/');
+    await panel.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
+    await seedState(panel);
+    await panel.evaluate(() => { (document.querySelector('[data-list]') as HTMLElement).scrollTop = 0; });
+    await panel.waitForTimeout(250);
+
+    // Source B: first capture card + its comment bubbles. Comments render as
+    // separate .msg.feedback bubbles (right-aligned), so span the LIST from
+    // the first card's top to the next capture card's top.
+    const cardRect = await panel.evaluate(() => {
+      const list = document.querySelector('[data-list]')!.getBoundingClientRect();
+      const cards = [...document.querySelectorAll('.msg.selector')] as HTMLElement[];
+      const top = cards[0]!.getBoundingClientRect().top;
+      const bottom = cards[1] ? cards[1].getBoundingClientRect().top - 10 : top + 520;
+      return { x: list.left, y: top, w: list.width, h: bottom - top };
+    });
+    const srcCard = await grabRegion(panel, { x: px(cardRect.x), y: px(cardRect.y), w: px(cardRect.w), h: px(cardRect.h) });
+
+    // Source C: the capture's JSON body (selector + outerHTML — the payload
+    // an agent receives). Hidden until the card's peek expands, so expand
+    // first and guard against zero-size rects (a hidden element's 0×0 rect
+    // would silently crop the panel header).
+    await panel.evaluate(() => { (document.querySelector('.peek-summary') as HTMLElement | null)?.click(); });
+    await panel.waitForTimeout(350);
+    const jsonRect = await panel.evaluate(() => {
+      const el = document.querySelector('.body-json') as HTMLElement | null;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 80 || r.height < 60) return null;
+      return { x: r.left, y: Math.max(0, r.top), w: r.width, h: Math.min(r.height, 380) };
+    });
+    const srcJson = jsonRect ? await grabRegion(panel, { x: px(jsonRect.x), y: px(jsonRect.y), w: px(jsonRect.w), h: px(jsonRect.h) }) : srcCard;
+    if (!jsonRect) console.warn('source C fell back to the capture card (no visible .body-json)');
+    await panel.evaluate(() => { (document.querySelector('.peek-summary') as HTMLElement | null)?.click(); });
+
+    // Source D: workspaces group in the drawer.
+    await panel.evaluate(async () => {
       const sp: any = (window as any).__pinchgrab_panel;
       await sp.createWorkspace('app.lumen.dev');
       await sp.createWorkspace('dashboard — staging');
@@ -421,32 +528,65 @@ const run = async (): Promise<void> => {
       await sp.switchWorkspace('default');
       sp.openDrawer();
     });
-    await wsPage.waitForTimeout(400);
-    const wsPath = path.join(OUT_DIR, 'screenshot-3-workspaces-1280x800.png');
-    await wsPage.screenshot({ path: wsPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
-    console.log('wrote', wsPath);
+    await panel.waitForTimeout(400);
+    const wsRect = await panel.evaluate(() => {
+      for (const d of document.querySelectorAll('.drawer details.prefs')) {
+        if (d.querySelector('summary')?.textContent?.trim() === 'Workspaces') {
+          const r = d.getBoundingClientRect();
+          return { x: r.left, y: r.top, w: r.width, h: r.height };
+        }
+      }
+      return null;
+    });
+    const srcWs = wsRect ? await grabRegion(panel, { x: px(wsRect.x), y: px(wsRect.y), w: px(wsRect.w), h: px(wsRect.h) }) : srcCard;
 
-    // Screenshot 4 — the handoff story: export group + DESIGN.md (brand
-    // education) + Help, with the capture timeline behind it.
-    const exPage = await ctx.newPage();
-    await exPage.setViewportSize({ width: 1280, height: 800 });
-    await exPage.goto(base + '/');
-    await exPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
-    await seedState(exPage);
-    await exPage.evaluate(() => {
-      const sp: any = (window as any).__pinchgrab_panel;
-      sp.openDrawer();
-      // Show the handoff groups instead of the default Workspaces view.
+    // Source E: the DESIGN.md (brand education) card.
+    await panel.evaluate(() => {
       for (const d of document.querySelectorAll<HTMLDetailsElement>('.drawer details.prefs')) {
-        const label = d.querySelector('summary')?.textContent?.trim() ?? '';
-        d.open = label === 'Export' || label === 'Templates';
+        d.open = d.querySelector('summary')?.textContent?.trim() === 'Templates';
       }
     });
-    await exPage.waitForTimeout(500);
-    const exPath = path.join(OUT_DIR, 'screenshot-4-handoff-1280x800.png');
-    await exPage.screenshot({ path: exPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
-    console.log('wrote', exPath);
+    await panel.waitForTimeout(400);
+    const designRect = await panel.evaluate(() => {
+      const el = document.querySelector('[data-md-preview="design"]')?.closest('.md-preview-row')?.parentElement as HTMLElement | null;
+      const r = (el ?? document.querySelector('[data-md-preview="design"]'))!.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    const srcDesign = await grabRegion(panel, { x: px(designRect.x), y: px(designRect.y), w: px(designRect.w), h: px(designRect.h) });
 
+    // ── Compose the five shipped screenshots (story order = the trail) ──
+    await composeFrame(path.join(OUT_DIR, 'screenshot-1-1280x800.png'), {
+      kicker: 'Alt+Click any element',
+      headline: 'Point at <span class="a">what\'s wrong.</span>',
+      sub: 'PinchGrab rings the element on the live page and opens a comment box right there.',
+      imgB64: srcOnpage, imgWidth: 780, tilt: -0.8,
+    });
+    await composeFrame(path.join(OUT_DIR, 'screenshot-2-1280x800.png'), {
+      kicker: 'Comments stay paired',
+      headline: 'Say it in <span class="a">plain English.</span>',
+      sub: 'Every note stays attached to the exact element you grabbed — screenshot included.',
+      imgB64: srcCard, imgWidth: 620, tilt: 0.7,
+    });
+    await composeFrame(path.join(OUT_DIR, 'screenshot-3-1280x800.png'), {
+      kicker: 'Selectors, HTML, screenshots, notes',
+      headline: 'Hand your agent the <span class="a">exact element.</span>',
+      sub: 'Export a structured bundle — or copy one capture — for Claude, Cursor, or any coding agent.',
+      imgB64: srcJson, imgWidth: 640, tilt: -0.6,
+    });
+    await composeFrame(path.join(OUT_DIR, 'screenshot-4-1280x800.png'), {
+      kicker: 'One workspace per tab',
+      headline: 'Critique <span class="a">many sites</span> at once.',
+      sub: 'Each tab you activate gets its own workspace — switch back and forth without mixing feedback.',
+      imgB64: srcWs, imgWidth: 700, tilt: 0.6,
+    });
+    await composeFrame(path.join(OUT_DIR, 'screenshot-5-1280x800.png'), {
+      kicker: 'DESIGN.md ships with every export',
+      headline: 'Teach it <span class="a">your brand.</span>',
+      sub: 'Your colors, type, and voice ride along, so the agent fixes things the way you would.',
+      imgB64: srcDesign, imgWidth: 700, tilt: -0.6,
+    });
+
+    await hi.close();
     await ctx.close();
   } finally {
     await browser?.close();
