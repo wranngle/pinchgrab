@@ -1290,8 +1290,13 @@ function setupAnnotation(el: HTMLDivElement, {sendToPanel, captureAndComment, on
     });
     feedbackList = list;
     if (payload.feedback?.length) {
-      for (const t of payload.feedback) appendFeedback(t);
+      // Attach the list BEFORE appending items: appendFeedback's lazy
+      // insertBefore(list, addRow) otherwise dereferences `addRow` while the
+      // const is still in its temporal dead zone (declared below), throwing
+      // ReferenceError and killing the box for any capture that already has
+      // comments. With a parent set, that branch never runs during build.
       el.append(list);
+      for (const t of payload.feedback) appendFeedback(t);
     }
     // (No "No comments yet." filler — empty list = no list shown.)
 

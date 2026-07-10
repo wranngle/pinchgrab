@@ -43,12 +43,52 @@ const startServer = (): Promise<Served> =>
       }
       const m = /\/templates\/([\w.-]+\.md)$/.exec(url);
       if (m) {
+        // Never serve the developer's local.* override templates into store
+        // screenshots — the panel must fall back to the neutral starter so
+        // the shots don't leak the dogfooded brand book.
+        if (m[1]!.startsWith('local.')) { res.writeHead(404); res.end(); return; }
         const p = path.join(SRC, 'templates', m[1]!);
         if (fs.existsSync(p)) {
           res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
           res.end(fs.readFileSync(p, 'utf-8'));
           return;
         }
+      }
+      if (url === '/demo') {
+        // A light-mode SaaS landing page for the on-page capture screenshot —
+        // deliberately NOT the panel's dark theme so the shot set reads as
+        // "your page + PinchGrab on it", not more panel chrome.
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Lumen — Pricing</title><style>
+          * { margin:0; box-sizing:border-box; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+          body { background:#fafaf8; color:#1c1b22; }
+          nav { display:flex; align-items:center; gap:28px; padding:18px 56px; border-bottom:1px solid #eceae4; background:#fff; }
+          nav b { font-size:19px; } nav a { color:#5d5a6b; text-decoration:none; font-size:14px; }
+          nav .cta-sm { margin-left:auto; background:#1c1b22; color:#fff; padding:8px 16px; border-radius:8px; }
+          .hero { text-align:center; padding:64px 24px 40px; }
+          .hero h1 { font-size:44px; letter-spacing:-1px; margin-bottom:12px; }
+          .hero p { color:#5d5a6b; font-size:18px; margin-bottom:24px; }
+          #cta { background:#4f46e5; color:#fff; border:0; font-size:17px; font-weight:600; padding:14px 30px; border-radius:10px; cursor:pointer; }
+          .plans { display:flex; gap:20px; justify-content:center; padding:24px 24px 64px; }
+          .plan { background:#fff; border:1px solid #eceae4; border-radius:14px; padding:26px; width:240px; }
+          .plan.pro { border-color:#4f46e5; box-shadow:0 8px 28px rgba(79,70,229,.12); position:relative; }
+          .plan .badge { position:absolute; top:-12px; left:24px; background:#4f46e5; color:#fff; font-size:12px; font-weight:700; padding:4px 10px; border-radius:99px; }
+          .plan h3 { font-size:15px; color:#5d5a6b; margin-bottom:6px; } .plan .price { font-size:32px; font-weight:800; margin-bottom:14px; }
+          .plan li { list-style:none; font-size:14px; color:#5d5a6b; padding:5px 0; }
+          .plan button { width:100%; margin-top:14px; padding:10px; border-radius:8px; border:1px solid #d8d5cc; background:#fff; cursor:pointer; }
+          .plan.pro button { background:#4f46e5; color:#fff; border:0; }
+        </style></head><body>
+          <nav><b>Lumen</b><a href="#">Product</a><a href="#">Docs</a><a href="#">Pricing</a><a class="cta-sm" href="#">Sign in</a></nav>
+          <div class="hero"><h1>Analytics your whole team can read</h1>
+          <p>Dashboards, alerts and reports — wired up in minutes, not sprints.</p>
+          <button id="cta">Start free trial</button></div>
+          <div class="plans">
+            <div class="plan"><h3>Starter</h3><div class="price">$0</div><ul><li>✓ 3 dashboards</li><li>✓ 1 seat</li><li>✓ Community support</li></ul><button>Choose</button></div>
+            <div class="plan pro"><span class="badge">Most popular</span><h3>Pro</h3><div class="price">$29</div><ul><li>✓ Unlimited dashboards</li><li>✓ 10 seats</li><li>✓ Alerts &amp; exports</li></ul><button id="choose-pro">Choose Pro</button></div>
+            <div class="plan"><h3>Scale</h3><div class="price">$99</div><ul><li>✓ Everything in Pro</li><li>✓ SSO &amp; audit log</li><li>✓ Priority support</li></ul><button>Talk to us</button></div>
+          </div>
+        </body></html>`);
+        return;
       }
       res.writeHead(404); res.end();
     });
@@ -325,6 +365,87 @@ const run = async (): Promise<void> => {
     const marqueePath = path.join(OUT_DIR, 'marquee-1400x560.png');
     await marqueePage.screenshot({ path: marqueePath, clip: { x: 0, y: 0, width: 1400, height: 560 } });
     console.log('wrote', marqueePath);
+
+    // Screenshot 2 — the ON-PAGE capture experience: the real content script
+    // injected into a light-mode demo page, a genuinely captured element
+    // (orange ring via Alt+Click) with the on-page comment box open, and a
+    // live Alt-hover outline on a second element. This is the signature
+    // visual the panel-only shot can't show.
+    const onpage = await ctx.newPage();
+    await onpage.setViewportSize({ width: 1280, height: 800 });
+    await onpage.goto(base + '/demo');
+    await onpage.addScriptTag({ content: fs.readFileSync(path.join(SRC, 'content-script.js'), 'utf-8') });
+    await onpage.waitForFunction(() => Boolean((window as any).__pinchgrab));
+    // Real Alt+Click on the hero CTA → capture + ring.
+    await onpage.keyboard.down('Alt');
+    await onpage.hover('#cta');
+    await onpage.waitForTimeout(250);
+    await onpage.click('#cta');
+    await onpage.waitForTimeout(200);
+    // Settle the pointer on the captured element FIRST — any mousemove after
+    // annotation.show() dismisses an unlocked box (the deliberate stranded-
+    // box hardening). Then ack via the standalone bridge, which opens the
+    // on-page comment box with a real comment, and screenshot with no
+    // further pointer movement.
+    await onpage.hover('#choose-pro');
+    await onpage.waitForTimeout(250);
+    await onpage.hover('#cta');
+    await onpage.waitForTimeout(250);
+    await onpage.evaluate(() => {
+      const cap = (window as any).__pinchgrab.captures[0];
+      window.dispatchEvent(new CustomEvent('pinchgrab:to-cs', {
+        detail: {
+          kind: 'annotation', selector: cap.entry.selector,
+          payload: { uid: cap.entry.uid, n: cap.entry.n, captured: true, feedback: ['Bump the contrast a step — this is the primary action.'] },
+        },
+      }));
+    });
+    await onpage.waitForTimeout(600);
+    const onpagePath = path.join(OUT_DIR, 'screenshot-2-onpage-1280x800.png');
+    await onpage.screenshot({ path: onpagePath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+    await onpage.keyboard.up('Alt');
+    console.log('wrote', onpagePath);
+
+    // Screenshot 3 — workspaces: one workspace per tab/site, snapshot history
+    // visible in the settings drawer's Workspaces group.
+    const wsPage = await ctx.newPage();
+    await wsPage.setViewportSize({ width: 1280, height: 800 });
+    await wsPage.goto(base + '/');
+    await wsPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
+    await seedState(wsPage);
+    await wsPage.evaluate(async () => {
+      const sp: any = (window as any).__pinchgrab_panel;
+      await sp.createWorkspace('app.lumen.dev');
+      await sp.createWorkspace('dashboard — staging');
+      await sp.createWorkspace('docs.lumen.dev');
+      await sp.switchWorkspace('default');
+      sp.openDrawer();
+    });
+    await wsPage.waitForTimeout(400);
+    const wsPath = path.join(OUT_DIR, 'screenshot-3-workspaces-1280x800.png');
+    await wsPage.screenshot({ path: wsPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+    console.log('wrote', wsPath);
+
+    // Screenshot 4 — the handoff story: export group + DESIGN.md (brand
+    // education) + Help, with the capture timeline behind it.
+    const exPage = await ctx.newPage();
+    await exPage.setViewportSize({ width: 1280, height: 800 });
+    await exPage.goto(base + '/');
+    await exPage.waitForFunction(() => Boolean((window as any).__pinchgrab_panel), undefined, { timeout: 10_000 });
+    await seedState(exPage);
+    await exPage.evaluate(() => {
+      const sp: any = (window as any).__pinchgrab_panel;
+      sp.openDrawer();
+      // Show the handoff groups instead of the default Workspaces view.
+      for (const d of document.querySelectorAll<HTMLDetailsElement>('.drawer details.prefs')) {
+        const label = d.querySelector('summary')?.textContent?.trim() ?? '';
+        d.open = label === 'Export' || label === 'Templates';
+      }
+    });
+    await exPage.waitForTimeout(500);
+    const exPath = path.join(OUT_DIR, 'screenshot-4-handoff-1280x800.png');
+    await exPage.screenshot({ path: exPath, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+    console.log('wrote', exPath);
 
     await ctx.close();
   } finally {
