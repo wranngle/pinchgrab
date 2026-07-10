@@ -773,6 +773,30 @@ const startServer = () =>
   await page.evaluate(() => window.__pinchgrab_panel.closeDrawer());
   console.log('test 46 ok: clear-all archives restorable workspace snapshot');
 
+  // Test 47 ── On-page annotation box renders when the capture already has
+  // comments. Regression: appendFeedback's lazy insertBefore dereferenced the
+  // `addRow` const while still in its temporal dead zone, so any annotation
+  // payload with non-empty feedback threw ReferenceError and the box never
+  // appeared (header only, then crash).
+  const annotState = await page.evaluate(() => {
+    const cs = (window as any).__pinchgrab;
+    let threw: string | null = null;
+    try {
+      cs.handleCommand({
+        kind: 'annotation', selector: 'body',
+        payload: { uid: 'test-annot', n: 9, captured: true, feedback: ['first comment', 'second comment'] },
+      }, () => {});
+    } catch (e) { threw = String(e); }
+    const box = document.getElementById('__pinchgrab_overlay')?.shadowRoot?.querySelector('.annotation') as HTMLElement | null;
+    return { threw, display: box?.style.display, text: box?.textContent ?? '' };
+  });
+  assert.strictEqual(annotState.threw, null, `annotation with feedback should not throw: ${annotState.threw}`);
+  assert.strictEqual(annotState.display, 'block', 'annotation box should be visible');
+  assert(annotState.text.includes('first comment') && annotState.text.includes('second comment'),
+    `annotation box should render existing comments: ${annotState.text.slice(0, 120)}`);
+  await page.evaluate(() => (window as any).__pinchgrab.handleCommand({ kind: 'annotation-clear' }, () => {}));
+  console.log('test 47 ok: on-page annotation box renders existing comments');
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();
