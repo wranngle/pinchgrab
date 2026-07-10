@@ -1,17 +1,18 @@
-# PinchGrab
-
-Browser-side UI capture exports for review agents.
-
-[![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml)
-
-> [!NOTE]
-> PinchGrab is a local-first browser extension. It captures selected UI elements, comments, screenshots, page context, and export bundles for agent review workflows.
-
 ![Real PinchGrab capture on a demo page: holding Alt and clicking an element rings it and drops its selector into the docked side panel](docs/hero.webp)
 
-## Quick Start
+# PinchGrab
 
-```powershell
+> browser-side UI capture exports for review agents.
+
+[![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/wranngle/pinchgrab?color=A371F7)](LICENSE) ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
+
+> [!NOTE]
+> Active personal project. Used in my own workflow. Issues triaged on a personal-time cadence.
+
+## Quick start
+
+```bash
+git clone https://github.com/wranngle/pinchgrab && cd pinchgrab
 bun install
 bun run build
 ```
@@ -24,7 +25,7 @@ Load the generated extension:
 4. Select the repo's `extension/` folder.
 5. Pin PinchGrab, open a page, then hold `Alt` to inspect and `Alt+Click` to capture.
 
-## What It Does
+## What it does
 
 - Captures selector rows with URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML.
 - Lets you add feedback directly beside captured selectors.
@@ -34,7 +35,7 @@ Load the generated extension:
 
 ## Commands
 
-```powershell
+```bash
 bun run build
 bun run test
 bun run test:fast
@@ -43,7 +44,7 @@ bun run devserver
 
 Focused checks:
 
-```powershell
+```bash
 bun run typecheck
 bun run lint
 bun run test:extension
@@ -53,7 +54,7 @@ bun run test:legacy
 
 Legacy utility commands from the CLI/replay surface:
 
-```powershell
+```bash
 bun run replay
 bun run replay:multi
 bun run export:playwright
@@ -64,7 +65,7 @@ bun run network-capture
 bun run annotator
 ```
 
-## Export Shape
+## Export shape
 
 The extension emits newline-delimited JSON with a manifest row followed by page, selector, and feedback rows. Workspace archives add:
 
@@ -79,7 +80,7 @@ The extension emits newline-delimited JSON with a manifest row followed by page,
 
 The older standalone capture schema lives at [docs/capture-schema.json](docs/capture-schema.json), with samples in [docs/capture-sample.jsonl](docs/capture-sample.jsonl).
 
-## Project Layout
+## Project layout
 
 - `src/` TypeScript extension source.
 - `extension/` generated unpacked browser extension.

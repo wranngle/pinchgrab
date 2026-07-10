@@ -38,7 +38,7 @@ assessment.
   - `extension/sidepanel.js`
   - `extension/content-script.js`
   - `.dotfiles.sh`
-  - `store-assets/screenshot-1280x800.png`
+  - `store-assets/screenshot-5-1280x800.png`
   - `src/sidepanel.ts`
   - `DESIGN.md`
   - `.agents/skills/ui/SKILL.md`
@@ -135,7 +135,7 @@ Chrome criteria checked against official docs:
 - Icons exist at 16, 32, 48, and 128 px under `src/icons/` and
   `extension/icons/`.
 - Store assets exist:
-  - `store-assets/screenshot-1280x800.png`
+  - `store-assets/screenshot-1-1280x800.png`
   - `store-assets/promo-440x280.png`
 - `scripts/package-extension.ts` builds a minified package, strips
   `README.txt`, strips `templates/local.*`, strips source maps, and writes
