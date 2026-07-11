@@ -1,8 +1,26 @@
 {
   "name": "pinchgrab",
   "version": "1.1.2",
-  "description": "browser-side ui capture exports for review agents",
-  "private": true,
+  "description": "alt+click any element, comment inline, and hand your coding agent a bundle it can act on",
+  "keywords": [
+    "cli",
+    "chrome-extension-companion",
+    "ui-feedback",
+    "coding-agents",
+    "playwright",
+    "capture",
+    "jsonl"
+  ],
+  "homepage": "https://github.com/wranngle/pinchgrab",
+  "bugs": {
+    "url": "https://github.com/wranngle/pinchgrab/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wranngle/pinchgrab.git"
+  },
+  "license": "MIT",
+  "author": "Cody Arnold",
   "type": "module",
   "scripts": {
     "build": "bun run scripts/build-extension.ts",
@@ -49,15 +67,33 @@
     "annotator": "node src/annotator.mjs"
   },
   "bin": {
-    "pinchgrab": "bin/pinchgrab"
+    "pinchgrab": "bin/pinchgrab",
+    "pinchgrab-replay-multi": "bin/replay-multi"
+  },
+  "files": [
+    "bin/pinchgrab",
+    "bin/replay-multi",
+    "src/replay.mjs",
+    "src/replay-multi.mjs",
+    "src/healing.mjs",
+    "src/export-playwright.mjs",
+    "src/export-puppeteer.mjs",
+    "src/export-english.mjs",
+    "src/visual-diff.mjs",
+    "src/network-capture.mjs",
+    "src/annotator.mjs",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
     "@types/chrome": "^0.0.270",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "fzstd": "^0.1.1",
     "pinchtab": "0.11.0",
-    "playwright": "^1.59.1",
     "tsx": "^4.21.0",
     "typescript": "^5.4.0",
     "xo": "^0.60.0"
@@ -221,6 +257,6 @@
     ]
   },
   "dependencies": {
-    "fzstd": "^0.1.1"
+    "playwright": "^1.59.1"
   }
 }

@@ -18,9 +18,9 @@
 //
 // ops.json shape: [{"sequence":2,"annotation":"click upgrade"}, ...]
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { argv, stdout, stderr, exit } from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const SCHEMA_ID = "selector-capture-entry";
 
@@ -169,4 +169,14 @@ const main = () => {
   }
 };
 
-if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) main();
+// Compare realpaths, not raw argv[1] — see bin/pinchgrab for why a raw
+// URL comparison silently breaks when this file is reached via a symlink.
+const isDirectRun = (() => {
+  try {
+    return !!argv[1] && fileURLToPath(import.meta.url) === realpathSync(argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) main();
