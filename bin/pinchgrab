@@ -12,10 +12,10 @@
 //                                  storageState file so replay runs
 //                                  against an already-logged-in page.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
   loadAuthState,
@@ -103,6 +103,19 @@ const main = async () => {
   die(`unknown subcommand: ${sub}\n\n${usage}`);
 };
 
-if (import.meta.url === pathToFileURL(argv[1]).href) {
+// Compare realpaths, not raw argv[1]: npm installs bin scripts as
+// symlinks (node_modules/.bin/pinchgrab -> ../pinchgrab/bin/pinchgrab),
+// so argv[1] is the symlink path while import.meta.url is the resolved
+// real path. A raw string/URL comparison never matches through a
+// symlink, which would silently skip main() on every installed run.
+const isDirectRun = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
   main().catch((err) => die(err?.stack || String(err), 1));
 }

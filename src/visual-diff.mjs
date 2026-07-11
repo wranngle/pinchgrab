@@ -33,10 +33,10 @@
 //     the report itself is the signal, not the exit code, so the
 //     CLI is composable with downstream graders.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const DOM_SNAPSHOT_SCHEMA = "dom-snapshot";
 
@@ -182,7 +182,17 @@ const cli = () => {
   stdout.write(`${changed} changed step(s) of ${diff.length} total\n`);
 };
 
-if (import.meta.url === pathToFileURL(argv[1] ?? "").href) {
+// Compare realpaths, not raw argv[1] — see bin/pinchgrab for why a raw
+// URL comparison silently breaks when this file is reached via a symlink.
+const isDirectRun = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(argv[1] ?? "");
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
   try {
     cli();
   } catch (err) {

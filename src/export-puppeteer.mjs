@@ -29,10 +29,10 @@
 //   node src/export-puppeteer.mjs <capture.jsonl> [outdir]
 //     Writes <outdir>/<script-name>.puppeteer.js and prints path + count.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const parseCaptureJsonl = (raw) => {
   const out = [];
@@ -195,7 +195,17 @@ const cli = async () => {
   stdout.write(`${clickLines.length} action(s) for ${entries.length} capture entr${entries.length === 1 ? "y" : "ies"}\n`);
 };
 
-if (import.meta.url === pathToFileURL(argv[1]).href) {
+// Compare realpaths, not raw argv[1] — see bin/pinchgrab for why a raw
+// URL comparison silently breaks when this file is reached via a symlink.
+const isDirectRun = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
   cli().catch((err) => {
     stderr.write(`${err?.stack || String(err)}\n`);
     exit(1);
