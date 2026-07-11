@@ -9,12 +9,13 @@
 
 # Hand your AI coding agent the exact element
 
-**[Quick start](#-quick-start) | [Features](#-features) | [AI coding agents](#-ai-coding-agents-claude-code-cursor-codex) | [Privacy](docs/PRIVACY.md) | [Deployment guide](docs/BROWSER-EXTENSION-DEPLOYMENT.md) |**
+**[Quick start](#-quick-start) | [Features](#-features) | [Developer install](#-developer-install) | [AI coding agents](#-ai-coding-agents-claude-code-cursor-codex) | [Privacy](docs/PRIVACY.md) | [Deployment guide](docs/BROWSER-EXTENSION-DEPLOYMENT.md) |**
 
 **❤️ [Sponsor this project](https://github.com/sponsors/wranngle) ❤️**
 
 [![License](https://img.shields.io/github/license/wranngle/pinchgrab?color=A371F7)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/wranngle/pinchgrab?include_prereleases&color=A371F7)](https://github.com/wranngle/pinchgrab/releases)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jenjnicjfmgbddgconejmjhmdfphhlji?label=chrome%20web%20store&color=A371F7)](https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji)
 [![CI](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml/badge.svg)](https://github.com/wranngle/pinchgrab/actions/workflows/ci.yml)
 [![Last commit](https://img.shields.io/github/last-commit/wranngle/pinchgrab)](https://github.com/wranngle/pinchgrab/commits/main)
 [![Contributors](https://img.shields.io/github/contributors/wranngle/pinchgrab)](https://github.com/wranngle/pinchgrab/graphs/contributors)
@@ -25,7 +26,7 @@
 
 ---
 
-![Real PinchGrab capture on a demo page: holding Alt and clicking an element rings it and drops its selector into the docked side panel](docs/hero.webp)
+![Real PinchGrab session on a demo page: clicking the pinned toolbar icon opens the docked side panel, then Alt+Click rings an element and drops its selector and comment into the panel](docs/hero.webp)
 
 ![26 noodles, one hover: the real extension ringing all of its committed captures on a live demo page at once, every ring wired back to the docked side panel](docs/brand/noodle-festival-card.png)
 
@@ -82,78 +83,59 @@ Every number below comes from the committed benchmark at [`scripts/benchmark-bun
 
 ## 🚀 Quick start
 
+### Install from the Chrome Web Store
+
+**[Add PinchGrab to your browser](https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji)**. Works in Chrome, Edge, Brave, and other Chromium browsers.
+
+[![Chrome Web Store version](https://img.shields.io/chrome-web-store/v/jenjnicjfmgbddgconejmjhmdfphhlji?label=chrome%20web%20store&color=A371F7)](https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji) [![Users](https://img.shields.io/chrome-web-store/users/jenjnicjfmgbddgconejmjhmdfphhlji?label=users&color=A371F7)](https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji) [![Rating](https://img.shields.io/chrome-web-store/rating/jenjnicjfmgbddgconejmjhmdfphhlji?label=rating&color=A371F7)](https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji)
+
+Pin PinchGrab, open any page, then hold `Alt` to inspect and `Alt+Click` to capture. That is the whole loop; the diagram below is the full path a capture travels.
+
 ```mermaid
 flowchart LR
     subgraph PAGE["Any web page"]
         WEB["Web page DOM"]
-        CS["content-script.ts<br/>Alt+Click / Alt+drag capture<br/>dom.ts: cssPath, captureEntry,<br/>elementsInRect, snapToComponent"]
-        OVERLAY["On-page overlay<br/>ring highlight + comment box<br/>(shadow DOM, MutationObserver)"]
-        WEB -- "Alt+Click / Alt+Shift+drag" --> CS
+        CS["content-script.ts capture"]
+        OVERLAY["On-page overlay: ring + comment box"]
+        WEB -- "Alt+Click / Alt+drag" --> CS
         CS --> OVERLAY
         OVERLAY -. "type critique inline" .-> CS
     end
 
-    BG["background.ts<br/>service worker<br/>captureVisibleTab, context menu,<br/>message relay"]
+    BG["background.ts service worker"]
 
-    subgraph PANEL["Side panel (sidepanel.ts)"]
-        TIMELINE["Chat-bubble timeline<br/>capture + comment rows"]
-        BUILD["Export builders<br/>buildJsonl / buildTar / wrapZstd<br/>export-capture.mjs, tar.ts"]
+    subgraph PANEL["Side panel: sidepanel.ts"]
+        TIMELINE["Capture + comment timeline"]
+        BUILD["Export builders: jsonl, tar, zstd"]
         TIMELINE --> BUILD
     end
 
-    subgraph BUNDLE["Downloads/pinchgrab/&lt;workspace&gt;/"]
-        JSONL["&lt;workspace&gt;.jsonl<br/>manifest + page + selector + feedback rows"]
-        SHOTS["screenshots/*.png<br/>+ screenshots.json index"]
-        DUCK["duckdb.sql<br/>read_json_auto recipe"]
-        DOCS["README.md + repair-index.md<br/>bundled SKILL.md / DESIGN.md"]
-        TARZ[".tar.zst archive"]
+    subgraph BUNDLE["Downloads pinchgrab workspace bundle"]
+        JSONL["workspace.jsonl: manifest + rows"]
+        SHOTS["screenshots + index"]
+        DUCK["duckdb.sql recipe"]
+        DOCS["README, repair-index, skill, design"]
+        TARZ["tar.zst archive"]
         JSONL --> TARZ
         SHOTS --> TARZ
         DUCK --> TARZ
         DOCS --> TARZ
     end
 
-    AGENT["Coding agent<br/>Claude Code / Cursor"]
+    AGENT["Coding agent: Claude Code or Cursor"]
 
-    CS -- "chrome.runtime messages<br/>(capture, hover, pending-add)" --> BG
+    CS -- "chrome.runtime messages" --> BG
     BG -- "relay + screenshot replies" --> PANEL
     BG -- "captureVisibleTab PNG" --> SHOTS
     BUILD --> JSONL
     BUILD --> SHOTS
     BUILD --> DUCK
     BUILD --> DOCS
-    TARZ -- "unpack + read AGENTS/SKILL guide" --> AGENT
+    TARZ -- "unpack and read guide" --> AGENT
     AGENT -. "fix code, re-open page to verify" .-> WEB
 ```
 
-### Step 1: Clone and build
-
-1. Clone the repository
-
-   Open your terminal and run:
-
-   ```bash
-   git clone https://github.com/wranngle/pinchgrab && cd pinchgrab
-   ```
-
-2. Install dependencies and build the extension
-
-   ```bash
-   bun install
-   bun run build
-   ```
-
-> PinchGrab is not on the Chrome Web Store yet; until the listing is live, you load the built extension unpacked. The full store path lives in the [deployment guide](docs/BROWSER-EXTENSION-DEPLOYMENT.md) and the [submission checklist](docs/RELEASE-CHECKLIST-CWS.md). A packaged zip ships with each [release](https://github.com/wranngle/pinchgrab/releases).
-
-### Step 2: Load the extension
-
-1. Open `edge://extensions` or `chrome://extensions`.
-2. Enable Developer mode.
-3. Click **Load unpacked**.
-4. Select the repo's `extension/` folder.
-5. Pin PinchGrab, open a page, then hold `Alt` to inspect and `Alt+Click` to capture.
-
-### Step 3: Make your first capture
+### Make your first capture
 
 1. Hold `Alt` to outline elements, then `Alt+Click` the one that's wrong.
 2. Type what's wrong in the comment box right beside the element.
@@ -208,7 +190,34 @@ Everything lands under your Downloads folder:
 
 ---
 
-### Step 4: Rebuild, test, and iterate
+## 🔧 Developer install
+
+Prefer to build from source, or want to hack on PinchGrab? Load the unpacked extension. A packaged zip also ships with each [release](https://github.com/wranngle/pinchgrab/releases), and the store-submission path is tracked in the [submission checklist](docs/RELEASE-CHECKLIST-CWS.md).
+
+### Clone and build
+
+1. Clone the repository
+
+   ```bash
+   git clone https://github.com/wranngle/pinchgrab && cd pinchgrab
+   ```
+
+2. Install dependencies and build the extension
+
+   ```bash
+   bun install
+   bun run build
+   ```
+
+### Load the extension
+
+1. Open `edge://extensions` or `chrome://extensions`.
+2. Enable Developer mode.
+3. Click **Load unpacked**.
+4. Select the repo's `extension/` folder.
+5. Pin PinchGrab, open a page, then hold `Alt` to inspect and `Alt+Click` to capture.
+
+### Rebuild, test, and iterate
 
 Day to day you rebuild the extension, prove it still works, and serve pages to capture against:
 
@@ -468,4 +477,15 @@ PinchGrab is available under the [MIT License](LICENSE).
 
 ## ⭐ Star History
 
+<!--
+The server-rendered chart image is down: api.star-history.com returns 503/404
+during a multi-day outage, and starchart.cc returns 400 even for large repos.
+Neither renders an <img> today, so this falls back to the live star badge linked
+to star-history's client-side page, which still draws the chart during the API
+outage. Restore this line when api.star-history.com recovers:
 [![Star History Chart](https://api.star-history.com/svg?repos=wranngle/pinchgrab&type=Date)](https://www.star-history.com/#wranngle/pinchgrab&Date)
+-->
+
+[![GitHub stars](https://img.shields.io/github/stars/wranngle/pinchgrab?style=social)](https://www.star-history.com/#wranngle/pinchgrab&Date)
+
+[**View the interactive star history**](https://www.star-history.com/#wranngle/pinchgrab&Date). Star-history's client-side page draws the chart live even while its image API is down.

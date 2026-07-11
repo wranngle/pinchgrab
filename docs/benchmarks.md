@@ -5,7 +5,7 @@ below is measured by [`scripts/benchmark-bundle.ts`](../scripts/benchmark-bundle
 same 12 live framework apps the test suite tours on every run. Nothing is modeled, projected, or
 rounded up for effect.
 
-- **Snapshot date:** 2026-07-11
+- **Snapshot date:** 2026-07-11 02:49 UTC (measured results committed 2026-07-10 22:49 ET)
 - **Exact command:** `bun run bench` (alias for `bun run scripts/benchmark-bundle.ts`; run
   `bun run build` first so `extension/content-script.js` is fresh)
 - **Fixtures:** the 12 framework builds of the weather app at `framework-benchmarks.as93.net`
