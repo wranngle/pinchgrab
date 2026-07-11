@@ -507,6 +507,11 @@ export type ExportManifest = {
   workspace: string;
   filename: string;
   format: 'jsonl' | 'markdown' | 'tar.zst';
+  // Content-derived identity: first 16 hex chars of a SHA-256 over the
+  // slim rows + screenshot names. Stable across re-exports of the same
+  // content, so downstream state (e.g. ~/.pinchgrab/workspaces/*/bundles/)
+  // keys on it without duplicating work.
+  bundleId?: string;
   hosts: string[];
   // Ambiguous totals. The previous `selectors / feedback / pages`
   // triple didn't say whether nested

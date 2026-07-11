@@ -440,9 +440,26 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     return [...set].sort().slice(0, 20);
   };
-  // Build a filename of the shape `pinchgrab-<workspace>-<host>-<epoch>.<ext>`.
-  const buildExportFilename = (ext: 'jsonl' | 'md' | 'tar.zst'): string =>
-    `pinchgrab-${activeWs}-${dominantHostSlug()}-${Date.now()}.${ext}`;
+  // ─── Deterministic export identity ──────────────────────────────────────
+  // One clock per export: every timestamp inside a single export derives
+  // from the same instant, and tests can freeze it so two exports of the
+  // same content are byte-identical.
+  let exportClockOverride: string | null = null;
+  const exportNowIso = (): string => exportClockOverride ?? new Date().toISOString();
+  // Stable content identity: SHA-256 over the slim rows plus the sorted
+  // screenshot archive names. Same workspace content → same hash → same
+  // filename (the background saves with conflictAction 'overwrite'), so
+  // re-exporting unchanged content replaces rather than duplicates.
+  const computeContentHash = async (shotNames: string[]): Promise<string> => {
+    const payload = buildSlim().map((l) => JSON.stringify(l)).join('\n') + '\n' + [...shotNames].sort().join('\n');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  };
+  // Build a filename of the shape `pinchgrab-<workspace>-<host>-<stamp>.<ext>`.
+  // The stamp is the export's content-hash prefix when supplied (bundle and
+  // JSONL exports), falling back to the epoch for legacy callers.
+  const buildExportFilename = (ext: 'jsonl' | 'md' | 'tar.zst', stamp?: string): string =>
+    `pinchgrab-${activeWs}-${dominantHostSlug()}-${stamp ?? Date.now()}.${ext}`;
   // Skip-list match: substring (case-insensitive) match against the URL's
   // host. We intentionally don't use URL parsing on the patterns so the user
   // can write `wranngle.com` and have it match `app.wranngle.com` too.
@@ -2829,7 +2846,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // manifest carries the export filename + workspace + host(s) + counts so
   // a downstream LLM can resync the file with its workspace and grep for
   // duplicates across exports.
-  const buildManifest = (filename: string, format: ExportManifest['format']): ExportManifest => {
+  const buildManifest = (filename: string, format: ExportManifest['format'], opts: {nowIso?: string; bundleId?: string} = {}): ExportManifest => {
     let nSel = 0; let nFb = 0; let nPg = 0;
     let nGroupMembers = 0;
     let nFeedbackBearing = 0;
@@ -2865,10 +2882,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
     for (const fbUid of feedbackParentSelectorIds) {
       if (!selectorUids.has(fbUid)) nOrphanedFb++;
     }
+    const nowIso = opts.nowIso ?? exportNowIso();
     const out: ExportManifest = {
       v: 2, type: 'manifest', tool: 'pinchgrab',
-      ts: new Date().toISOString(),
-      generated: Date.now(),
+      ts: nowIso,
+      generated: Date.parse(nowIso),
       workspace: activeWs,
       filename,
       format,
@@ -2899,6 +2917,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
       // Receivers no longer have to guess which path shape applies.
       pathRoot: format === 'tar.zst' ? 'archive' : 'workspace',
     };
+    // Content-derived identity (SHA-256 prefix over slim rows + screenshot
+    // names). Same content → same bundleId → downstream ~/.pinchgrab state
+    // keys stay stable across re-exports.
+    if (opts.bundleId) out.bundleId = opts.bundleId;
     // Indirection pointers so a downstream agent knows which UI skill
     // owns the triage flow + which DESIGN.md owns the visual identity.
     //
@@ -2997,9 +3019,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     return out;
   };
-  const buildJsonl = (filenameForManifest?: string, format: ExportManifest['format'] = 'jsonl'): string => {
+  const buildJsonl = (filenameForManifest?: string, format: ExportManifest['format'] = 'jsonl', opts: {nowIso?: string; bundleId?: string} = {}): string => {
     const filename = filenameForManifest ?? buildExportFilename('jsonl');
-    const manifest = buildManifest(filename, format);
+    const manifest = buildManifest(filename, format, opts);
     const lines = buildSlim();
     if (!lines.length) {
       // Even an empty workspace gets a manifest line so downstream tools
@@ -3062,8 +3084,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
   };
   const onExport = async (): Promise<void> => {
     if (!messages.length) { setStatus('Nothing to export', {kind: 'warn'}); return; }
-    const filename = buildExportFilename('jsonl');
-    const text = buildJsonl(filename);
+    const contentHash = await computeContentHash([]);
+    const filename = buildExportFilename('jsonl', contentHash.slice(0, 8));
+    const text = buildJsonl(filename, 'jsonl', {nowIso: exportNowIso(), bundleId: contentHash.slice(0, 16)});
     await saveExportToDisk(text, filename, 'application/jsonl', 'jsonl');
   };
   // ─── tar.zst workspace export ────────────────────────────────────────────
@@ -3496,7 +3519,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // The `inArchive` flag on each file mirrors the tar bundle membership
   // so a consumer downstream of the .tar.zst extraction can tell which
   // paths point INSIDE the archive (relative) vs at on-disk siblings.
-  const buildScreenshotsIndex = (bundled: Set<string>): string => {
+  const buildScreenshotsIndex = (bundled: Set<string>, nowIso?: string): string => {
     const byUid: Record<string, any> = {};
     const byUrl: Record<string, {page?: string; uids: string[]}> = {};
     const files: Array<{path: string; archivePath: string | null; kind: 'element' | 'group' | 'page'; uid?: string; n?: number; selector?: string; url?: string}> = [];
@@ -3538,7 +3561,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     const out = {
       v: 2,
       kind: 'pinchgrab/screenshots-index',
-      generated: new Date().toISOString(),
+      generated: nowIso ?? exportNowIso(),
       counts: {
         files: files.length,
         bundled: files.filter((f) => f.archivePath).length,
@@ -3594,18 +3617,27 @@ import {serializeCaptureJson} from './export-capture.mjs';
 
   const onExportZip = async (): Promise<void> => {
     if (!messages.length) { setStatus('Nothing to export', {kind: 'warn'}); return; }
-    const archiveName = buildExportFilename('tar.zst');
+    // One clock + one content hash per export: every timestamp and the
+    // filename stem derive from these so re-exporting unchanged content
+    // produces the same filename (overwritten, not duplicated) and — with
+    // a frozen clock — byte-identical archives.
+    const exportedAtIso = exportNowIso();
+    const mtimeSec = Math.floor(Date.parse(exportedAtIso) / 1000);
+    const {entries: shotEntries, bundled} = collectScreenshotEntries();
+    const contentHash = await computeContentHash(shotEntries.map((e) => e.name));
+    const bundleId = contentHash.slice(0, 16);
+    const archiveName = buildExportFilename('tar.zst', contentHash.slice(0, 8));
     const stem = archiveName.replace(/\.tar\.zst$/, '');
     const jsonlName = `${stem}.jsonl`;
-    const manifest = buildManifest(archiveName, 'tar.zst');
+    const manifestOpts = {nowIso: exportedAtIso, bundleId};
+    const manifest = buildManifest(archiveName, 'tar.zst', manifestOpts);
     // The JSONL inside the archive must declare itself as part of a
     // tar.zst bundle so its manifest's `design.inline` / `skill.inline`
     // flags match what's actually present in the surrounding tar.
-    const jsonlText = buildJsonl(jsonlName, 'tar.zst');
+    const jsonlText = buildJsonl(jsonlName, 'tar.zst', manifestOpts);
     const sql = duckDbSnippet(jsonlName);
-    const {entries: shotEntries, bundled} = collectScreenshotEntries();
     const readme = buildReadme(manifest, jsonlName, shotEntries.length);
-    const shotsJson = buildScreenshotsIndex(bundled);
+    const shotsJson = buildScreenshotsIndex(bundled, exportedAtIso);
 
     // Markdown export was dropped: it carried no data the JSONL didn't
     // already have (the human-readable surface was just a curated subset
@@ -3674,6 +3706,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
       console.warn(LOG, 'archiveIntegrity computation failed', err);
     }
 
+    // Stamp every entry with the export clock so archive bytes are a pure
+    // function of content + clock (buildTar would otherwise sample now()).
+    for (const e of tarEntries) e.mtime ??= mtimeSec;
     const tarBytes = buildTar(tarEntries);
     const archiveBytes = wrapZstd(tarBytes);
 
@@ -4831,6 +4866,10 @@ ORDER BY s.n;
         persistShotsFull();
       },
       __getShotsFull: () => shotsFull,
+      // Freeze the export clock (ISO string) so tests can assert two
+      // exports of identical content are byte-identical. Pass null to
+      // restore wall-clock behavior.
+      __setExportClock: (iso: string | null) => { exportClockOverride = iso; },
       // setSearch drives the Ctrl+F visual-find path (the header search now
       // opens the command palette instead of filtering).
       setSearch: (q: string) => {
