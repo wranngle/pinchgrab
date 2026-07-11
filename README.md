@@ -81,8 +81,6 @@ The step counts above are workflow facts you can count on your fingers, not benc
 - 🤏 **Every capture is a bounded ~632 byte row** no matter how deep the subtree underneath it goes, so a grabbed dashboard never arrives as 25 KB of sparkline spans.
 - 🤏 **A text-only feedback bundle averages 31.6 KB on disk**; with a full-resolution PNG of every captured element it averages 984.9 KB.
 
-*[Benchmark tables and methodology](docs/benchmarks.md).*
-
 ## 🚀 Quick start
 
 ### Install from the Chrome Web Store
