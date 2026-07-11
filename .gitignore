@@ -374,3 +374,14 @@ vite.config.ts.timestamp-*
 # Chrome Web Store listing screenshots out of version control entirely
 # (PGRB-001) — un-ignore them explicitly.
 !store-assets/screenshot-*.png
+
+# Public-surface cut: internal orchestration machinery removed from the public
+# tree. The dotfiles-managed block above force-includes some of these paths, so
+# re-ignore them here (last-match-wins) to keep any dotfiles re-stamp local
+# instead of letting it re-commit into the public repo.
+/lib/composio-orchestrator/
+/lib/symphony-elixir/
+/bin/symphony
+/WORKFLOW.md
+/.symphony/
+/old/
