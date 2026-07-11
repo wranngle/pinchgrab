@@ -1,3 +1,7 @@
+---
+title: PinchGrab Privacy Policy
+---
+
 # PinchGrab Privacy Policy
 
 **Last updated: 2026-05-30**
