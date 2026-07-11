@@ -1,0 +1,9 @@
+{
+  "method": "page.evaluate over #__pinchgrab_overlay shadowRoot: rings = div.ring with display:block; noodles = svg path with non-empty d; committed selectors read from chrome.storage.local pinchgrab.ws.*.messages.v1; script = scripts/noodle-drive.ts",
+  "committedSelectors": 18,
+  "rings": 25,
+  "noodles": 26,
+  "annotationOpen": true,
+  "innerWidth": 1540,
+  "innerHeight": 992
+}
