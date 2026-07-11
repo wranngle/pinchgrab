@@ -269,8 +269,24 @@
           <ul class="help-steps">
             <li><strong>Alt+Click</strong> an element on the page to capture it.</li>
             <li><strong>Type a comment</strong> in the composer to say what you want changed.</li>
-            <li><strong>Export</strong> and give the file to your coding agent.</li>
+            <li><strong>Send to Agent</strong> — the export saves and a paste-ready prompt lands on your clipboard for your coding agent.</li>
           </ul>
+          <h4>Alt+Click stopped working?</h4>
+          <p class="prefs-help">
+            Refreshing an attached tab re-attaches automatically. Otherwise use
+            <em>Re-attach to page</em> below (also in the <kbd data-mod-k>Cmd+K</kbd> palette),
+            or click the PinchGrab toolbar button on the page. Last resort:
+            the palette's <em>Reload the PinchGrab extension</em>.
+          </p>
+          <div class="ws-import">
+            <button class="iconbtn" type="button" data-action="reattach" data-tip="Re-inject the capture script into the active tab"><span data-icon="refresh-cw" data-size="13"></span><span class="lbl">Re-attach to page</span></button>
+          </div>
+          <h4>Where files land</h4>
+          <p class="prefs-help">
+            Exports and screenshots save under <strong>Downloads/pinchgrab/&lt;workspace&gt;/</strong>.
+            Enable <em>Quiet saves</em> (Capture settings) to stop Chrome's
+            download popups.
+          </p>
           <p class="prefs-help">
             Tip: edit <strong>DESIGN.md</strong> above so the agent rebuilds UI in
             your own brand. Full keyboard shortcuts live under <em>Hotkeys</em>.
