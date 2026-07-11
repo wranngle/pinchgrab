@@ -69,7 +69,11 @@ const startServer = (): Promise<Served> =>
           .hero h1 { font-size:44px; letter-spacing:-1px; margin-bottom:12px; }
           .hero p { color:#5d5a6b; font-size:18px; margin-bottom:24px; }
           #cta { background:#4f46e5; color:#fff; border:0; font-size:17px; font-weight:600; padding:14px 30px; border-radius:10px; cursor:pointer; }
-          .plans { display:flex; gap:20px; justify-content:center; padding:24px 24px 64px; }
+          /* margin-top clears room for the on-page annotation box (opened below
+             #cta by capture-store-shots.ts) — its real rendered height reaches
+             past .hero's own bottom padding, and without this gap the store
+             screenshot #1 crop bled pricing-card text in behind it (PGRB-001 #1). */
+          .plans { display:flex; gap:20px; justify-content:center; padding:24px 24px 64px; margin-top:180px; }
           .plan { background:#fff; border:1px solid #eceae4; border-radius:14px; padding:26px; width:240px; }
           .plan.pro { border-color:#4f46e5; box-shadow:0 8px 28px rgba(79,70,229,.12); position:relative; }
           .plan .badge { position:absolute; top:-12px; left:24px; background:#4f46e5; color:#fff; font-size:12px; font-weight:700; padding:4px 10px; border-radius:99px; }
@@ -376,18 +380,30 @@ const run = async (): Promise<void> => {
     // outcome headline. Same visual system as the promo tile + marquee so
     // the whole listing reads as one designed set.
     const px = (n: number | undefined): number => Math.round(n ?? 0);
+    // vBounds (PGRB-001 #1 fix): vertical "do not enter" lines the padding
+    // must never cross, however large `pad` is — e.g. a neighboring page
+    // section's text. The target `rect` itself is always included in full
+    // regardless of these bounds, so real UI (like the annotation box, which
+    // positions independently of any single container and can legitimately
+    // extend past it) never gets clipped; only the cosmetic padding is
+    // capped before it reaches foreign content.
     const grabRegion = async (
       p: import('playwright').Page,
       rect: { x: number; y: number; w: number; h: number },
       pad = 14,
+      vBounds?: { top: number; bottom: number },
     ): Promise<string> => {
       const vp = p.viewportSize()!;
+      const top = vBounds ? Math.min(rect.y, Math.max(rect.y - pad, vBounds.top)) : rect.y - pad;
+      const bottom = vBounds
+        ? Math.max(rect.y + rect.h, Math.min(rect.y + rect.h + pad, vBounds.bottom))
+        : rect.y + rect.h + pad;
       const x = Math.max(0, rect.x - pad);
-      const y = Math.max(0, rect.y - pad);
+      const y = Math.max(0, top);
       const buf = await p.screenshot({ clip: {
         x, y,
         width: Math.min(vp.width - x, rect.w + pad * 2),
-        height: Math.min(vp.height - y, rect.h + pad * 2),
+        height: Math.min(vp.height - y, bottom - y),
       } });
       return buf.toString('base64');
     };
@@ -466,7 +482,7 @@ const run = async (): Promise<void> => {
       }));
     });
     await onpage.waitForTimeout(600);
-    const onpageRect = await onpage.evaluate(() => {
+    const { onpageRect, onpageVBounds } = await onpage.evaluate(() => {
       const cta = document.querySelector('#cta')!.getBoundingClientRect();
       const box = document.getElementById('__pinchgrab_overlay')?.shadowRoot
         ?.querySelector('.annotation')?.getBoundingClientRect();
@@ -474,11 +490,19 @@ const run = async (): Promise<void> => {
       const t = Math.min(cta.top, box?.top ?? cta.top);
       const r = Math.max(cta.right, box?.right ?? cta.right);
       const b = Math.max(cta.bottom, box?.bottom ?? cta.bottom);
-      return { x: l, y: t, w: r - l, h: b - t };
+      // PGRB-001 #1: the demo page's copy directly above the CTA (the hero
+      // paragraph) and the next section below (.plans) are the two "do not
+      // enter" lines for grabRegion's pad — see the fix note on grabRegion.
+      const heroP = document.querySelector('.hero p')?.getBoundingClientRect();
+      const plans = document.querySelector('.plans')?.getBoundingClientRect();
+      return {
+        onpageRect: { x: l, y: t, w: r - l, h: b - t },
+        onpageVBounds: { top: heroP ? heroP.bottom : 0, bottom: plans ? plans.top : Infinity },
+      };
     });
     const srcOnpage = await grabRegion(onpage, {
       x: px(onpageRect.x), y: px(onpageRect.y), w: px(onpageRect.w), h: px(onpageRect.h),
-    }, 36);
+    }, 36, { top: px(onpageVBounds.top), bottom: px(onpageVBounds.bottom) });
     await onpage.keyboard.up('Alt');
 
     // ── Panel sources at real side-panel width (460px) so cards read true ──

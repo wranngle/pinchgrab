@@ -362,3 +362,15 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 # <<< dotfiles-managed gitignore <<<
+
+# Project-specific overrides. Placed AFTER the managed block on purpose:
+# gitignore uses last-match-wins, so negating a rule defined inside the
+# block above only works below it — re-running .dotfiles.sh only touches
+# the text between the markers, never this section.
+
+# The managed block's `screenshot-*.png` / `screenshot-*.jpg` rule (E2E Test
+# & Browser Artifacts) targets Playwright's own failure-screenshot dumps, but
+# the glob has no path scope, so it was also silently keeping PinchGrab's
+# Chrome Web Store listing screenshots out of version control entirely
+# (PGRB-001) — un-ignore them explicitly.
+!store-assets/screenshot-*.png
