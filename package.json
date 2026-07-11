@@ -75,6 +75,7 @@
     "bin/pinchgrab",
     "bin/replay-multi",
     "src/replay.mjs",
+    "src/recapture.mjs",
     "src/replay-multi.mjs",
     "src/healing.mjs",
     "src/export-playwright.mjs",
