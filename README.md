@@ -54,7 +54,7 @@ You already know the loop, and you resent it: one wrong element stands behind a 
 | 7. Paste selector and hope it still resolves | |
 | **7 steps × N elements, and the pairing between image, words, and selector lives only in your prose** | **1 gesture per element + 1 export, and every comment ships already welded to its exact locator and screenshot** |
 
-The step counts above are workflow facts you can count on your fingers, not benchmarks. What is benchmarked is density: each capture row carries validated selectors, sanitized depth-capped HTML, accessibility signals, and framework component hints. Across the 12-framework tour, capture HTML minifies to a mean 29.2% below the raw markup (47.6% smaller byte-weighted across all 467 captures), and a full workspace bundle lands at a mean 31.6 KB without screenshots, 984.9 KB with them.
+The step counts above are workflow facts you can count on your fingers. The density is where the numbers live: each capture row carries validated selectors, sanitized depth-capped HTML, accessibility signals, and framework component hints. Across the 12-framework tour, capture HTML minifies to a mean 29.2% below the raw markup (47.6% smaller byte-weighted across all 467 captures), and a full workspace bundle lands at a mean 31.6 KB without screenshots, 984.9 KB with them.
 
 ## ⚡ Features
 
@@ -80,8 +80,6 @@ The step counts above are workflow facts you can count on your fingers, not benc
 - 🤏 **87.4% smaller on container grabs.** The 40 captures whose raw markup is 4 KB or more, the sections and cards people actually pinch, went from 355.5 KB raw to 44.8 KB of minified rows.
 - 🤏 **Every capture is a bounded ~632 byte row** no matter how deep the subtree underneath it goes, so a grabbed dashboard never arrives as 25 KB of sparkline spans.
 - 🤏 **A text-only feedback bundle averages 31.6 KB on disk**; with a full-resolution PNG of every captured element it averages 984.9 KB.
-
-*[Benchmark tables and methodology](docs/benchmarks.md).*
 
 ## 🚀 Quick start
 
