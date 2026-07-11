@@ -797,6 +797,103 @@ const startServer = () =>
   await page.evaluate(() => (window as any).__pinchgrab.handleCommand({ kind: 'annotation-clear' }, () => {}));
   console.log('test 47 ok: on-page annotation box renders existing comments');
 
+  // Test 48 ── Context strip: [data-tip] hover text lands in the fixed strip
+  // (not a floating bubble) and the idle hint returns on mouseout.
+  {
+    const strip = await page.evaluate(() => {
+      const t = document.querySelector<HTMLElement>('[data-action="validate"]')!;
+      const el = document.querySelector<HTMLElement>('.context-strip')!;
+      const idleBefore = el.textContent;
+      t.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      const hovered = { text: el.textContent, shown: el.dataset.shown };
+      t.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+      return { idleBefore, hovered, after: { text: el.textContent, shown: el.dataset.shown } };
+    });
+    assert.strictEqual(strip.hovered.shown, 'true', 'strip should mark itself shown on hover');
+    assert(strip.hovered.text!.includes('Re-check selectors'), `strip should show the control's tip, got "${strip.hovered.text}"`);
+    assert.strictEqual(strip.after.shown, 'false', 'strip should return to idle on mouseout');
+    assert(/alt\+click/i.test(strip.after.text ?? ''), 'idle strip should keep the Alt+Click hint');
+    console.log('test 48 ok: context strip shows hover help and returns to idle');
+  }
+
+  // Test 49 ── Detach: the unlink action turns a threaded comment into a
+  // standalone one — no parentUid in the export, no adjacency re-adoption.
+  {
+    await page.evaluate(() => {
+      const sp = window.__pinchgrab_panel;
+      sp.clear();
+      sp.pushMessage({ type: 'selector', id: 'ds1', ts: new Date().toISOString(), entry: {
+        uid: 'det-uid', n: 1, ts: new Date().toISOString(), url: 'https://d.test/', tag: 'button',
+        selector: '#detach-me', rect: { x: 0, y: 0, w: 10, h: 10 }, viewport: { w: 800, h: 600, dpr: 1 },
+      }});
+      sp.pushMessage({ type: 'feedback', id: 'df1', ts: new Date().toISOString(), text: 'detach this note', parentUid: 'det-uid' });
+    });
+    const before = await page.evaluate(() => document.querySelectorAll('.msg.feedback.threaded').length);
+    assert.strictEqual(before, 1, 'seeded comment should render threaded');
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('button[aria-label^="Detach from its capture"]')!.click();
+    });
+    const after = await page.evaluate(() => {
+      const threaded = document.querySelectorAll('.msg.feedback.threaded').length;
+      const standalone = document.querySelectorAll('.msg.feedback:not(.threaded)').length;
+      const fb = window.__pinchgrab_panel.buildJsonl('d.jsonl').split('\n').filter(Boolean)
+        .map((l: string) => JSON.parse(l)).find((l: any) => l.type === 'feedback');
+      return { threaded, standalone, fb };
+    });
+    assert.strictEqual(after.threaded, 0, 'detached comment must not render threaded');
+    assert.strictEqual(after.standalone, 1, 'detached comment should remain visible standalone');
+    assert.strictEqual(after.fb.parentUid, undefined, `detached export row must carry no parentUid, got ${JSON.stringify(after.fb)}`);
+    assert.strictEqual(after.fb.detached, true, 'detached flag must round-trip into the export');
+    console.log('test 49 ok: detach makes a comment standalone in UI and export');
+  }
+
+  // Test 50 ── 300px (side-panel minimum): drawer + prefs + palette all fit
+  // with zero horizontal overflow, including the export-settings captions.
+  await page.setViewportSize({ width: 300, height: 700 });
+  {
+    const audit = await page.evaluate(() => {
+      window.__pinchgrab_panel.openDrawer();
+      for (const d of document.querySelectorAll<HTMLDetailsElement>('.drawer details.prefs')) d.open = true;
+      const offenders: string[] = [];
+      const check = (sel: string): void => {
+        for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+          if (el.scrollWidth > el.clientWidth + 1) offenders.push(`${sel} (${el.scrollWidth}>${el.clientWidth})`);
+        }
+      };
+      for (const sel of ['.drawer-body', '.prefs', '.toolbar', '.stats', '.context-strip']) check(sel);
+      const docOverflow = document.documentElement.scrollWidth > window.innerWidth;
+      window.__pinchgrab_panel.closeDrawer();
+      return { offenders, docOverflow };
+    });
+    assert.strictEqual(audit.docOverflow, false, '300px viewport must not overflow horizontally');
+    assert.deepStrictEqual(audit.offenders, [], `no panel region may overflow at 300px: ${audit.offenders.join(' · ')}`);
+    console.log('test 50 ok: 300px drawer/prefs/toolbar fit without horizontal overflow');
+  }
+  await page.setViewportSize({ width: 420, height: 800 });
+
+  // Test 51 ── Content-script takeover: a fresh inject (new isolated world
+  // after an extension reload) tears down the orphan's overlay — exactly one
+  // host survives — and the overlay rides the browser top layer.
+  {
+    const result = await page.evaluate(() => {
+      // Simulate the fresh-world condition: the new world can't see the old
+      // window guard, only the old DOM + its takeover listener.
+      delete (window as any).__pinchgrabContent;
+      return { hostsBefore: document.querySelectorAll('#__pinchgrab_overlay').length };
+    });
+    assert.strictEqual(result.hostsBefore, 1, 'exactly one overlay host before re-inject');
+    await page.addScriptTag({ content: csSource });
+    const after = await page.evaluate(() => ({
+      hosts: document.querySelectorAll('#__pinchgrab_overlay').length,
+      topLayer: document.getElementById('__pinchgrab_overlay')?.matches(':popover-open') ?? false,
+      api: Boolean((window as any).__pinchgrab),
+    }));
+    assert.strictEqual(after.hosts, 1, `takeover must leave exactly one overlay host, got ${after.hosts}`);
+    assert.strictEqual(after.topLayer, true, 'overlay host should be promoted to the top layer (popover)');
+    assert(after.api, 'fresh content script should re-register its api');
+    console.log('test 51 ok: fresh inject takes over the orphan; overlay rides the top layer');
+  }
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

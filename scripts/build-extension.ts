@@ -86,7 +86,7 @@ export const TEMPLATES_PRESENT = ${JSON.stringify(present)} as const;
   // ships as its intact repo tree because the pfd skill references its own
   // corpus/framework/commands by relative path.
   const ARCHIVE_ROOT: Record<string, string> = {
-    'impeccable': '.agents/skills/impeccable',
+    impeccable: '.agents/skills/impeccable',
     'perception-first-design': 'perception-first-design',
   };
   const sourceNames = existsSync(thirdPartyDir)

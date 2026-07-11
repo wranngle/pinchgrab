@@ -62,9 +62,9 @@
         <span class="search-kbd" data-search-kbd aria-hidden="true"><kbd data-mod-k>Cmd+K</kbd></span>
       </div>
       <div class="toolbar-actions">
-        <button class="iconbtn primary export-full" type="button" data-action="export-zip" data-tip="Download full export (.tar.zst — JSONL + screenshots + screenshots.json + DuckDB + README) · path is auto-copied to clipboard" data-export-hover="all">
+        <button class="iconbtn primary export-full" type="button" data-action="export-zip" data-tip="Export the workspace as .tar.zst and copy an agent-ready prompt (bundle path, tree, protocol) to the clipboard — paste it into your coding agent" data-export-hover="all">
           <span data-icon="download" data-size="14"></span>
-          <span class="lbl">Export</span>
+          <span class="lbl">Send to Agent</span>
         </button>
         <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page" aria-label="Validate selectors"><span data-icon="refresh-cw" data-size="14"></span></button>
         <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures" aria-label="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
@@ -158,6 +158,7 @@
           <label data-tip="Keep matched stylesheet rules that target this element"><input type="checkbox" data-pref="includeMatchedRules" checked /> Include matched CSS rules <small class="contrib" data-contrib="includeMatchedRules"></small></label>
           <label data-tip="Keep resolved browser styles (color, font, layout)"><input type="checkbox" data-pref="includeStyles" checked /> Include computed styles <small class="contrib" data-contrib="includeStyles"></small></label>
           <label data-tip="Ship the vendored design skills (impeccable reference set + perception-first-design) and skills-index.json inside every archive so the agent can map comments to skills"><input type="checkbox" data-pref="bundleSkills" checked /> Bundle design skills <small class="contrib">~1.2 MB of markdown per archive</small></label>
+          <label data-tip="Serialize each captured page's full HTML into pages/ inside archive exports · collected from live tabs at export time · large"><input type="checkbox" data-pref="includePageHTML" /> Include full page HTML <small class="contrib">bundle exports only</small></label>
           <label class="minify-row" data-tip="Trim whitespace, drop empty objects, strip redundant audit fields">
             <span class="minify-head"><input type="checkbox" data-pref="minify" /> Minify on export</span>
             <small class="minify-explain">Trims whitespace, drops empty objects, removes <code>tokens</code> from page lines, and strips redundant audit fields.</small>
@@ -268,8 +269,24 @@
           <ul class="help-steps">
             <li><strong>Alt+Click</strong> an element on the page to capture it.</li>
             <li><strong>Type a comment</strong> in the composer to say what you want changed.</li>
-            <li><strong>Export</strong> and give the file to your coding agent.</li>
+            <li><strong>Send to Agent</strong> — the export saves and a paste-ready prompt lands on your clipboard for your coding agent.</li>
           </ul>
+          <h4>Alt+Click stopped working?</h4>
+          <p class="prefs-help">
+            Refreshing an attached tab re-attaches automatically. Otherwise use
+            <em>Re-attach to page</em> below (also in the <kbd data-mod-k>Cmd+K</kbd> palette),
+            or click the PinchGrab toolbar button on the page. Last resort:
+            the palette's <em>Reload the PinchGrab extension</em>.
+          </p>
+          <div class="ws-import">
+            <button class="iconbtn" type="button" data-action="reattach" data-tip="Re-inject the capture script into the active tab"><span data-icon="refresh-cw" data-size="13"></span><span class="lbl">Re-attach to page</span></button>
+          </div>
+          <h4>Where files land</h4>
+          <p class="prefs-help">
+            Exports and screenshots save under <strong>Downloads/pinchgrab/&lt;workspace&gt;/</strong>.
+            Enable <em>Quiet saves</em> (Capture settings) to stop Chrome's
+            download popups.
+          </p>
           <p class="prefs-help">
             Tip: edit <strong>DESIGN.md</strong> above so the agent rebuilds UI in
             your own brand. Full keyboard shortcuts live under <em>Hotkeys</em>.

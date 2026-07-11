@@ -286,8 +286,8 @@ export const buildAgentProtocolMd = (opts) => {
   out.push('## 3 · Bundled skills');
   out.push('');
   out.push('The bundled skills are for this job only: read them from the extraction');
-  out.push('directory. There is NO need to install them permanently, and you must NOT');
-  out.push('overwrite your own persistent skills, agent config, or dotfiles.');
+  out.push('directory. There is NO need to install them permanently, and you must');
+  out.push('NOT overwrite your own persistent skills, agent config, or dotfiles.');
   out.push('');
   if (skillsIndex && Array.isArray(skillsIndex.skills) && skillsIndex.skills.length) {
     out.push('| id | locator (relative to extraction root) | purpose |');

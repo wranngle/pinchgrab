@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PinchGrab",
   "description": "Click any element on a page to capture it with a comment, then export the whole UI critique for your AI coding agent.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "homepage_url": "https://wranngle.com",
   "icons": {
     "16": "icons/icon16.png",
