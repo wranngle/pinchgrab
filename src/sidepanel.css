@@ -130,17 +130,18 @@ body {
 .ws-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-mid);
   border-radius: 999px;
   background: var(--bg-elev);
-  color: var(--text-2);
-  font: 11px/1.2 var(--mono);
+  color: var(--text);
+  font: 600 11px/1.2 var(--mono);
   min-width: 0; max-width: 140px;
 }
+.ws-pill:hover { border-color: var(--orange); }
 .ws-pill select {
   background: transparent;
   border: 0; outline: 0;
-  color: var(--text-2);
+  color: var(--text);
   font: inherit;
   cursor: pointer;
   padding: 0 2px;
@@ -148,6 +149,9 @@ body {
   max-width: 100%;
   text-overflow: ellipsis;
 }
+/* The popup list inherits the page background per UA rules; keep options
+ * legible on the dark theme instead of white-on-white. */
+.ws-pill select option { background: var(--bg-elev-2); color: var(--text); font-weight: 500; }
 
 .g-pill {
   display: inline-flex; align-items: center;
@@ -1418,6 +1422,12 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 .ws-list li button { background: transparent; border: 0; color: var(--text-3); cursor: pointer; padding: 2px 4px; }
 .ws-list li button:hover { color: var(--orange); }
 .ws-list li button.danger:hover { color: var(--red); }
+
+/* Import lives with the workspace manager: imported files land in the
+ * active workspace, so the affordance sits beside the workspace list. */
+.ws-import { margin-top: 8px; }
+.ws-import .iconbtn { width: auto; padding: 0 10px; gap: 6px; }
+.ws-import .iconbtn .lbl { font: 600 11px/1 var(--sans); }
 
 /* Workspace snapshot history (Clear-all archives). */
 .ws-snapshots { margin-top: 10px; }

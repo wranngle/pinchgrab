@@ -142,9 +142,9 @@ function init(): void {
     // Noodle path connecting (innerWidth, midY) → element center.
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('fill', 'none');
-    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke-width', '2.5');
     path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('opacity', '0.45');
+    path.setAttribute('opacity', '0.5');
     if (!noodleSvg.isConnected) shadow.append(noodleSvg);
     noodleSvg.append(path);
     shadow.append(el, label);

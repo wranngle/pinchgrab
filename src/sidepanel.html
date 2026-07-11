@@ -60,7 +60,6 @@
           <span data-icon="download" data-size="14"></span>
           <span class="lbl">Export</span>
         </button>
-        <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file" aria-label="Import file"><span data-icon="upload" data-size="14"></span></button>
         <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page" aria-label="Validate selectors"><span data-icon="refresh-cw" data-size="14"></span></button>
         <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures" aria-label="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
       </div>
@@ -142,6 +141,9 @@
             <button class="primary" type="button" data-action="ws-create" data-tip="Create the workspace and switch to it">Create</button>
           </div>
           <ul class="ws-list" data-ws-list></ul>
+          <div class="ws-import">
+            <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file into this workspace"><span data-icon="upload" data-size="13"></span><span class="lbl">Import file</span></button>
+          </div>
           <div class="ws-snapshots" data-ws-snapshots hidden></div>
         </details>
         <details class="prefs">
@@ -191,7 +193,7 @@
             <div class="md-preview-row">
               <button type="button" class="md-preview md-preview-primary" data-action="design-edit" data-tip="Edit DESIGN.md — teach the agent your brand">
                 <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
-                <span class="md-preview-edit-hint">Edit your design</span>
+                <span class="md-preview-edit-hint">Edit your DESIGN.md</span>
               </button>
               <div class="md-preview-meta">
                 <span class="design-md-status" data-design-md-status></span>

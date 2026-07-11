@@ -4034,9 +4034,9 @@ ORDER BY s.n;
   };
 
   const onClear = (): void => {
-    if (!confirm('Clear all captures and comments?')) return;
+    if (!confirm('Clear all captures? A snapshot will be saved to Settings → Workspaces first.')) return;
     // Archive the workspace BEFORE wiping so it can be restored later.
-    archiveWorkspaceSnapshot();
+    const snap = archiveWorkspaceSnapshot();
     snapshot();
     messages = [];
     liveTabUrl = null;
@@ -4049,7 +4049,8 @@ ORDER BY s.n;
     persist();
     render();
     renderWsControls();
-    setStatus('Cleared · snapshot saved');
+    // Never claim a snapshot that didn't happen (empty workspace no-ops).
+    setStatus(snap ? 'Cleared · snapshot saved — restore in Settings → Workspaces' : 'Cleared');
   };
 
   // ─── Validation ─────────────────────────────────────────────────────────
