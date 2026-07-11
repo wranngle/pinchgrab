@@ -378,6 +378,10 @@ export type CsToPanel =
 export type PanelToCs =
   | {kind: 'outline'; selector: string; gold?: boolean; dashed?: boolean}
   | {kind: 'outline-clear'}
+  // Export-time request for the full serialized page (opt-in pref
+  // includePageHTML). Replied with {ok, url, title, html}; never persisted
+  // to chrome.storage — the payload goes straight into the tar.
+  | {kind: 'page-html'}
   | {kind: 'outline-multi'; selectors: string[]}
   | {kind: 'outline-multi-clear'}
   | {kind: 'scroll-to'; selector: string; sticky?: boolean}
@@ -551,6 +555,8 @@ export type ExportManifest = {
     // in this archive. Should always be 0; non-zero means the export
     // got truncated or a parent was deleted between capture + emit.
     orphanedFeedback?: number;
+    // Full-page HTML documents bundled under pages/ (opt-in pref).
+    pagesHtml?: number;
   };
   // Resolution root for every path field in the JSONL stream.
   //   • 'archive'   — paths are relative to the extracted archive root
@@ -577,6 +583,15 @@ export type ExportManifest = {
   // means the user supplied this content; `template: true` means it's
   // PinchGrab's bundled default.
   design?: {path?: string; inline?: boolean; archivePath?: string; template?: boolean; customized?: boolean};
+  // Where the agent doctrine lives inside the archive (Send-to-Agent
+  // protocol). Absent on plain JSONL exports.
+  agentProtocol?: {archivePath: string};
+  // Vendored skill documents bundled into this archive (subset of the
+  // richer skills-index.json at the archive root). `invocation` carries a
+  // plugin-command form for harnesses that support it.
+  bundledSkills?: Array<{id: string; kind: 'skill' | 'reference'; archivePath: string; invocation?: string}>;
+  // Full-page HTML documents bundled under pages/ (opt-in pref).
+  pagesHtml?: Array<{url: string; archivePath: string; bytes: number}>;
   // Self-roast section. The export surfaces its own gaps so a
   // downstream LLM doesn't have to discover
   // them. Empty array = clean export. Each diagnostic has a stable

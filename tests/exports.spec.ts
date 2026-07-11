@@ -385,11 +385,16 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     assert(names.some((n) => /\.jsonl$/.test(n)), `tar should include a .jsonl entry, got ${names.join(', ')}`);
     // Markdown report was eliminated — verify it's *not* bundled. The
     // only .md files that should appear are the README, the agent-
-    // friendly repair-index, the bundled DESIGN.md, and the PinchGrab
-    // triage SKILL.md (under .agents/).
-    const allowedMd = new Set(['README.md', 'repair-index.md', 'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md']);
-    assert(!names.some((n) => /\.md$/.test(n) && !allowedMd.has(n)),
+    // friendly repair-index, AGENT-PROTOCOL.md (Send-to-Agent doctrine),
+    // the bundled DESIGN.md, the PinchGrab triage SKILL.md (under
+    // .agents/), and the vendored skill trees (impeccable reference set +
+    // perception-first-design, when bundled).
+    const allowedMd = new Set(['README.md', 'repair-index.md', 'AGENT-PROTOCOL.md', 'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md']);
+    const isVendoredSkillMd = (n: string): boolean =>
+      n.startsWith('.agents/skills/impeccable/') || n.startsWith('perception-first-design/');
+    assert(!names.some((n) => /\.md$/.test(n) && !allowedMd.has(n) && !isVendoredSkillMd(n)),
       `tar must not include a Markdown report .md, got ${names.join(', ')}`);
+    assert(names.includes('AGENT-PROTOCOL.md'), `tar should include AGENT-PROTOCOL.md, got ${names.join(', ')}`);
     // Screenshots: at least one screenshots/*.png entry from the seeded shotsFull.
     const pngEntries = tarEntries.filter((e) => /^screenshots\/.+\.png$/.test(e.name));
     assert(pngEntries.length >= 1, `tar should include at least one screenshot PNG, got: ${names.filter((n) => n.startsWith('screenshots/')).join(', ')}`);

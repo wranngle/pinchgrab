@@ -17,6 +17,7 @@ import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
 import {BUNDLED_SKILLS_PRESENT, BUNDLED_SKILL_FILES} from './bundled-skills.gen.ts';
+import {buildAgentPromptJsonl, buildAgentProtocolMd, type SkillsIndex} from './export-agent-prompt.mjs';
 import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
@@ -228,6 +229,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // exports. On by default: the Send-to-Agent protocol's skill-mapping
     // phase assumes their presence. ~1.2 MB of markdown per bundle.
     bundleSkills: boolean;
+    // Bundle the full serialized HTML of each captured page under pages/.
+    // Off by default (documents can be huge); collected lazily at export
+    // time from live tabs, never persisted to chrome.storage.
+    includePageHTML: boolean;
   };
   const DEFAULT_PREFS: Prefs = {
     includeOuterHTML: true,
@@ -254,6 +259,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     pageShotPerCapture: false,
     quietSaves: false,
     bundleSkills: true,
+    includePageHTML: false,
   };
 
   // Rewrite the `name:` field in a SKILL.md's YAML frontmatter. The
@@ -315,8 +321,8 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // Last successful export — both the workspace-relative path (shown to the
   // user) and the OS-absolute path (copied by the "Copy as path" button).
   // Updated on JSONL/MD/ZIP/screenshot saves.
-  const lastExport: {relPath: string | null; absPath: string | null; copyPath: string | null; tempPath: boolean; kind: string | null} = {
-    relPath: null, absPath: null, copyPath: null, tempPath: false, kind: null,
+  const lastExport: {relPath: string | null; absPath: string | null; copyPath: string | null; tempPath: boolean; kind: string | null; agentPrompt: string | null} = {
+    relPath: null, absPath: null, copyPath: null, tempPath: false, kind: null, agentPrompt: null,
   };
   let workspaces: Workspace[] = [{name: 'default', createdAt: new Date().toISOString()}];
   let activeWs = 'default';
@@ -2774,7 +2780,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // exports stay clean.
   // `tags` is always emitted (default empty array) so DuckDB schema
   // inference always sees the column.
-  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; detached?: boolean; tags: string[]; isTestData?: boolean};
+  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; detached?: boolean; tags: string[]; isTestData?: boolean; suggestedSkills?: Array<{skill: string; locator: string}>};
   // Cheap test-data sniff: matches strings the user types while smoke-
   // testing the extension ("test", "asdf", "foo", "lorem ipsum",
   // "placeholder", or any phrase obviously stubbed-out). False positives
@@ -2885,6 +2891,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
         // adjacency — the user explicitly disassociated it. The flag is
         // emitted so import round-trips don't re-adopt by adjacency either.
         if (m.detached) rich.detached = true;
+        // Heuristic skill locators for the agent's map phase (verified and
+        // rewritten into work-manifest mapped_skills by the consumer).
+        rich.suggestedSkills = suggestSkillsFor(m.text);
         if (pendingSel && !m.detached) {
           rich.parentUid = m.parentUid ?? pendingSel.entry.uid;
           pendingFbStrings.push(m.text);
@@ -3180,6 +3189,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
           workspace: {type: 'string'},
           filename: {type: 'string'},
           format: {enum: ['jsonl', 'markdown', 'tar.zst']},
+          bundleId: {type: 'string', pattern: '^[0-9a-f]{16}$'},
           hosts: {type: 'array', items: {type: 'string'}},
           pathRoot: {enum: ['archive', 'workspace']},
           counts: {
@@ -3196,6 +3206,37 @@ import {serializeCaptureJson} from './export-capture.mjs';
               screenshotsPage: {type: 'integer'},
               selectorsMissingScreenshot: {type: 'integer'},
               orphanedFeedback: {type: 'integer'},
+              pagesHtml: {type: 'integer'},
+            },
+          },
+          agentProtocol: {
+            type: 'object',
+            required: ['archivePath'],
+            properties: {archivePath: {type: 'string'}},
+          },
+          bundledSkills: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'kind', 'archivePath'],
+              properties: {
+                id: {type: 'string'},
+                kind: {enum: ['skill', 'reference']},
+                archivePath: {type: 'string'},
+                invocation: {type: 'string'},
+              },
+            },
+          },
+          pagesHtml: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['url', 'archivePath', 'bytes'],
+              properties: {
+                url: {type: 'string'},
+                archivePath: {type: 'string'},
+                bytes: {type: 'integer'},
+              },
             },
           },
           skill: {
@@ -3350,6 +3391,14 @@ import {serializeCaptureJson} from './export-capture.mjs';
           detached: {type: 'boolean'},
           tags: {type: 'array', items: {type: 'string'}},
           isTestData: {type: 'boolean'},
+          suggestedSkills: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['skill', 'locator'],
+              properties: {skill: {type: 'string'}, locator: {type: 'string'}},
+            },
+          },
         },
       },
       viewport: {
@@ -3407,6 +3456,29 @@ import {serializeCaptureJson} from './export-capture.mjs';
     if (/\b(broken|crash|null|undefined|error|404|fail)/.test(t)) return 'state';
     if (/\b(ugly|color|gradient|shadow|polish|visual|style)/.test(t)) return 'visual-polish';
     return 'unspecified';
+  };
+  // Heuristic seed for the Send-to-Agent protocol's map phase: category →
+  // bundled-skill locators (ids match skills-index.json). The consuming
+  // agent is told to VERIFY these, not trust them — they exist so the map
+  // phase starts from something instead of nothing. Only locators that can
+  // actually exist in the archive are emitted (vendored ones gate on the
+  // bundleSkills pref).
+  const suggestSkillsFor = (text: string): Array<{skill: string; locator: string}> => {
+    const PINCHGRAB = {skill: 'pinchgrab', locator: '.agents/skills/PinchGrab/SKILL.md'};
+    const PFD = {skill: 'pfd', locator: 'perception-first-design/skills/pfd/SKILL.md'};
+    const imp = (slug: string): {skill: string; locator: string} =>
+      ({skill: `impeccable/${slug}`, locator: `.agents/skills/impeccable/reference/${slug}.md`});
+    const vendored = prefs.bundleSkills && BUNDLED_SKILLS_PRESENT;
+    if (!vendored) return [PINCHGRAB];
+    switch (inferFeedbackCategory(text)) {
+      case 'copy': return [PINCHGRAB, imp('clarify'), PFD];
+      case 'layout': return [PINCHGRAB, imp('layout'), PFD];
+      case 'affordance': return [PINCHGRAB, imp('interaction-design'), PFD];
+      case 'accessibility': return [PINCHGRAB, imp('audit'), PFD];
+      case 'state': return [PINCHGRAB, PFD];
+      case 'visual-polish': return [PINCHGRAB, imp('polish'), PFD];
+      default: return [PINCHGRAB, PFD];
+    }
   };
   const buildRepairIndex = (manifest: ExportManifest, jsonlName: string): string => {
     type Row = {feedback: FeedbackMessage; parent?: SelectorMessage};
@@ -3512,12 +3584,16 @@ import {serializeCaptureJson} from './export-capture.mjs';
       '',
       '## Files',
       '',
-      '- `repair-index.md` — agent-friendly triage punch list (start here).',
+      manifest.agentProtocol ? `- \`${manifest.agentProtocol.archivePath}\` — the agent working doctrine: phases, persistence layout, verification loop (**agents start here**).` : '',
+      '- `repair-index.md` — agent-friendly triage punch list (one task per comment).',
       `- \`${jsonlName}\` — JSONL stream (one capture per line, leading manifest, schema v2).`,
       '- `screenshots/*.png` — full-resolution PNGs of each captured element / group / page.',
       '- `screenshots.json` — uid-keyed index: `byUid[uid] → { element?, group?, page? }`, `byUrl[url] → { page?, uids[] }`, plus a flat `files[]` listing.',
       '- `schema.json` — JSON-Schema (draft 2020-12) describing every row type.',
       '- `duckdb.sql` — copy-and-paste recipes for querying the JSONL with DuckDB.',
+      manifest.bundledSkills?.length ? `- \`skills-index.json\` — locator index for the ${manifest.bundledSkills.length} bundled skill documents (id → archive path → purpose → upstream provenance).` : '',
+      manifest.bundledSkills?.length ? '- `.agents/skills/impeccable/reference/*.md` + `perception-first-design/**` — vendored design skills, each with its upstream license; read them from this archive, no installation needed.' : '',
+      manifest.pagesHtml?.length ? `- \`pages/*.html\` — full serialized HTML of ${manifest.pagesHtml.length} captured page${manifest.pagesHtml.length === 1 ? '' : 's'} (opt-in).` : '',
       manifest.design?.inline ? `- \`DESIGN.md\` — ${manifest.design.customized ? 'project-customized design source-of-truth (trust as canonical).' : manifest.design.template ? 'PinchGrab\'s bundled DESIGN.md template (placeholder — verify before applying).' : ''}` : '',
       manifest.skill?.inline ? `- \`.agents/skills/PinchGrab/SKILL.md\` — ${manifest.skill.customized ? 'project-customized triage skill.' : manifest.skill.template ? 'PinchGrab\'s bundled default triage skill (template content).' : ''}` : '',
       '',
@@ -3542,11 +3618,16 @@ import {serializeCaptureJson} from './export-capture.mjs';
       '',
       '```',
       `${jsonlName}                    # JSONL stream (the source of truth)`,
+      manifest.agentProtocol ? 'AGENT-PROTOCOL.md               # agent working doctrine (start here)' : '',
       `screenshots/                    # element / group / page PNGs`,
       `screenshots.json                # uid-keyed lookup index`,
       `duckdb.sql                      # copy-paste SQL recipes`,
       `schema.json                     # JSON-Schema for every row type`,
       `README.md                       # this file`,
+      manifest.bundledSkills?.length ? 'skills-index.json               # bundled-skill locator index' : '',
+      manifest.bundledSkills?.length ? '.agents/skills/impeccable/      # vendored reference guides (Apache-2.0)' : '',
+      manifest.bundledSkills?.length ? 'perception-first-design/        # vendored PFD framework (CC BY-SA 4.0)' : '',
+      manifest.pagesHtml?.length ? 'pages/                          # full page HTML (opt-in)' : '',
       manifest.design?.inline ? 'DESIGN.md                       # visual identity source-of-truth' : '',
       manifest.skill?.inline ? '.agents/skills/PinchGrab/SKILL.md  # triage instructions' : '',
       '```',
@@ -3672,6 +3753,56 @@ import {serializeCaptureJson} from './export-capture.mjs';
     return {entries, bundled};
   };
 
+  // Full-page HTML entries (opt-in includePageHTML pref). Collected LAZILY
+  // at export time from whichever live tabs still show a captured URL —
+  // never persisted to chrome.storage, so big documents can't evict
+  // full-res screenshots from the quota. URLs with no live tab are recorded
+  // as info-level diagnostics instead of failing the export.
+  const pageHtmlSlug = (url: string, taken: Set<string>): string => {
+    let slug = 'page';
+    try {
+      const u = new URL(url);
+      slug = `${u.host}${u.pathname}`.replace(/\/+$/, '').replace(/[^\w.-]+/g, '_').slice(0, 80) || u.host;
+    } catch { /* keep fallback */ }
+    let unique = slug;
+    for (let i = 2; taken.has(unique); i++) unique = `${slug}~${i}`;
+    taken.add(unique);
+    return unique;
+  };
+  const collectPageHtmlEntries = async (): Promise<{entries: TarEntry[]; pagesMeta: Array<{url: string; archivePath: string; bytes: number}>; diagnostics: ExportDiagnostic[]}> => {
+    const entries: TarEntry[] = [];
+    const pagesMeta: Array<{url: string; archivePath: string; bytes: number}> = [];
+    const diagnostics: ExportDiagnostic[] = [];
+    if (!prefs.includePageHTML || !inExtension) return {entries, pagesMeta, diagnostics};
+    const urls = new Set<string>();
+    for (const m of messages) {
+      if (m.type === 'selector' && m.entry.url) urls.add(m.entry.url);
+      else if (m.type === 'page' && m.url) urls.add(m.url);
+    }
+    if (!urls.size) return {entries, pagesMeta, diagnostics};
+    let tabs: chrome.tabs.Tab[] = [];
+    try { tabs = await chrome.tabs.query({}); } catch { /* fall through to diagnostics */ }
+    const taken = new Set<string>();
+    for (const url of [...urls].sort()) {
+      const tab = tabs.find((t) => t.url === url) ?? tabs.find((t) => (t.url ?? '').split('#')[0] === url.split('#')[0]);
+      let html: string | undefined;
+      if (tab?.id != null) {
+        try {
+          const reply = await chrome.tabs.sendMessage(tab.id, pg({kind: 'page-html'})) as {ok?: boolean; html?: string} | undefined;
+          if (reply?.ok && reply.html) html = reply.html;
+        } catch { /* tab has no live content script */ }
+      }
+      if (!html) {
+        diagnostics.push({severity: 'info', code: 'PAGE_HTML_UNAVAILABLE', detail: url});
+        continue;
+      }
+      const archivePath = `pages/${pageHtmlSlug(url, taken)}.html`;
+      entries.push({name: archivePath, data: html});
+      pagesMeta.push({url, archivePath, bytes: new TextEncoder().encode(html).length});
+    }
+    return {entries, pagesMeta, diagnostics};
+  };
+
   const onExportZip = async (): Promise<void> => {
     if (!messages.length) { setStatus('Nothing to export', {kind: 'warn'}); return; }
     // One clock + one content hash per export: every timestamp and the
@@ -3688,6 +3819,40 @@ import {serializeCaptureJson} from './export-capture.mjs';
     const jsonlName = `${stem}.jsonl`;
     const manifestOpts = {nowIso: exportedAtIso, bundleId};
     const manifest = buildManifest(archiveName, 'tar.zst', manifestOpts);
+    // Load the tar-bound extras BEFORE the docs render so the README and
+    // manifest can describe exactly what ships: vendored skills (+ parsed
+    // skills index) and opt-in full-page HTML.
+    const skillEntries: TarEntry[] = [];
+    let skillsIndex: SkillsIndex | null = null;
+    if (prefs.bundleSkills && BUNDLED_SKILLS_PRESENT) {
+      const loaded = await Promise.all(BUNDLED_SKILL_FILES.map(async (f) => ({f, data: await loadBundledSkillFile(f.ext)})));
+      let skipped = 0;
+      for (const {f, data} of loaded) {
+        if (data == null) { skipped++; continue; }
+        skillEntries.push({name: f.archive, data});
+        if (f.archive === 'skills-index.json') {
+          try { skillsIndex = JSON.parse(data) as SkillsIndex; } catch { /* unreadable index — table degrades */ }
+        }
+      }
+      if (skipped) console.warn(LOG, `bundled skills: ${skipped}/${loaded.length} files missing from this build — export continues without them`);
+    }
+    const {entries: pageHtmlEntries, pagesMeta, diagnostics: pageHtmlDiagnostics} = await collectPageHtmlEntries();
+    manifest.agentProtocol = {archivePath: 'AGENT-PROTOCOL.md'};
+    if (skillsIndex?.skills?.length) {
+      manifest.bundledSkills = skillsIndex.skills.map((s) => ({
+        id: s.id,
+        kind: s.id.startsWith('impeccable/') ? 'reference' as const : 'skill' as const,
+        archivePath: s.path,
+        ...(s.invoke ? {invocation: s.invoke} : {}),
+      }));
+    }
+    if (pagesMeta.length) {
+      manifest.pagesHtml = pagesMeta;
+      manifest.counts.pagesHtml = pagesMeta.length;
+    }
+    if (pageHtmlDiagnostics.length) {
+      manifest.exportDiagnostics = [...(manifest.exportDiagnostics ?? []), ...pageHtmlDiagnostics];
+    }
     // The JSONL inside the archive must declare itself as part of a
     // tar.zst bundle so its manifest's `design.inline` / `skill.inline`
     // flags match what's actually present in the surrounding tar.
@@ -3739,19 +3904,24 @@ import {serializeCaptureJson} from './export-capture.mjs';
       const rebranded = rebrandSkillName(skillContent, 'PinchGrab');
       tarEntries.push({name: '.agents/skills/PinchGrab/SKILL.md', data: rebranded});
     }
-    // Vendored third-party design skills + skills-index.json — the locator
-    // surface the Send-to-Agent protocol's mapped_skills phase cites.
-    // Per-file failures warn + skip; an export never hard-fails on a
-    // missing skill resource.
-    if (prefs.bundleSkills && BUNDLED_SKILLS_PRESENT) {
-      const loaded = await Promise.all(BUNDLED_SKILL_FILES.map(async (f) => ({f, data: await loadBundledSkillFile(f.ext)})));
-      let skipped = 0;
-      for (const {f, data} of loaded) {
-        if (data == null) { skipped++; continue; }
-        tarEntries.push({name: f.archive, data});
-      }
-      if (skipped) console.warn(LOG, `bundled skills: ${skipped}/${loaded.length} files missing from this build — export continues without them`);
-    }
+    // Vendored skills + opt-in page HTML (loaded above, before the docs).
+    tarEntries.push(...skillEntries, ...pageHtmlEntries);
+    // AGENT-PROTOCOL.md — the full Send-to-Agent doctrine. Hydrated last so
+    // its bundle tree reflects every entry above (plus itself); the same
+    // options rebuild the clipboard payload after the save resolves the
+    // real absolute archive path.
+    const entryNamesForDocs = [...tarEntries.map((e) => e.name), 'AGENT-PROTOCOL.md'].sort();
+    const agentPromptOpts = {
+      workspace: activeWs,
+      bundleId,
+      archivePath: archiveName,
+      exportTs: exportedAtIso,
+      jsonlName,
+      counts: {comments: manifest.counts.feedback, selectors: manifest.counts.selectors, pages: manifest.counts.pages, screenshots: shotEntries.length},
+      entryNames: entryNamesForDocs,
+      designIsTemplate: isUsingTemplateDesign(),
+    };
+    tarEntries.push({name: 'AGENT-PROTOCOL.md', data: buildAgentProtocolMd({...agentPromptOpts, skillsIndex})});
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are
     // assembled but BEFORE we tar them, so we know what's in the
@@ -3799,15 +3969,17 @@ import {serializeCaptureJson} from './export-capture.mjs';
         lastExport.tempPath = Boolean(reply.tempPath);
         lastExport.kind = 'tar.zst';
         updateCopyPathButton();
-        // Auto-copy the absolute path to clipboard so the user doesn't
-        // have to hunt for it. The toolbar collapsed the dedicated
-        // "copy path" button into this single action.
+        // Send to Agent: the clipboard gets the full JSONL prompt payload —
+        // instruction, idempotent bootstrap, mandatory-read file list,
+        // bundle tree, orchestration doctrine — hydrated with the REAL
+        // saved path (not just the bare path anymore).
         const pathToCopy = lastExport.copyPath ?? reply.absPath;
-        const pathCopied = await copyToClipboardSilent(pathToCopy);
+        lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: pathToCopy});
+        const promptCopied = await copyToClipboardSilent(lastExport.agentPrompt);
         const leaf = pathToCopy.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? pathToCopy;
-        if (pathCopied) showCopied('Exported and copied', leaf);
+        if (promptCopied) showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
         setStatus(
-          `Exported · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${pathCopied ? ' · path copied' : ''}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
+          `Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${promptCopied ? ' · prompt copied' : ''}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
         );
         return;
       }
@@ -3829,9 +4001,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     lastExport.tempPath = false;
     lastExport.kind = 'tar.zst';
     updateCopyPathButton();
-    await copyToClipboardSilent(archiveName);
-    showCopied('Exported and copied', archiveName);
-    setStatus(`Workspace exported · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled · path copied`);
+    lastExport.agentPrompt = buildAgentPromptJsonl(agentPromptOpts);
+    await copyToClipboardSilent(lastExport.agentPrompt);
+    showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
+    setStatus(`Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled · prompt copied`);
   };
 
   // Best-effort clipboard write — never throws; returns whether the
@@ -4567,8 +4740,15 @@ ORDER BY s.n;
   const COMMANDS: Command[] = [
     {id: 'copy-all', label: 'Copy all as JSONL', run: () => void onCopyAll()},
     {id: 'export', label: 'Download JSONL file', run: () => void onExport()},
-    {id: 'export-zip', label: 'Export workspace as .tar.zst (JSONL + screenshots + DuckDB + README)', run: () => void onExportZip()},
+    {id: 'export-zip', label: 'Send to Agent — export .tar.zst + copy the agent prompt', run: () => void onExportZip()},
     {id: 'copy-path', label: 'Copy path of last export', run: () => void onCopyPath()},
+    {id: 'copy-agent-prompt', label: 'Copy Send-to-Agent prompt (last export)', run: () => {
+      void (async () => {
+        if (!lastExport.agentPrompt) { setStatus('No export yet — Send to Agent first', {kind: 'warn'}); return; }
+        const ok = await copyToClipboardSilent(lastExport.agentPrompt);
+        setStatus(ok ? 'Agent prompt copied' : 'Clipboard unavailable', ok ? {} : {kind: 'warn'});
+      })();
+    }},
     {id: 'duckdb', label: 'Generate DuckDB query snippet (SQL recipes)', run: () => void onDuckDbSnippet()},
     {id: 'import', label: 'Import JSONL file', run: onImport},
     {id: 'validate', label: 'Re-check selectors', run: () => void onValidate()},
@@ -4948,6 +5128,7 @@ ORDER BY s.n;
       duckDbSnippet, onExportZip, onExport, onCopyPath,
       denormalizeEntry,
       getLastExport: () => ({...lastExport}),
+      getLastAgentPrompt: () => lastExport.agentPrompt,
       // Test hatch: seed every selector capture with the same full PNG dataURL
       // so the archive export has something to bundle. Real captures populate
       // shotsFull from the bg `runShot` reply; tests can't easily run a

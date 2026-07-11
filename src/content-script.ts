@@ -1016,6 +1016,10 @@ function init(): void {
       case 'set-captured':
         knownCaptured = new Set(msg.selectors);
         return false;
+      case 'page-html':
+        // Serialized on demand at export time; nothing cached page-side.
+        respond({ok: true, url: location.href, title: document.title, html: '<!DOCTYPE html>\n' + document.documentElement.outerHTML});
+        return true;
       case 'set-cs-prefs':
         if (typeof msg.spacingOverlay === 'boolean') {
           spacingOverlay = msg.spacingOverlay;
