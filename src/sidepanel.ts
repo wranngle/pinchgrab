@@ -197,6 +197,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // since page screenshots are large and the first one already gives
     // a session-level reference.
     pageShotPerCapture: boolean;
+    // Suppress Chrome's download bubble while PinchGrab writes its own
+    // files (screenshots + exports). Requires the optional `downloads.ui`
+    // permission — the settings checkbox requests it on enable.
+    quietSaves: boolean;
   };
   const DEFAULT_PREFS: Prefs = {
     includeOuterHTML: true,
@@ -221,6 +225,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     skillPath: '~/.agents/skills/PinchGrab/SKILL.md',
     skillMd: '',
     pageShotPerCapture: false,
+    quietSaves: false,
   };
 
   // Rewrite the `name:` field in a SKILL.md's YAML frontmatter. The
@@ -4128,6 +4133,17 @@ ORDER BY s.n;
     else window.open(url, '_blank', 'noopener');
   };
 
+  // Re-inject the content script into the active tab — the recovery path
+  // for "Alt+Click stopped working" (an extension reload orphans the page's
+  // script). Refreshing an attached tab re-injects automatically; this
+  // covers every other case without hunting for the toolbar icon.
+  const onReattach = async (): Promise<void> => {
+    if (!inExtension) { setStatus('Re-attach only works inside the extension', {kind: 'warn'}); return; }
+    const reply = await sendToBg<{ok: boolean; error?: string}>({kind: 'pg-reinject'});
+    if (reply?.ok) setStatus('Re-attached — Alt+Click is live');
+    else setStatus(`Couldn't re-attach — click the PinchGrab toolbar button on the page${reply?.error ? ` · ${reply.error}` : ''}`, {kind: 'warn'});
+  };
+
   // ─── Settings drawer / workspaces ───────────────────────────────────────
   const applyPrefsToUI = (): void => {
     for (const el of drawer.querySelectorAll<HTMLInputElement>('input[data-pref]')) {
@@ -4317,7 +4333,23 @@ ORDER BY s.n;
   drawer?.addEventListener('change', (e) => {
     const t = e.target as HTMLInputElement | HTMLTextAreaElement;
     if ((t as HTMLInputElement).dataset?.pref) {
-      (prefs as any)[t.dataset.pref!] = Boolean((t as HTMLInputElement).checked);
+      const key = t.dataset.pref!;
+      const checked = Boolean((t as HTMLInputElement).checked);
+      // Quiet saves needs the optional downloads.ui permission; request it
+      // inside this user gesture and revert the checkbox on decline.
+      if (key === 'quietSaves' && checked && inExtension && chrome.permissions?.request) {
+        void (async () => {
+          let granted = false;
+          try { granted = await chrome.permissions.request({permissions: ['downloads.ui']}); }
+          catch (err) { console.warn(LOG, 'downloads.ui permission request failed', err); }
+          prefs.quietSaves = granted;
+          (t as HTMLInputElement).checked = granted;
+          persistPrefs();
+          setStatus(granted ? 'Quiet saves on — no more download popups' : 'Permission declined — saves stay visible', granted ? {} : {kind: 'warn'});
+        })();
+        return;
+      }
+      (prefs as any)[key] = checked;
       persistPrefs();
       render();
       return;
@@ -4499,6 +4531,8 @@ ORDER BY s.n;
     {id: 'duckdb', label: 'Generate DuckDB query snippet (SQL recipes)', run: () => void onDuckDbSnippet()},
     {id: 'import', label: 'Import JSONL file', run: onImport},
     {id: 'validate', label: 'Re-check selectors', run: () => void onValidate()},
+    {id: 'reattach', label: 'Re-attach to page (fix Alt+Click)', run: () => void onReattach()},
+    {id: 'reload-extension', label: 'Reload the PinchGrab extension (last resort)', run: () => { if (inExtension) chrome.runtime.reload(); }},
     {id: 'clear', label: 'Clear all captures', run: onClear},
     {id: 'settings', label: 'Open settings', run: openDrawer},
     {id: 'github', label: 'Open GitHub repo', run: onGithub},
@@ -4743,6 +4777,7 @@ ORDER BY s.n;
       case 'copy-path': void onCopyPath(); return;
       case 'import': onImport(); return;
       case 'validate': void onValidate(); return;
+      case 'reattach': void onReattach(); return;
       case 'clear': onClear(); return;
       case 'github': onGithub(); return;
       case 'settings': openDrawer(); return;

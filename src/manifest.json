@@ -11,6 +11,7 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["sidePanel", "storage", "activeTab", "tabs", "scripting", "contextMenus", "downloads"],
+  "optional_permissions": ["downloads.ui"],
   "background": {
     "service_worker": "background.js"
   },

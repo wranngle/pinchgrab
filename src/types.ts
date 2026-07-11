@@ -444,7 +444,11 @@ export type PanelToBg =
   // .sendMessage uses structured cloning, which preserves Uint8Array, so we
   // pass the typed array directly. number[] is accepted as a fallback for
   // older callers and tests that pre-serialize.
-  | {kind: 'save-bytes'; workspace: string; filename: string; bytes: Uint8Array | number[]; mime: string; subdir?: string};
+  | {kind: 'save-bytes'; workspace: string; filename: string; bytes: Uint8Array | number[]; mime: string; subdir?: string}
+  // Panel asks the background to (re)inject the content script — the fix
+  // for "Alt stopped working" after an extension reload orphans the page's
+  // content script. Defaults to the active tab.
+  | {kind: 'pg-reinject'; tabId?: number};
 
 export type ShotReply = {
   ok: boolean;

@@ -63,8 +63,35 @@ if (window[KEY]) {
 }
 
 function init(): void {
+  // Cross-world takeover: an extension reload orphans the previous content
+  // script in a *different isolated world*, where our window[KEY] guard
+  // can't see it — but its DOM overlay and capture listeners persist with a
+  // dead chrome.runtime ("Alt stops working"). Plain DOM events DO cross
+  // isolated worlds: fire the takeover signal so any predecessor tears
+  // itself down, sweep its stale overlay, and register the same listener
+  // for our own successor.
+  try { document.dispatchEvent(new Event('__pinchgrab-takeover')); } catch { /* ignore */ }
+  document.getElementById('__pinchgrab_overlay')?.remove();
+
   const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id);
   const testCaptures = inExtension ? null : ([] as Array<{entry: Entry; page: ReturnType<typeof buildPageContext>; grouped?: boolean}>);
+
+  // Orphan self-detection: after an extension reload, chrome.runtime.id in
+  // the old world goes undefined (or throws). Hot handlers short-circuit
+  // through this guard and tear the orphan down instead of silently eating
+  // Alt gestures forever.
+  let destroyed = false;
+  const contextAlive = (): boolean => {
+    if (!inExtension) return true;
+    try { return Boolean(chrome.runtime?.id); } catch { return false; }
+  };
+  const orphanGuard = (): boolean => {
+    if (destroyed) return false;
+    if (contextAlive()) return true;
+    console.warn(LOG, 'extension context invalidated — tearing down orphaned content script');
+    try { window[KEY]?.destroy(); } catch { /* ignore */ }
+    return false;
+  };
 
   // ─── Overlay shadow host (rings, rubber-band, annotation) ────────────────
   // Strict-CSP pages (GitHub, banks) reject inline <style> tags AND
@@ -79,6 +106,43 @@ function init(): void {
   });
   document.documentElement.appendChild(overlayHost);
   const shadow = overlayHost.attachShadow({mode: 'open'});
+
+  // ─── Top-layer promotion ──────────────────────────────────────────────────
+  // A max z-index host still loses to the browser top layer
+  // (<dialog>.showModal(), page popovers) and can be trapped by stacking
+  // contexts. The Popover API puts the host in the top layer itself;
+  // popover="manual" opts out of ESC/light-dismiss. UA [popover] styles
+  // (auto margins, border, fit-content sizing, display:none-when-closed)
+  // are neutralized inline because page CSP can block stylesheets. On any
+  // failure the popover attribute is removed so the plain max-z fallback
+  // keeps painting.
+  const promoteToTopLayer = (): void => {
+    if (!('showPopover' in overlayHost)) return;
+    try {
+      overlayHost.setAttribute('popover', 'manual');
+      Object.assign(overlayHost.style, {
+        margin: '0', border: '0', padding: '0',
+        width: 'auto', height: 'auto',
+        background: 'transparent', overflow: 'visible', color: 'inherit',
+      });
+      if (!overlayHost.matches(':popover-open')) overlayHost.showPopover();
+    } catch (e) {
+      console.warn(LOG, 'top-layer promotion failed — max z-index fallback', e);
+      try { overlayHost.removeAttribute('popover'); } catch { /* ignore */ }
+    }
+  };
+  // Top-layer stacking is insertion-ordered: a hide+show cycle re-stacks the
+  // overlay above any dialog/popover the page opened after us. Called when a
+  // new ring or the comment box appears — not per frame.
+  const bringToFront = (): void => {
+    if (!('showPopover' in overlayHost)) return;
+    if (overlayHost.style.display === 'none') return; // mid-capture; stay hidden
+    try {
+      if (overlayHost.matches(':popover-open')) overlayHost.hidePopover();
+      overlayHost.showPopover();
+    } catch { promoteToTopLayer(); }
+  };
+  promoteToTopLayer();
 
   // ─── Noodle SVG: connectors from the side-panel edge of the viewport to
   // each ringed element. The page can't see the side-panel itself (separate
@@ -254,6 +318,9 @@ function init(): void {
     slot.target = el;
     ringTrackOpts.set(key, {el, opts});
     armRingLoop(key, el, opts);
+    // A fresh ring is a good moment to re-stack above any dialog/popover
+    // the page opened since we last painted.
+    bringToFront();
   };
   // Stop every ring's rAF loop in place (used during screenshot capture).
   // The slot keeps its current geometry; thawRings re-arms the loops.
@@ -634,6 +701,7 @@ function init(): void {
   // ─── Mouse listeners ─────────────────────────────────────────────────────
   let lastMoveTs = 0;
   const onMouseMove = (e: MouseEvent): void => {
+    if (!orphanGuard()) return;
     if (e.timeStamp === lastMoveTs) return;
     lastMoveTs = e.timeStamp;
     lastMouse = {x: e.clientX, y: e.clientY};
@@ -683,6 +751,7 @@ function init(): void {
   };
 
   const onMouseDown = (e: MouseEvent): void => {
+    if (!orphanGuard()) return;
     if (isInsideAnnotation(e)) return;
     if (annotationEl.style.display === 'block' && !annotation.isLocked()) annotation.hide();
     if (!e.altKey || dragStart) return;
@@ -720,6 +789,7 @@ function init(): void {
   };
 
   const onClick = (event: MouseEvent): void => {
+    if (!orphanGuard()) return;
     if (suppressNextClick) {
       event.preventDefault();
       event.stopPropagation();
@@ -765,8 +835,10 @@ function init(): void {
     if (e.target instanceof Element) lastContextEl = e.target;
   }, true);
 
-  // Keyboard listeners (page-focused case).
-  window.addEventListener('keydown', (e) => {
+  // Keyboard listeners (page-focused case). Named so destroy() can remove
+  // them — the orphan-takeover path must leave zero listeners behind.
+  const onKeyDownAlt = (e: KeyboardEvent): void => {
+    if (!orphanGuard()) return;
     if (e.altKey) {
       setAltActive(true);
       // Pre-empt the browser's Alt → menu-bar focus shift on Windows. If we
@@ -776,8 +848,9 @@ function init(): void {
         e.preventDefault();
       }
     }
-  }, true);
-  window.addEventListener('keyup', (e) => {
+  };
+  const onKeyUpAlt = (e: KeyboardEvent): void => {
+    if (!orphanGuard()) return;
     if (e.key === 'Alt' || !e.altKey) {
       // Same Alt-→-menu suppression on release: Chrome / Edge on Windows
       // shift focus to the menu bar when Alt is released without another
@@ -788,13 +861,16 @@ function init(): void {
       // No auto-commit timer — the user explicitly clicks "Commit group"
       // in the side-panel pending bay (or Esc to cancel).
     }
-  }, true);
-  window.addEventListener('blur', () => {
+  };
+  const onWindowBlur = (): void => {
     altForwarded = false;
     setAltActive(false);
     // Note: don't cancel pendingMulti — clicking the side-panel commit button
     // blurs the host page and we'd lose the staging state right before commit.
-  }, true);
+  };
+  window.addEventListener('keydown', onKeyDownAlt, true);
+  window.addEventListener('keyup', onKeyUpAlt, true);
+  window.addEventListener('blur', onWindowBlur, true);
 
   // ─── Side-panel commands ─────────────────────────────────────────────────
   const safeQuery = (sel: string | undefined): Element | null => {
@@ -981,6 +1057,9 @@ function init(): void {
       case 'show-overlays': {
         overlayHost.style.display = '';
         overlayHost.style.visibility = 'visible';
+        // Re-enter the top layer: the capture window (or the page) may have
+        // dismissed our popover while the host was display:none.
+        promoteToTopLayer();
         // Thaw: re-arm every ring loop in a single batch so they snap to the
         // (now restored) scroll position on the SAME frame — one clean
         // reposition instead of a staggered repaint cascade.
@@ -1209,19 +1288,30 @@ function init(): void {
     nextSeq,
     handleCommand,
     destroy: () => {
+      destroyed = true;
       for (const target of [window, document]) {
         target.removeEventListener('mousemove', onMouseMove as EventListener, true);
         target.removeEventListener('mousedown', onMouseDown as EventListener, true);
         target.removeEventListener('mouseup', onMouseUp as EventListener, true);
       }
       document.removeEventListener('click', onClick as EventListener, true);
+      window.removeEventListener('keydown', onKeyDownAlt, true);
+      window.removeEventListener('keyup', onKeyUpAlt, true);
+      window.removeEventListener('blur', onWindowBlur, true);
       clearRings();
+      try { if (overlayHost.matches(':popover-open')) overlayHost.hidePopover(); } catch { /* ignore */ }
       overlayHost.remove();
       delete window[KEY];
     },
   };
   window[KEY] = api;
   window.__pinchgrab = api;
+  // Successor takeover: when a fresh copy of this script injects (extension
+  // reload), it fires this event from its own isolated world — tear down so
+  // exactly one live copy owns the page.
+  document.addEventListener('__pinchgrab-takeover', () => {
+    try { api.destroy(); } catch { /* ignore */ }
+  }, {once: true});
   console.log(LOG, 'ready', {inExtension});
 }
 
