@@ -27,27 +27,58 @@
 
 ![Real PinchGrab capture on a demo page: holding Alt and clicking an element rings it and drops its selector into the docked side panel](docs/hero.webp)
 
+![26 noodles, one hover: the real extension ringing all of its committed captures on a live demo page at once, every ring wired back to the docked side panel](docs/brand/noodle-festival-card.png)
+
+*Real driven session, not a mockup. [`scripts/noodle-drive.ts`](scripts/noodle-drive.ts) loads the actual built extension into headed Chromium, performs the Alt+Click captures and Alt+Drag sweeps on the demo page in [`demo/`](demo/index.html), then hovers Export; the 26 connector paths, 25 live rings, and 18 committed captures on the card are counted live from the extension overlay's shadow root and recorded in [`docs/brand/noodle-festival-measurements.json`](docs/brand/noodle-festival-measurements.json). Raw uncropped display grab: [`docs/brand/noodle-festival.png`](docs/brand/noodle-festival.png).*
+
 Instead of screenshotting a broken page and describing it by hand, you hold Alt, click the element, and say what's wrong in a comment right beside the capture. Each capture pins the exact element for a coding agent: URL, viewport, DOM context, component hints, accessibility signals, event hints, and sanitized HTML. When the critique is done, **PinchGrab** writes screenshots and the whole per-tab workspace to `Downloads/pinchgrab/<workspace>/` as JSONL, a DuckDB recipe, a screenshot index, README guidance, and a `.tar.zst` bundle an agent can act on **directly**.
 
 PinchGrab exports stick to boring, open formats: newline-delimited JSON you can query with DuckDB, PNG screenshots with a JSON index, and a JSON-Schema for every row type. Each `.tar.zst` bundle carries its own `README.md`, a `repair-index.md` triage list, and bundled skill and design context, so a coding agent can orient itself without ever seeing this repo.
+
+## 🤏 One pinch replaces the whole copy-paste loop
+
+You already know the loop. Something on the page is wrong, and getting that fact into your coding agent costs you a screenshot, a crop, an arrow, an upload, a paragraph explaining which button you mean, and a DevTools expedition for a selector the agent will still second-guess. Then you do it again for the next element. PinchGrab exists to murder that workflow.
+
+| Manual loop, repeated **per element** | PinchGrab, **one pass per workspace** |
+| --- | --- |
+| 1. Screenshot the page | 1. Hold <kbd>Alt</kbd>, click the element |
+| 2. Crop to the element | 2. Type the complaint in the box beside it |
+| 3. Annotate an arrow so the model can find it | 3. Repeat the pinch for anything else that bugs you |
+| 4. Upload the image to the chat | 4. Click **Export** once |
+| 5. Describe the element in words anyway | |
+| 6. Dig the selector out of DevTools | |
+| 7. Paste selector and hope it still resolves | |
+| **7 steps × N elements, and the pairing between image, words, and selector lives only in your prose** | **1 gesture per element + 1 export, and every comment ships already welded to its exact locator and screenshot** |
+
+The step counts above are workflow facts you can count on your own fingers, not benchmarks. What is benchmarked is density: each capture row carries validated selectors, sanitized depth-capped HTML, accessibility signals, and framework component hints, so the bundle is the densest honest representation of UI feedback an agent can consume. Measured across the 12-framework tour, capture HTML minifies to a mean 29.2% below the raw markup (47.6% smaller byte-weighted across all 467 captures) and a full workspace bundle lands at a mean 31.6 KB without screenshots, 984.9 KB with them (numbers produced by the committed benchmark at [`scripts/benchmark-bundle.ts`](scripts/benchmark-bundle.ts); methodology and full per-framework tables in [`docs/benchmarks.md`](docs/benchmarks.md), reproduce with `bun run bench`).
 
 ## ⚡ Features
 
 ![PinchGrab feature banner: Alt+Click to capture, comment in English, export for your agent](docs/brand/feature-banner.png)
 
-- 🎯 **Alt+Click capture**: hold `Alt` to outline any element on the live page, click to capture its selectors, DOM breadcrumb, computed styles, accessibility tree, and framework component hints in one record.
+- 🤏 **Alt+Click capture**: hold `Alt` to outline any element on the live page, click to capture its selectors, DOM breadcrumb, computed styles, accessibility tree, and framework component hints in one record.
 
-- 💬 **Inline comments**: say what's wrong in plain English right beside the capture; every note stays paired to the exact element it describes, screenshot included.
+- 🤏 **Inline comments**: say what's wrong in plain English right beside the capture; every note stays paired to the exact element it describes, screenshot included.
 
-- 🗂️ **Per-tab workspaces**: each tab you activate gets its own workspace, so you can critique several sites at once without mixing feedback.
+- 🤏 **Per-tab workspaces**: each tab you activate gets its own workspace, so you can critique several sites at once without mixing feedback.
 
-- 📦 **Export bundle**: one click writes the whole workspace to `Downloads/pinchgrab/<workspace>/` as JSONL, full-resolution screenshots, a `screenshots.json` index, `schema.json`, DuckDB recipes, and a single `.tar.zst` archive.
+- 🤏 **Export bundle**: one click writes the whole workspace to `Downloads/pinchgrab/<workspace>/` as JSONL, full-resolution screenshots, a `screenshots.json` index, `schema.json`, DuckDB recipes, and a single `.tar.zst` archive.
 
-- 🤖 **Agent handoff**: every bundle ships a `repair-index.md` punch list plus its own README, skill, and design context, so Claude Code, Cursor, or any coding agent can start fixing without extra prompting.
+- 🤏 **Agent handoff**: every bundle ships a `repair-index.md` punch list plus its own README, skill, and design context, so Claude Code, Cursor, or any coding agent can start fixing without extra prompting.
 
-- 🔁 **Legacy replay and diff CLI**: replay captures, generate visual diffs, replay network activity, annotate steps, and export to Playwright, Puppeteer, or plain-English recipes.
+- 🤏 **Legacy replay and diff CLI**: replay captures, generate visual diffs, replay network activity, annotate steps, and export to Playwright, Puppeteer, or plain-English recipes.
 
-- 📸 **Store-grade screenshot tooling**: [`scripts/capture-store-shots.ts`](scripts/capture-store-shots.ts) composes the Chrome Web Store listing set from real panel captures, so listing assets regenerate from source instead of rotting.
+- 🤏 **Store-grade screenshot tooling**: [`scripts/capture-store-shots.ts`](scripts/capture-store-shots.ts) composes the Chrome Web Store listing set from real panel captures, so listing assets regenerate from source instead of rotting.
+
+## 📏 The token receipt (measured, not modeled)
+
+Every number below comes from the committed benchmark at [`scripts/benchmark-bundle.ts`](scripts/benchmark-bundle.ts), which drives the shipped capture code against the same 12 live framework apps the test suite tours. Full per-fixture tables and methodology live in [`docs/benchmarks.md`](docs/benchmarks.md); reproduce with `bun run bench` (about 15 seconds).
+
+- 🤏 **95.3% smaller than pasting the page.** The rendered DOM of the 12 pages serializes to 6,222 KB of HTML; the complete minified JSONL exports for the same pages total 292.5 KB. In estimated tokens (bytes/4 heuristic, stated as such everywhere) that is 1,592,924 → 74,888.
+- 🤏 **87.4% smaller on container grabs.** The 40 captures whose raw markup is 4 KB or more, the sections and cards people actually pinch, went from 355.5 KB raw to 44.8 KB of minified rows.
+- 🤏 **Every capture is a bounded ~632 byte row** no matter how deep the subtree underneath it goes, so a grabbed dashboard never arrives as 25 KB of sparkline spans.
+- 🤏 **A text-only feedback bundle averages 31.6 KB on disk**; with a full-resolution PNG of every captured element it averages 984.9 KB.
+- 🤏 **Honest caveat**: leaf grabs (raw markup under 1 KB) come out net larger, on purpose, because the row carries the validated selector, rect, accessibility name, and framework hints the raw paste never had. The two regimes are [split out separately in the tables](docs/benchmarks.md#by-grab-size), not blended into one flattering mean.
 
 ## 🚀 Quick start
 
@@ -128,6 +159,28 @@ flowchart LR
 2. Type what's wrong in the comment box right beside the element.
 3. Export the workspace from the side panel when the critique is done.
 
+#### 🤏 Shortcuts
+
+While your fingers are already on <kbd>Alt</kbd>, here is the rest of the hand. On the page (content script gestures):
+
+| Keys | Action |
+| --- | --- |
+| <kbd>Alt</kbd> (hold) | Peek: outline the element under the cursor, no capture |
+| <kbd>Alt</kbd> + Click | Capture the element into the workspace |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + Click | Stage the element into the pending bay (commit later) |
+| <kbd>Alt</kbd> + drag | Rubber-band: stage every element inside the rectangle |
+
+In the side panel:
+
+| Keys | Action |
+| --- | --- |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> | Open or close the command palette |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Z</kbd> | Undo |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> or <kbd>Ctrl</kbd> + <kbd>Y</kbd> | Redo |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>F</kbd> | Find within the panel |
+
+> Typing `> selector` into the composer runs a manual capture by CSS selector. It is a composer command, not a keybinding, and it is also reachable from the palette.
+
 Everything lands under your Downloads folder:
 
 | Artifact | Path |
@@ -150,24 +203,6 @@ Everything lands under your Downloads folder:
   ```
 
   This is a single newline-delimited row: one Alt+Click on a pricing-page button, carrying its selectors, React component source hints, accessibility tree, computed styles, and matched CSS rules. An agent (or DuckDB) reads the stream one row at a time; the full schema lives at [docs/capture-schema.json](docs/capture-schema.json).
-
-</details>
-
----
-
-<details>
-  <summary>Export shape: what a workspace archive contains</summary>
-
-  The extension emits newline-delimited JSON with a manifest row followed by page, selector, and feedback rows. Workspace archives add:
-
-  - `README.md`
-  - `repair-index.md`
-  - `<workspace>.jsonl`
-  - `screenshots.json`
-  - `duckdb.sql`
-  - `schema.json`
-  - screenshot PNGs when available
-  - bundled PinchGrab skill/design context
 
 </details>
 
@@ -212,6 +247,37 @@ bun run annotator
 
 *Store listing frames, composed from real extension UI by [`scripts/capture-store-shots.ts`](scripts/capture-store-shots.ts).*
 
+## 🤏 What is in the bundle (and why)
+
+One export writes one folder and one archive. Every file earns its place; nothing in here is decoration. The manifest is not a separate file, it is the leading row of the JSONL, so the stream carries its own inventory.
+
+🤏 **`<workspace>.jsonl`** is the source of truth: a leading `manifest` row (version, tool, counts, hosts, and an `archiveIntegrity` file list with sizes), then per-page header rows, then one row per capture, comment, and group, each with selectors, sanitized `outerHTML`, and the user's comments.
+
+🤏 **`repair-index.md`** is the punch list: one `### F001` section per complaint with the target selector, uid, accessible name, selector-match count, screenshot path, component source hints, ancestor chain, and a heuristic fix category. The generator's own words: "A starting punch list for an autonomous repair agent."
+
+🤏 **`README.md`** (the bundle's own, not this one) is the entry point: counts, file list, three extraction fallbacks, a DuckDB starter, and a pointer that sends the agent to the triage materials first.
+
+🤏 **`screenshots/*.png`** are full-resolution PNGs of each captured element, group, and page, decoded from the in-memory capture cache and deduplicated by filename.
+
+🤏 **`screenshots.json`** is the lookup layer over those PNGs: `byUid[uid]`, `byUrl[url]`, and a flat `files[]` list, so an agent resolves any row to its image without globbing.
+
+🤏 **`duckdb.sql`** is copy-and-paste recipes for querying the JSONL with DuckDB, targeting the questions a repair workflow actually asks: captures per host, duplicate `outerHTML`, missing screenshots, class-token frequency, comments joined to their parent selector.
+
+🤏 **`schema.json`** is a machine-readable JSON-Schema (draft 2020-12) describing every row type, so strict consumers can validate before they trust.
+
+🤏 **`DESIGN.md`** and **`.agents/skills/PinchGrab/SKILL.md`** ride along when configured: the project's visual identity canon and the triage skill, so the agent snaps visual fixes to your tokens instead of inventing its own taste.
+
+🤏 **`<workspace>.tar.zst`** wraps the lot into a single archive; the bundled README documents an extraction ladder from `tar --zstd` down to a pure-Node fallback.
+
+A taste of the shipped recipes, verbatim from the emitted `duckdb.sql` (recipe 4):
+
+```sql
+SELECT n, url, selector
+FROM pg
+WHERE type = 'selector' AND screenshot IS NULL
+ORDER BY n;
+```
+
 ## 🤖 AI Coding Agents (Claude Code, Cursor, Codex)
 
 Every `.tar.zst` export is built to be handed to a **coding agent** as-is. There is no plugin to install and no API between you and the bundle; anything that can read files can consume one.
@@ -231,6 +297,103 @@ The bundle's own `README.md` sends the agent to `repair-index.md` first, then to
 `repair-index.md` turns each comment into a task: the complaint verbatim, the target selector and uid, the screenshot path, framework component and source-file hints when detected, and a heuristic fix category (copy, layout, accessibility, state, visual polish). The agent cross-references the JSONL stream and `screenshots/` for full detail, makes the fix, and verifies against the captured before-state.
 
 > Every bundle is self-describing: newline-delimited JSON rows with a bundled `schema.json`, PNG screenshots with a JSON index, and a DuckDB recipe for ad-hoc queries. Claude Code, Cursor, and Codex CLI all read it the same way, and so does anything else that can open files. PinchGrab has no server side; the bundle is the whole interface.
+
+## 🤏 Works where you work
+
+Support here is not a claim, it is a run. Every cell below is proven by [`tests/framework-tour.spec.ts`](tests/framework-tour.spec.ts): the same weather-app UI rebuilt in 12 different frameworks on the external benchmark site `framework-benchmarks.as93.net`, each one driven for real through [`tests/harness/pinchgrab-driver.ts`](tests/harness/pinchgrab-driver.ts) and probed by [`tests/harness/page-tour.js`](tests/harness/page-tour.js). "Support" means: the page loads, the content script injects, a ~25-probe sweep runs (testId, role, id, landmarks, forms, lists, tables, shadow hosts, custom elements), every captured selector is re-validated live against the DOM, and zero of the eight tracked bug kinds fire. Fixture catalog: [`tests/fixtures/framework-apps.json`](tests/fixtures/framework-apps.json); each run writes a per-framework report to `tests/output/framework-tour/` (run artifact, regenerate with `bun run test:tour`).
+
+🤏 No copy-paste inspector babysitting. PinchGrab points, captures, and validates the selector on the spot, across every framework below. Murder the copy-paste workflow for good.
+
+<table>
+<tr>
+<td align="center" width="25%">
+
+**[React](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/react-000000?style=flat-square&logo=react&logoColor=61DAFB" alt="React"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Angular](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/angular-DD0031?style=flat-square&logo=angular&logoColor=white" alt="Angular"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Svelte](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/svelte-FF3E00?style=flat-square&logo=svelte&logoColor=white" alt="Svelte"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Preact](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/preact-673AB8?style=flat-square&logo=preact&logoColor=white" alt="Preact"></a>
+
+</td>
+</tr>
+<tr>
+<td align="center" width="25%">
+
+**[Solid](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/solid-2C4F7C?style=flat-square&logo=solid&logoColor=white" alt="Solid"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Qwik](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/qwik-AC7EF4?style=flat-square&logo=qwik&logoColor=white" alt="Qwik"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Vue](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/vue-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[jQuery](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/jquery-0769AD?style=flat-square&logo=jquery&logoColor=white" alt="jQuery"></a>
+
+</td>
+</tr>
+<tr>
+<td align="center" width="25%">
+
+**[Alpine.js](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/alpine.js-8BC0D0?style=flat-square&logo=alpinedotjs&logoColor=black" alt="Alpine.js"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Lit](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/lit-324FFF?style=flat-square&logo=lit&logoColor=white" alt="Lit"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[VanJS](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/vanjs-000000?style=flat-square&logo=javascript&logoColor=F7DF1E" alt="VanJS"></a>
+
+</td>
+<td align="center" width="25%">
+
+**[Vanilla JS](tests/fixtures/framework-apps.json)**<br>
+<a href="tests/framework-tour.spec.ts"><img src="https://img.shields.io/badge/vanilla%20js-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="Vanilla JS"></a>
+
+</td>
+</tr>
+<tr>
+<td align="center" colspan="4">
+
+**[12/12 toured in `bun run test`](tests/framework-tour.spec.ts)**: the full tour runs on every CI pass, and any tracked bug fails it
+
+</td>
+</tr>
+</table>
+
+- 🤏 Honest caveat: these 12 share one fixture *catalog* ([`tests/fixtures/framework-apps.json`](tests/fixtures/framework-apps.json)) pointed at 12 real external framework builds, not 12 separate fixture pages checked into this repo. Shadow-DOM and custom-element coverage is a generic probe applied to all 12 alike; Lit's real shadow-DOM weather widgets are what actually exercise that path.
+- 🤏 Every pass/fail comes from the harness re-validating selectors against the live DOM, nothing counted by hand. If the external fixture host is unreachable, the tour skips loudly instead of faking a pass.
 
 ## 📦 Supported Integrations
 

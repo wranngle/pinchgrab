@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Lumen — Pricing</title><style>
+  * { margin:0; box-sizing:border-box; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  body { background:#fafaf8; color:#1c1b22; overflow:hidden; height:100vh; display:flex; flex-direction:column; }
+  footer { margin-top:auto; }
+  nav { display:flex; align-items:center; gap:26px; padding:14px 48px; border-bottom:1px solid #eceae4; background:#fff; }
+  nav b { font-size:19px; } nav a { color:#5d5a6b; text-decoration:none; font-size:14px; }
+  nav .cta-sm { margin-left:auto; background:#1c1b22; color:#fff; padding:8px 16px; border-radius:8px; }
+  .hero { display:flex; align-items:center; gap:48px; padding:42px 64px 30px; }
+  .hero-copy { flex:1; }
+  .hero h1 { font-size:40px; letter-spacing:-1px; margin-bottom:10px; max-width:560px; }
+  .hero p { color:#5d5a6b; font-size:17px; margin-bottom:20px; max-width:480px; }
+  #cta { background:#4f46e5; color:#fff; border:0; font-size:16px; font-weight:600; padding:13px 28px; border-radius:10px; cursor:pointer; }
+  #demo-link { margin-left:14px; color:#4f46e5; font-size:15px; text-decoration:none; font-weight:600; }
+  .stats { display:flex; flex-direction:column; gap:12px; }
+  .stat { background:#fff; border:1px solid #eceae4; border-radius:12px; padding:14px 20px; width:210px; }
+  .stat .num { font-size:26px; font-weight:800; } .stat .lbl { font-size:12px; color:#5d5a6b; }
+  .plans { display:flex; gap:18px; justify-content:center; padding:16px 24px 22px; }
+  .plan { background:#fff; border:1px solid #eceae4; border-radius:14px; padding:20px 24px; width:230px; }
+  .plan.pro { border-color:#4f46e5; box-shadow:0 8px 28px rgba(79,70,229,.12); position:relative; }
+  .plan .badge { position:absolute; top:-12px; left:24px; background:#4f46e5; color:#fff; font-size:12px; font-weight:700; padding:4px 10px; border-radius:99px; }
+  .plan h3 { font-size:14px; color:#5d5a6b; margin-bottom:4px; } .plan .price { font-size:28px; font-weight:800; margin-bottom:10px; }
+  .plan li { list-style:none; font-size:13px; color:#5d5a6b; padding:4px 0; }
+  .plan button { width:100%; margin-top:10px; padding:9px; border-radius:8px; border:1px solid #d8d5cc; background:#fff; cursor:pointer; }
+  .plan.pro button { background:#4f46e5; color:#fff; border:0; }
+  .features { display:flex; gap:16px; padding:8px 64px 18px; }
+  .feature { flex:1; background:#fff; border:1px solid #eceae4; border-radius:12px; padding:16px 18px; }
+  .feature h4 { font-size:14px; margin-bottom:6px; } .feature p { font-size:12.5px; color:#5d5a6b; line-height:1.45; }
+  .social { display:flex; align-items:center; gap:40px; padding:22px 64px; }
+  .quote { flex:1.4; background:#fff; border:1px solid #eceae4; border-radius:14px; padding:20px 26px; }
+  .quote p { font-size:15px; line-height:1.5; color:#1c1b22; margin-bottom:8px; }
+  .quote .who { font-size:12.5px; color:#5d5a6b; }
+  .logos { flex:1; display:flex; gap:26px; align-items:center; justify-content:space-around; }
+  .logos span { font-size:17px; font-weight:800; color:#b9b5c4; letter-spacing:.02em; }
+  footer { display:flex; gap:22px; align-items:center; padding:16px 64px; border-top:1px solid #eceae4; background:#fff; font-size:13px; color:#5d5a6b; }
+  footer a { color:#5d5a6b; text-decoration:none; }
+  footer .fine { margin-left:auto; }
+</style></head><body>
+  <nav><b id="brand">Lumen</b><a id="nav-product" href="#">Product</a><a id="nav-docs" href="#">Docs</a><a id="nav-pricing" href="#">Pricing</a><a class="cta-sm" id="signin" href="#">Sign in</a></nav>
+  <div class="hero">
+    <div class="hero-copy">
+      <h1 id="headline">Analytics your whole team can read</h1>
+      <p id="subhead">Dashboards, alerts and reports. Wired up in minutes, not sprints.</p>
+      <button id="cta">Start free trial</button><a id="demo-link" href="#demo">Watch the demo</a>
+    </div>
+    <div class="stats">
+      <div class="stat" id="stat-teams"><div class="num">2,400</div><div class="lbl">teams on Lumen</div></div>
+      <div class="stat" id="stat-uptime"><div class="num">99.98%</div><div class="lbl">uptime last quarter</div></div>
+    </div>
+  </div>
+  <div class="plans">
+    <div class="plan" id="plan-starter"><h3>Starter</h3><div class="price">$0</div><ul><li>✓ 3 dashboards</li><li>✓ 1 seat</li><li>✓ Community support</li></ul><button id="choose-starter">Choose</button></div>
+    <div class="plan pro" id="plan-pro"><span class="badge" id="badge">Most popular</span><h3>Pro</h3><div class="price">$29</div><ul><li>✓ Unlimited dashboards</li><li>✓ 10 seats</li><li>✓ Alerts &amp; exports</li></ul><button id="choose-pro">Choose Pro</button></div>
+    <div class="plan" id="plan-scale"><h3>Scale</h3><div class="price">$99</div><ul><li>✓ Everything in Pro</li><li>✓ SSO &amp; audit log</li><li>✓ Priority support</li></ul><button id="choose-scale">Talk to us</button></div>
+  </div>
+  <div class="features">
+    <div class="feature" id="f-alerts"><h4>Smart alerts</h4><p>Set a threshold once. Lumen watches the metric and pings the right channel.</p></div>
+    <div class="feature" id="f-embed"><h4>Embedded charts</h4><p>Drop any chart into Notion, Confluence or your own app with one snippet.</p></div>
+    <div class="feature" id="f-sql"><h4>SQL when you want it</h4><p>Every visual view has an Open as SQL button. No lock-in, no black box.</p></div>
+    <div class="feature" id="f-share"><h4>Row-level sharing</h4><p>Share a dashboard where each viewer sees only their own accounts.</p></div>
+  </div>
+  <div class="social">
+    <div class="quote" id="quote"><p>"We replaced three reporting tools with Lumen in a week. Finance finally trusts the numbers because they can open any chart as SQL."</p><div class="who" id="quote-who">Maya Torres, Head of Data at Fieldstone</div></div>
+    <div class="logos" id="logos"><span>Fieldstone</span><span>NORTHBEAM</span><span>arclight</span><span>Prairie&amp;Co</span></div>
+  </div>
+  <footer><a id="foot-status" href="#">Status</a><a id="foot-security" href="#">Security</a><a id="foot-changelog" href="#">Changelog</a><span class="fine" id="fine">© 2026 Lumen Analytics</span></footer>
+</body></html>
