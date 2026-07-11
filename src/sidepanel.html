@@ -33,6 +33,12 @@
       </div>
     </header>
 
+    <!-- ───────────────────────── Context strip ─────────────────── -->
+    <!-- Whole-panel hover help: every [data-tip] writes its text here
+         (see showTip) instead of floating a bubble at the cursor, so help
+         never occludes the UI. Fixed height — no layout shift. -->
+    <div class="context-strip" data-tooltip role="status" aria-live="polite">Alt+Click on the page to capture · hover any control for help</div>
+
     <!-- ───────────────────────── Shortcuts strip ─────────────── -->
     <!-- Each shortcut: pill on top, lowercase label beneath. -->
     <div class="shortcuts hint">
@@ -316,7 +322,6 @@
     </div>
 
     <!-- ───────────────────────── Custom tooltip target ─────── -->
-    <div class="custom-tip" data-tooltip hidden></div>
 
     <!-- ───────────────────────── Stat drilldown popover ────── -->
     <div class="drilldown" data-drilldown hidden></div>

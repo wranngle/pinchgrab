@@ -299,6 +299,10 @@ export type FeedbackMessage = {
   // is the historical link; parentId makes it explicit and survives
   // re-ordering / split-group / import-export round-trips.
   parentUid?: string;
+  // User explicitly detached this comment from any selector. Without the
+  // flag, adjacency to the preceding selector would silently re-adopt the
+  // comment at render/export time.
+  detached?: boolean;
   tags?: string[];
   // Severity (`note` / `fix` / `block`) was removed from the UI in
   // 2026-05. The field is retained on the type as `unknown` so

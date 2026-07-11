@@ -1473,7 +1473,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
         flushGroup();
         curGroup = {kind: 'group', sel: m, trailing: []};
       } else {
-        if (curGroup) curGroup.trailing.push(m);
+        // Detached comments never travel with the preceding selector's
+        // group — they stay loose in export order.
+        if (curGroup && !m.detached) curGroup.trailing.push(m);
         else slots.push({kind: 'loose', m});
       }
     }
@@ -1657,7 +1659,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
         if (m.url === lastRenderedPageUrl) continue;
         lastRenderedPageUrl = m.url;
       }
-      const node = renderMessage(m, lastSelectorSel);
+      // Detached comments render unthreaded — adjacency must not re-adopt
+      // a comment the user explicitly disassociated.
+      const adjacency = m.type === 'feedback' && m.detached ? null : lastSelectorSel;
+      const node = renderMessage(m, adjacency);
       list.append(node);
       if (m.type === 'selector') lastSelectorSel = m.entry.selector;
       if (i < ordered.length - 1) list.append(insertRail(ordered[i + 1]!.id));
@@ -2276,6 +2281,18 @@ import {serializeCaptureJson} from './export-capture.mjs';
     dragHandle.addEventListener('dragend', () => div.classList.remove('dragging'));
     dragHandle.addEventListener('click', (e) => e.stopPropagation());
     actions.append(dragHandle);
+    // Detach — the inverse of drag-to-reparent. Only meaningful when the
+    // comment currently reads as threaded (FK or adjacency).
+    if (lastSelectorSel || m.parentUid) {
+      actions.append(actionBtn('unlink', 'Detach from its capture — make this a standalone comment', () => {
+        snapshot();
+        delete m.parentUid;
+        m.detached = true;
+        persist();
+        render();
+        setStatus('Comment detached — drag its handle onto a capture to reattach');
+      }));
+    }
     actions.append(actionBtn('copy', 'Copy comment text', async () => {
       await navigator.clipboard.writeText(m.text);
       setStatus('Copied comment');
@@ -2312,8 +2329,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
       if (dstIdx < 0) return;
       snapshot();
       // Update the FK pointer first — that's the source of truth in
-      // exports. Adjacency is just a render convenience.
+      // exports. Adjacency is just a render convenience. Reparenting is
+      // the inverse of detach, so the detached flag is cleared.
       src.parentUid = m.entry.uid;
+      delete src.detached;
       // Splice src out of its current slot and re-insert right after the
       // new parent (and any feedback already trailing it, so the most-
       // recent feedback ends up nearest the parent visually).
@@ -2722,7 +2741,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // exports stay clean.
   // `tags` is always emitted (default empty array) so DuckDB schema
   // inference always sees the column.
-  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; tags: string[]; isTestData?: boolean};
+  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; detached?: boolean; tags: string[]; isTestData?: boolean};
   // Cheap test-data sniff: matches strings the user types while smoke-
   // testing the extension ("test", "asdf", "foo", "lorem ipsum",
   // "placeholder", or any phrase obviously stubbed-out). False positives
@@ -2829,7 +2848,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
         // "Howdy , test feedback here", etc). Lets a downstream consumer
         // filter pollution from real intent without manual cleanup.
         if (looksLikeTestData(m.text)) rich.isTestData = true;
-        if (pendingSel) {
+        // A detached comment never adopts the pending selector via
+        // adjacency — the user explicitly disassociated it. The flag is
+        // emitted so import round-trips don't re-adopt by adjacency either.
+        if (m.detached) rich.detached = true;
+        if (pendingSel && !m.detached) {
           rich.parentUid = m.parentUid ?? pendingSel.entry.uid;
           pendingFbStrings.push(m.text);
           pendingFbRich.push(rich);
@@ -3291,6 +3314,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
           ts: {type: 'string', format: 'date-time'},
           text: {type: 'string'},
           parentUid: {type: 'string'},
+          detached: {type: 'boolean'},
           tags: {type: 'array', items: {type: 'string'}},
           isTestData: {type: 'boolean'},
         },
@@ -3949,6 +3973,7 @@ ORDER BY s.n;
             ts: o.ts ?? new Date().toISOString(), text: o.text,
           };
           if (o.parentUid) fb.parentUid = o.parentUid;
+          if (o.detached) fb.detached = true;
           if (Array.isArray(o.tags) && o.tags.length) fb.tags = o.tags;
           if (o.severity) fb.severity = o.severity;
           imported.push(fb);
@@ -4543,27 +4568,22 @@ ORDER BY s.n;
   });
   palette.addEventListener('click', (e) => { if (e.target === palette) closePalette(); });
 
-  // ─── Custom tooltip ─────────────────────────────────────────────────────
+  // ─── Context strip (hover help) ─────────────────────────────────────────
+  // Replaces the old floating cursor tooltip: [data-tip] hover text is
+  // written into the fixed strip under the header, so help never occludes
+  // other controls and can't strand mid-screen through re-renders.
+  const TIP_IDLE = 'Alt+Click on the page to capture · hover any control for help';
   let tipFor: HTMLElement | null = null;
   const showTip = (target: HTMLElement): void => {
     const text = target.getAttribute('data-tip');
     if (!text) return;
     tooltipEl.textContent = text;
-    tooltipEl.hidden = false;
-    const r = target.getBoundingClientRect();
-    const tipR = tooltipEl.getBoundingClientRect();
-    let top = r.bottom + 4;
-    let left = r.left + r.width / 2 - tipR.width / 2;
-    if (top + tipR.height + 4 > window.innerHeight) top = r.top - tipR.height - 4;
-    if (left < 4) left = 4;
-    if (left + tipR.width > window.innerWidth - 4) left = window.innerWidth - tipR.width - 4;
-    tooltipEl.style.cssText = `top:${top}px;left:${left}px;`;
     tooltipEl.dataset.shown = 'true';
   };
   const hideTip = (): void => {
-    tooltipEl.dataset.shown = 'false';
     tipFor = null;
-    tooltipEl.hidden = true;
+    tooltipEl.textContent = TIP_IDLE;
+    tooltipEl.dataset.shown = 'false';
   };
   document.addEventListener('mouseover', (e) => {
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
@@ -4575,13 +4595,9 @@ ORDER BY s.n;
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
     if (t && t === tipFor && !t.contains(e.relatedTarget as Node)) hideTip();
   });
-  // The panel re-renders aggressively (render() resets list.innerHTML, confirm
-  // buttons replaceWith, delete-confirm reverts on a timer) and the list
-  // scrolls — in all of those the anchored node leaves the DOM or moves
-  // without ever firing mouseout, which used to strand the tooltip on screen
-  // (covering other elements, never dismissing). Dismiss on any such signal.
-  window.addEventListener('scroll', hideTip, true);
-  document.addEventListener('pointerdown', hideTip, true);
+  // Re-renders can drop the hovered node without ever firing mouseout
+  // (render() resets list.innerHTML, confirm buttons replaceWith); reset
+  // the strip to its idle hint when that happens.
   const tipGuard = new MutationObserver(() => {
     if (tipFor && !tipFor.isConnected) hideTip();
   });
