@@ -56,8 +56,6 @@ You already know the loop, and you resent it: one wrong element stands behind a 
 
 The step counts above are workflow facts you can count on your fingers, not benchmarks. What is benchmarked is density: each capture row carries validated selectors, sanitized depth-capped HTML, accessibility signals, and framework component hints. Across the 12-framework tour, capture HTML minifies to a mean 29.2% below the raw markup (47.6% smaller byte-weighted across all 467 captures), and a full workspace bundle lands at a mean 31.6 KB without screenshots, 984.9 KB with them.
 
-*Measured, reproducible with `bun run bench`: [docs/benchmarks.md](docs/benchmarks.md).*
-
 ## ⚡ Features
 
 ![PinchGrab feature banner: Alt+Click to capture, comment in English, export for your agent](docs/brand/feature-banner.png)
@@ -76,15 +74,14 @@ The step counts above are workflow facts you can count on your fingers, not benc
 
 - 🤏 **Store-grade screenshot tooling**: the Chrome Web Store listing set is composed from real panel captures, so listing assets regenerate from source instead of rotting.
 
-## 📏 The token receipt (measured, not modeled)
-
-Every number below is measured, not modeled: the benchmark drives the shipped capture code against the same 12 live framework apps the suite tours. Full tables and methodology: [docs/benchmarks.md](docs/benchmarks.md).
+## 📏 The token receipt
 
 - 🤏 **95.3% smaller than pasting the page.** The rendered DOM of the 12 pages serializes to 6,222 KB of HTML; the minified JSONL exports total 292.5 KB. In estimated tokens (bytes/4 heuristic) that is 1,592,924 → 74,888.
 - 🤏 **87.4% smaller on container grabs.** The 40 captures whose raw markup is 4 KB or more, the sections and cards people actually pinch, went from 355.5 KB raw to 44.8 KB of minified rows.
 - 🤏 **Every capture is a bounded ~632 byte row** no matter how deep the subtree underneath it goes, so a grabbed dashboard never arrives as 25 KB of sparkline spans.
 - 🤏 **A text-only feedback bundle averages 31.6 KB on disk**; with a full-resolution PNG of every captured element it averages 984.9 KB.
-- 🤏 **Honest caveat**: leaf grabs (raw markup under 1 KB) come out net larger, on purpose, because the row carries the validated selector, rect, accessibility name, and framework hints the raw paste never had. The two regimes are [split out separately in the tables](docs/benchmarks.md#by-grab-size), not blended into one flattering mean.
+
+*[Benchmark tables and methodology](docs/benchmarks.md).*
 
 ## 🚀 Quick start
 
@@ -274,10 +271,6 @@ The bundle's own `README.md` sends the agent to `repair-index.md` first, then th
 
 ## 🤏 Works where you work
 
-Support here is not a claim, it is a run. The same weather-app UI is rebuilt in 12 frameworks on the external site `framework-benchmarks.as93.net`, and every cell below is driven for real: the page loads, the content script injects, a ~25-probe sweep runs (testId, role, id, landmarks, forms, lists, tables, shadow hosts, custom elements), every captured selector is re-validated live against the DOM, and zero of the eight tracked bug kinds fire.
-
-*Proven on every CI pass, regenerate with `bun run test:tour`.*
-
 🤏 No copy-paste inspector babysitting: PinchGrab points, captures, and validates the selector on the spot, across every framework below.
 
 <table>
@@ -362,14 +355,11 @@ Support here is not a claim, it is a run. The same weather-app UI is rebuilt in 
 <tr>
 <td align="center" colspan="4">
 
-**[12/12 toured in `bun run test`](tests/framework-tour.spec.ts)**: the full tour runs on every CI pass, and any tracked bug fails it
+**[12/12 toured in `bun run test`](tests/framework-tour.spec.ts)**
 
 </td>
 </tr>
 </table>
-
-- 🤏 Honest caveat: these 12 share one fixture catalog pointed at 12 real external framework builds, not 12 separate fixture pages checked into this repo. Shadow-DOM and custom-element coverage is a generic probe applied to all 12 alike; Lit's real shadow-DOM weather widgets are what actually exercise that path.
-- 🤏 Every pass/fail comes from the harness re-validating selectors against the live DOM, nothing counted by hand. If the external fixture host is unreachable, the tour skips loudly instead of faking a pass.
 
 ## 📦 Supported Integrations
 
@@ -382,12 +372,20 @@ Bundles are plain files, so the integrations are just the tools that read and pr
 
 ### Bundle consumers
 
+Named agents are examples, not integrations.
+
 <table>
 <tr>
 <td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Claude Code</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
 <td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Cursor</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
-<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Codex CLI</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
-<td align="center" width="160"><a href="#example"><b>DuckDB</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Copilot</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Codex</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+</tr>
+<tr>
+<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Hermes</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>OpenClaw</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+<td align="center" width="160"><a href="#-ai-coding-agents-claude-code-cursor-codex"><b>Antigravity</b></a><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
+<td align="center" width="160"><b>...any coding agent</b><br/><img src="https://img.shields.io/badge/consumer-A371F7?style=flat-square" height="18"></td>
 </tr>
 </table>
 
@@ -403,8 +401,6 @@ Bundles are plain files, so the integrations are just the tools that read and pr
 </table>
 
 ## 🛣️ Roadmap
-
-What has shipped and what is next:
 
 | Feature | Status |
 | --- | --- |
@@ -429,18 +425,9 @@ Getting oriented: extension source lives in `src/`, the generated unpacked exten
 - 📦 Grab the packaged extension zip from the [latest release](https://github.com/wranngle/pinchgrab/releases/latest).
 - 💜 If PinchGrab saves you a screenshot-and-describe round trip, consider [sponsoring this project](https://github.com/sponsors/wranngle).
 
-> [!NOTE]
-> Active personal project. Used in my own workflow. Issues triaged on a personal-time cadence.
-
 ## License
 
 PinchGrab is available under the [MIT License](LICENSE).
-
-## 💻 Contributors
-
-<a href="https://github.com/wranngle/pinchgrab/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=wranngle/pinchgrab" />
-</a>
 
 ## ⭐ Star History
 
