@@ -22,9 +22,6 @@
   "license": "MIT",
   "author": "Cody Arnold",
   "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "build": "bun run scripts/build-extension.ts",
     "package": "bun run scripts/package-extension.ts",
