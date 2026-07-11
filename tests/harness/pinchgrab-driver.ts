@@ -131,6 +131,11 @@ export type DriverOpts = {
   blockExternalRequests?: boolean;
   viewport?: {width: number; height: number};
   timeoutMs?: number;
+  // Optional measurement hook, invoked after the sweep + validation while
+  // the page is still live. The bundle benchmark uses this to measure the
+  // un-minified outerHTML baseline and take real element screenshots
+  // without duplicating the tour machinery.
+  afterSweep?: (page: Page, report: TourReport) => Promise<void>;
 };
 
 export class PinchgrabDriver {
@@ -352,6 +357,8 @@ export class PinchgrabDriver {
     report.jsonlMinBytes = exportRes.minBytes;
     report.jsonlMinTokens = Math.ceil(exportRes.minBytes / 4);
 
+    if (this.opts.afterSweep) await this.opts.afterSweep(page, report);
+
     report.finishedAt = new Date().toISOString();
     await page.close();
     return report;
@@ -359,7 +366,7 @@ export class PinchgrabDriver {
 }
 
 // ---- Inlined slim/export (mirrors sidepanel.ts) ----------------------------
-const slimEntry = (e: any, minify: boolean): Record<string, any> => {
+export const slimEntry = (e: any, minify: boolean): Record<string, any> => {
   const out: Record<string, any> = {
     v: 2, type: 'selector',
     uid: e.uid, n: e.n, ts: e.ts, url: e.url,
