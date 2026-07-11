@@ -1,0 +1,217 @@
+{
+  "repo": "https://github.com/pbakaus/impeccable",
+  "ref": "main",
+  "sha": "630fc2682a5bd39b25a8e61f74b6b3f14f2b1e21",
+  "fetchedAt": "2026-07-11T22:07:45.989Z",
+  "license": "Apache-2.0",
+  "include": [
+    ".agents/skills/impeccable/reference/",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "files": [
+    {
+      "path": "reference/adapt.md",
+      "sha256": "bead87679caad7c537dd7c04c3bb78be56ac7eec279ad6aad7322f48ff2df2d9",
+      "bytes": 10307,
+      "purpose": "> **Additional context needed**: target platforms/devices and usage contexts."
+    },
+    {
+      "path": "reference/adapt.native.md",
+      "sha256": "6acc0bf221a4ddc6e5c6438348920b2ca2393b29c4314dbde2cdc23f2b1a9639",
+      "bytes": 3910,
+      "purpose": "> **Additional context needed**: target platforms/devices and usage contexts."
+    },
+    {
+      "path": "reference/android.md",
+      "sha256": "b11f2187e896b375b717a05b73787f9f5791cae8e4d02d6dee05b99fefdd1da4",
+      "bytes": 3224,
+      "purpose": "For native Android apps: Jetpack Compose, Android Views, React Native, Expo, Flutter shipping to Android hardware."
+    },
+    {
+      "path": "reference/animate.md",
+      "sha256": "17b1393fee9ca0355ac431f35c3af0135250b3ec33ab5d4e253482002076b090",
+      "bytes": 10708,
+      "purpose": "> **Additional context needed**: performance constraints."
+    },
+    {
+      "path": "reference/audit.md",
+      "sha256": "2a673c9f7e1eae806b359ab8aeef9db5e0d8d4763d31dab22210716d4721604c",
+      "bytes": 7438,
+      "purpose": "Run systematic **technical** quality checks and generate a comprehensive report. Don't fix issues; document them for other commands to addre"
+    },
+    {
+      "path": "reference/audit.native.md",
+      "sha256": "303e403ada632d741b7347f45c0bf2a25fb5702e45872704f08bebc177f802de",
+      "bytes": 8313,
+      "purpose": "Run systematic **technical** quality checks on a native app (`ios` / `android` / `adaptive`) and generate a comprehensive report. Don't fix "
+    },
+    {
+      "path": "reference/bolder.md",
+      "sha256": "12b096ab618d00aa4e375910f8997992f43c817f662cec142f402b69d4dac536",
+      "bytes": 7092,
+      "purpose": "When asked for \"bolder,\" AI defaults to the same tired tricks: cyan/purple gradients, glassmorphism, neon accents on dark backgrounds, gradi"
+    },
+    {
+      "path": "reference/brand.md",
+      "sha256": "d39208029aa2b519d27907edb6dfa8bc94be2f058d6faa79e6032704b0b8a662",
+      "bytes": 10477,
+      "purpose": "When design IS the product: brand sites, landing pages, marketing surfaces, campaign pages, portfolios, long-form content, about pages. The "
+    },
+    {
+      "path": "reference/clarify.md",
+      "sha256": "691e30b3b00cd415a80d60ade8eb6d624e816abfad0fdb6dc6a43c62303c0461",
+      "bytes": 10646,
+      "purpose": "> **Additional context needed**: audience technical level and users' mental state in context."
+    },
+    {
+      "path": "reference/codex.md",
+      "sha256": "915d6c88b84d81acd2cc467ce5aff5f4c93a45078d0b7d752f9f154d494b7c84",
+      "bytes": 7002,
+      "purpose": "This file is loaded by `$impeccable craft` when the harness has native image generation (currently Codex via `image_gen`). Other harnesses s"
+    },
+    {
+      "path": "reference/colorize.md",
+      "sha256": "9212cb8f1d72a9742133a48771c1c20215b5d24e442f563f2a744c38668f135e",
+      "bytes": 13568,
+      "purpose": "> **Additional context needed**: existing brand colors."
+    },
+    {
+      "path": "reference/craft.md",
+      "sha256": "76a1956dd1dd402048fce715103be1ddeebc4634d8d31de5ba4ba19fd7759b6a",
+      "bytes": 11944,
+      "purpose": "Build a feature with impeccable UX and UI quality: shape the design, land the visual direction, build real production code, inspect and impr"
+    },
+    {
+      "path": "reference/critique.md",
+      "sha256": "bf688a8031616748d21146327eced18c0fc8148faa5dd13013180ee0a2e94881",
+      "bytes": 41299,
+      "purpose": "Resolve one stable target, run two independent assessments, synthesize a design critique, persist a snapshot, and ask the user what to impro"
+    },
+    {
+      "path": "reference/delight.md",
+      "sha256": "9136195aa64ef934dda9c57d858368768139c51bc6901911e900529a4883a9a4",
+      "bytes": 9827,
+      "purpose": "> **Additional context needed**: what's appropriate for the domain (playful vs professional vs quirky vs elegant)."
+    },
+    {
+      "path": "reference/distill.md",
+      "sha256": "14e45d26cc64a8c6794de0cb2c2e23fcad4850cbd0ef075d848184f101fb6c52",
+      "bytes": 5740,
+      "purpose": "Strip a design to its essence. Remove anything that doesn't earn its place: redundant elements, repeated information, decorative noise, cosm"
+    },
+    {
+      "path": "reference/document.md",
+      "sha256": "3b34019c835d67334b60d9299ef192f239d94a5c60d75fd9d8b9316b1383348c",
+      "bytes": 27966,
+      "purpose": "Generate a `DESIGN.md` file at the project root that captures the current visual design system, so AI agents generating new screens stay on-"
+    },
+    {
+      "path": "reference/extract.md",
+      "sha256": "527fad000a1ac24a81e9da4b28f29ee055a442425f001301b8c3e9c161c43bea",
+      "bytes": 3431,
+      "purpose": "Identify reusable patterns, components, and design tokens, then extract and consolidate them into the design system for systematic reuse."
+    },
+    {
+      "path": "reference/harden.md",
+      "sha256": "ab2ad8ab75c4755ce4a31b2c830a67fb81a01d6bb7b7075d0aa45338f88b5b40",
+      "bytes": 8594,
+      "purpose": "Designs that only work with perfect data aren't production-ready. Harden the interface against the inputs, errors, languages, and network co"
+    },
+    {
+      "path": "reference/hooks.md",
+      "sha256": "be810c40bdb28dec09372f50142cfea044e48591c23006ef83339658134bb55a",
+      "bytes": 9256,
+      "purpose": "Manage the **design detector hook** for the current project."
+    },
+    {
+      "path": "reference/init.md",
+      "sha256": "c248171a7d0f6edfee10f98836f9a5998bdc252edd714d284aba226fba28fd48",
+      "bytes": 18952,
+      "purpose": "The setup command for a project. One codebase crawl feeds everything it writes:"
+    },
+    {
+      "path": "reference/interaction-design.md",
+      "sha256": "ca0b4a91bd380095b6a53c66f524f53efe741e536938af65f9cc184075e83ed3",
+      "bytes": 6575,
+      "purpose": "Every interactive element needs these states designed:"
+    },
+    {
+      "path": "reference/ios.md",
+      "sha256": "9b5e8c497715b815f6737b528a1c12aa167d25ffb0782b4ed2a8d9f8eb254765",
+      "bytes": 3037,
+      "purpose": "For native iOS / iPadOS apps: SwiftUI, UIKit, React Native, Expo, Flutter shipping to Apple hardware."
+    },
+    {
+      "path": "reference/layout.md",
+      "sha256": "6dd9c16b556cfbc3db1afe6cee87e002b3f3d5c0001853217145dc04b6dd9a52",
+      "bytes": 11790,
+      "purpose": "Space is the most underused design tool. Find the layout's actual problem (monotone spacing, weak hierarchy, identical card grids) and fix t"
+    },
+    {
+      "path": "reference/live.md",
+      "sha256": "6e2afff57357a92b205573a6ae7d7917320ec4bbedaf204f4d337b4614d017b1",
+      "bytes": 60156,
+      "purpose": "Interactive live variant mode: select elements in the browser, pick a design action, and get AI-generated HTML+CSS variants hot-swapped via "
+    },
+    {
+      "path": "reference/onboard.md",
+      "sha256": "ef2dde00030580ed2765cbf7be9b2ea4a6f64cb915b804fd6f6abcf38051c7b9",
+      "bytes": 7740,
+      "purpose": "> **Additional context needed**: the \"aha moment\" you want users to reach, and users' experience level."
+    },
+    {
+      "path": "reference/optimize.md",
+      "sha256": "9f7f2c5ef63d06b5d6597e88f98cbdf1de841c7b2027763bf5725523860ab3b7",
+      "bytes": 7599,
+      "purpose": "Performance is a feature. Identify the actual bottleneck for THIS interface, fix it, then measure. Don't optimize what isn't slow."
+    },
+    {
+      "path": "reference/overdrive.md",
+      "sha256": "7ae6fef3e53dd3b4564d730a0fd243d45903ca1944945cb1a4e8f08b9353fb67",
+      "bytes": 9139,
+      "purpose": "Start your response with:"
+    },
+    {
+      "path": "reference/polish.md",
+      "sha256": "727673406646bb97ad7904d67ed63a18e155f2c0b7bb665ba6a5b093913508f6",
+      "bytes": 12955,
+      "purpose": "> **Additional context needed**: quality bar (MVP vs flagship)."
+    },
+    {
+      "path": "reference/product.md",
+      "sha256": "9ea8cc99ec208f4c1addc66369980ec6ee2a0ae7732aa8f14672aeed3418b6aa",
+      "bytes": 3758,
+      "purpose": "When design SERVES the product: app UIs, admin dashboards, settings panels, data tables, tools, authenticated surfaces, anything where the u"
+    },
+    {
+      "path": "reference/quieter.md",
+      "sha256": "89be275103e671e788789d029587ded0f4987a15addfcc8d5bffd8f5db2b1226",
+      "bytes": 4911,
+      "purpose": "Quiet design is harder than bold design. Subtlety needs precision. Reduce visual intensity in designs that are too loud, aggressive, or over"
+    },
+    {
+      "path": "reference/shape.md",
+      "sha256": "7d1f0183d5dab72f8d52499ccb557209de0f57b46b509345edd76adb2a3fcd99",
+      "bytes": 11523,
+      "purpose": "Shape the UX and UI for a feature before any code is written. This command produces a **design brief**: a structured artifact that guides im"
+    },
+    {
+      "path": "reference/typeset.md",
+      "sha256": "e3c8546edf2b30332849edd25e41dc94574319fac51c39e1770106bc091b82e5",
+      "bytes": 17135,
+      "purpose": "Typography carries most of the information on the page. Replace generic defaults (Inter, Roboto, system fallback at flat scale) with type th"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812",
+      "bytes": 10766
+    },
+    {
+      "path": "NOTICE.md",
+      "sha256": "c60a093c2845fd9fb82f9c6f742ece31f379f8190b535309d32d66c45ccffdcb",
+      "bytes": 503,
+      "purpose": "This project includes content derived from third-party work, used under the terms of its original license."
+    }
+  ]
+}

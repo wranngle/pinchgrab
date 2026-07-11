@@ -16,6 +16,7 @@ import {pg} from './types.ts';
 import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
+import {BUNDLED_SKILLS_PRESENT, BUNDLED_SKILL_FILES} from './bundled-skills.gen.ts';
 import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
@@ -86,6 +87,27 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // empty and we're falling back to a bundled template/local resource.
   const isUsingTemplateDesign = (): boolean => !prefs.designMd || !prefs.designMd.trim();
   const isUsingTemplateSkill = (): boolean => !prefs.skillMd || !prefs.skillMd.trim();
+
+  // Vendored third-party skill resources (impeccable reference set +
+  // perception-first-design), shipped under extension/skills/ by the build
+  // and inlined into bundle exports. Same lazy fetch + cache pattern as the
+  // templates above.
+  const bundledSkillCache = new Map<string, string>();
+  const loadBundledSkillFile = async (extPath: string): Promise<string | null> => {
+    const cached = bundledSkillCache.get(extPath);
+    if (cached !== undefined) return cached;
+    try {
+      const url = inExtension && chrome.runtime?.getURL ? chrome.runtime.getURL(extPath) : extPath;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const text = await res.text();
+      bundledSkillCache.set(extPath, text);
+      return text;
+    } catch (err) {
+      console.warn(LOG, `bundled skill fetch failed: ${extPath}`, err);
+      return null;
+    }
+  };
 
   // ─── Storage adapter ─────────────────────────────────────────────────────
   const Store = {
@@ -201,6 +223,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // files (screenshots + exports). Requires the optional `downloads.ui`
     // permission — the settings checkbox requests it on enable.
     quietSaves: boolean;
+    // Bundle the vendored third-party design skills (impeccable reference
+    // set + perception-first-design) plus skills-index.json into archive
+    // exports. On by default: the Send-to-Agent protocol's skill-mapping
+    // phase assumes their presence. ~1.2 MB of markdown per bundle.
+    bundleSkills: boolean;
   };
   const DEFAULT_PREFS: Prefs = {
     includeOuterHTML: true,
@@ -226,6 +253,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     skillMd: '',
     pageShotPerCapture: false,
     quietSaves: false,
+    bundleSkills: true,
   };
 
   // Rewrite the `name:` field in a SKILL.md's YAML frontmatter. The
@@ -3710,6 +3738,19 @@ import {serializeCaptureJson} from './export-capture.mjs';
     if (skillContent.trim()) {
       const rebranded = rebrandSkillName(skillContent, 'PinchGrab');
       tarEntries.push({name: '.agents/skills/PinchGrab/SKILL.md', data: rebranded});
+    }
+    // Vendored third-party design skills + skills-index.json — the locator
+    // surface the Send-to-Agent protocol's mapped_skills phase cites.
+    // Per-file failures warn + skip; an export never hard-fails on a
+    // missing skill resource.
+    if (prefs.bundleSkills && BUNDLED_SKILLS_PRESENT) {
+      const loaded = await Promise.all(BUNDLED_SKILL_FILES.map(async (f) => ({f, data: await loadBundledSkillFile(f.ext)})));
+      let skipped = 0;
+      for (const {f, data} of loaded) {
+        if (data == null) { skipped++; continue; }
+        tarEntries.push({name: f.archive, data});
+      }
+      if (skipped) console.warn(LOG, `bundled skills: ${skipped}/${loaded.length} files missing from this build — export continues without them`);
     }
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are

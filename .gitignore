@@ -129,6 +129,11 @@ extension/templates/local.DESIGN.md
 extension/templates/local.SKILL.md
 tests/output/
 
+# Build-generated copies of the vendored third-party skills (source of
+# truth: third_party/ + UPSTREAM.lock; regenerate with `bun run build`).
+extension/skills/
+src/bundled-skills.gen.ts
+
 # Dotfiles bootstrap runtime state.
 .artifacts/
 

@@ -33,6 +33,12 @@
       </div>
     </header>
 
+    <!-- ───────────────────────── Context strip ─────────────────── -->
+    <!-- Whole-panel hover help: every [data-tip] writes its text here
+         (see showTip) instead of floating a bubble at the cursor, so help
+         never occludes the UI. Fixed height — no layout shift. -->
+    <div class="context-strip" data-tooltip role="status" aria-live="polite">Alt+Click on the page to capture · hover any control for help</div>
+
     <!-- ───────────────────────── Shortcuts strip ─────────────── -->
     <!-- Each shortcut: pill on top, lowercase label beneath. -->
     <div class="shortcuts hint">
@@ -60,7 +66,6 @@
           <span data-icon="download" data-size="14"></span>
           <span class="lbl">Export</span>
         </button>
-        <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file" aria-label="Import file"><span data-icon="upload" data-size="14"></span></button>
         <button class="iconbtn" type="button" data-action="validate" data-tip="Re-check selectors against the live page" aria-label="Validate selectors"><span data-icon="refresh-cw" data-size="14"></span></button>
         <button class="iconbtn warn" type="button" data-action="clear" data-tip="Clear all captures" aria-label="Clear all captures"><span data-icon="trash-2" data-size="14"></span></button>
       </div>
@@ -142,6 +147,9 @@
             <button class="primary" type="button" data-action="ws-create" data-tip="Create the workspace and switch to it">Create</button>
           </div>
           <ul class="ws-list" data-ws-list></ul>
+          <div class="ws-import">
+            <button class="iconbtn" type="button" data-action="import" data-tip="Import a JSONL or .tar.zst file into this workspace"><span data-icon="upload" data-size="13"></span><span class="lbl">Import file</span></button>
+          </div>
           <div class="ws-snapshots" data-ws-snapshots hidden></div>
         </details>
         <details class="prefs">
@@ -149,6 +157,7 @@
           <label data-tip="Keep the captured element's outerHTML in exports"><input type="checkbox" data-pref="includeOuterHTML" checked /> Include <code>outerHTML</code> <small class="contrib" data-contrib="includeOuterHTML"></small></label>
           <label data-tip="Keep matched stylesheet rules that target this element"><input type="checkbox" data-pref="includeMatchedRules" checked /> Include matched CSS rules <small class="contrib" data-contrib="includeMatchedRules"></small></label>
           <label data-tip="Keep resolved browser styles (color, font, layout)"><input type="checkbox" data-pref="includeStyles" checked /> Include computed styles <small class="contrib" data-contrib="includeStyles"></small></label>
+          <label data-tip="Ship the vendored design skills (impeccable reference set + perception-first-design) and skills-index.json inside every archive so the agent can map comments to skills"><input type="checkbox" data-pref="bundleSkills" checked /> Bundle design skills <small class="contrib">~1.2 MB of markdown per archive</small></label>
           <label class="minify-row" data-tip="Trim whitespace, drop empty objects, strip redundant audit fields">
             <span class="minify-head"><input type="checkbox" data-pref="minify" /> Minify on export</span>
             <small class="minify-explain">Trims whitespace, drops empty objects, removes <code>tokens</code> from page lines, and strips redundant audit fields.</small>
@@ -161,6 +170,7 @@
           <label data-tip="Paint margin and padding stripes around alt-hovered elements"><input type="checkbox" data-pref="spacingOverlay" /> Show spacing overlay on hover</label>
           <label data-tip="Snap hover and click to the nearest component · off = capture the deepest element under the cursor"><input type="checkbox" data-pref="hoverSnap" checked /> Snap hover to component</label>
           <label data-tip="Save a PNG of the element (and the full page) under Downloads/.pinchgrab/&lt;workspace&gt;/screenshots/"><input type="checkbox" data-pref="autoScreenshot" checked /> Auto-screenshot on capture</label>
+          <label data-tip="Hide Chrome's download popup while PinchGrab saves its own screenshots and exports · asks once for the downloads.ui permission"><input type="checkbox" data-pref="quietSaves" /> Quiet saves (no download popups)</label>
           <label data-tip="Fire a fresh page screenshot on every capture, not just the first per page · useful for multi-step flows · costs one PNG per capture"><input type="checkbox" data-pref="pageShotPerCapture" /> Page screenshot on every capture</label>
           <label class="ta-row" data-tip="Hosts to skip (comma-separated, substring match) · captures on these hosts won't write screenshots to disk">
             <span>Skip screenshots on these hosts</span>
@@ -191,7 +201,7 @@
             <div class="md-preview-row">
               <button type="button" class="md-preview md-preview-primary" data-action="design-edit" data-tip="Edit DESIGN.md — teach the agent your brand">
                 <pre class="md-preview-body" data-md-preview="design">(loading…)</pre>
-                <span class="md-preview-edit-hint">Edit your design</span>
+                <span class="md-preview-edit-hint">Edit your DESIGN.md</span>
               </button>
               <div class="md-preview-meta">
                 <span class="design-md-status" data-design-md-status></span>
@@ -314,7 +324,6 @@
     </div>
 
     <!-- ───────────────────────── Custom tooltip target ─────── -->
-    <div class="custom-tip" data-tooltip hidden></div>
 
     <!-- ───────────────────────── Stat drilldown popover ────── -->
     <div class="drilldown" data-drilldown hidden></div>

@@ -25,6 +25,7 @@
   "scripts": {
     "build": "bun run scripts/build-extension.ts",
     "package": "bun run scripts/package-extension.ts",
+    "sync:skills": "bun run scripts/sync-bundled-skills.ts",
     "watch": "bun run --watch scripts/build-extension.ts",
     "typecheck": "tsc --noEmit",
     "lint": "xo",
@@ -247,6 +248,8 @@
       "node_modules/**",
       "lib/**",
       "src/templates.gen.ts",
+      "src/bundled-skills.gen.ts",
+      "third_party/**",
       "tests/output/**",
       "tests/fixtures/**",
       "tests/_audit-export.mjs",

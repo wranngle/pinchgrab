@@ -1,0 +1,167 @@
+# Changelog
+
+## Unreleased
+
+**Contact**
+- Marketplace and trademark-licensing contact email switched from `admin@aurochs.agency` to `stefan@aurochs.agency`. Affects `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `NOTICE`. Historical CHANGELOG entry under v0.6.0 left intact as the original record.
+
+**README trademark section softened**
+- Public-facing trademark wording rewritten from gatekeeping ("may not be used as the brand of a commercial product...") to inviting ("I want it used and shared. Email me. I'm very likely to say yes."). Legal text in `NOTICE` unchanged. Recommended attribution format surfaced inline: *Perception-First Design™ by Stefan Kovalik / Aurochs*.
+
+**README install instructions cleanup**
+- Removed `/plugin install perception-first-design@claude-plugins-official` block. PFD is submitted on platform.claude.com (status: Published) but not yet merged into the public `anthropics/claude-plugins-official` marketplace catalog, so that command would have failed for users. Self-hosted install via `skovalik/perception-first-design` remains the working path. Will restore once PFD lands in the official marketplace `marketplace.json`.
+
+## Plugin v0.7.0 (2026-04-28): Mode 3 Analysis + Composite Runner
+
+**New commands**
+- `/perception-first-design:analyze` — Mode 3 descriptive analysis. Walks the 5 layers as predictive lenses to enumerate cascading consequences, trade-offs, and integrative compounds. Use for hypotheticals ("what happens if X"), mechanism questions ("why does X work"), and behavioral observations ("users say X but do Y, why"). Produces results, not recommendations. Cognitive contract is descriptive, not prescriptive.
+- `/perception-first-design:all` — Composite runner. Runs analyze, solve, and evaluate on the same input. Three full outputs side-by-side, one per cognitive contract. No synthesis section; the three views sit independently.
+
+**Analysis Protocol**
+- 5 numbered layer-cascade consequences are non-negotiable, one per layer in cascade order (Cognitive Load, First Impression, Processing Fluency, Perception Bias, Decision Architecture).
+- Each consequence must surface stress-tested findings across at least two of four dimensions: user-population variation (novice, power, accessibility, device, demographics), adjacent infrastructure (extensions, APIs, automation, dependent products, regulated surfaces), precedents (similar changes attempted elsewhere, with outcomes), and time structure (immediate, short, long).
+- Trade-offs are folded into the relevant consequence as sub-findings, never as separate consequences. Bidirectional layer effects must be surfaced when present (e.g., phishing volume drops while per-incident severity rises).
+- Integrative compounds are checked by default after the layer cascade: social aggregation (backlash, viral discussion, regulatory action), lock-in asymmetry (substitute behaviors persisting after rollback), and ecosystem cascade (downstream products, derivatives, integrations). Letter-labeled (A, B, C) to distinguish from numbered layer cascade.
+
+**Per-consequence output format (four structural elements)**
+- **Heading** with abstract analytical title and bracketed layer tag (`## N. [Title] [Layer]` or `[Layer A × Layer B]` for cross-cutting).
+- **Italic concrete subtitle** directly under the heading. Plain-language summary readers without PFD context can follow. Non-negotiable. Three layers of meaning visible at a scan: heading framing, italic plain-language summary, bracket framework anchor.
+- **Body** with mechanism prose plus "What happens:" prediction line incorporating stress-test findings.
+- **Citations** line at end of body. Format: `Author (Year) for [reason]; ...` listing 1-3 strongest supporting works from the framework's research base. Applied predictions (no direct citation) are tagged transparently rather than fabricated.
+
+**Closing cue**
+- Each mode ends with a single italic line inviting deeper paths. Mode-conditional content:
+  - analyze: `*Initial findings. Ralph Loop a consequence, cite further, switch to solve / evaluate, or ask any follow-up to dig deeper.*`
+  - solve: `*Initial findings. Ralph Loop a requirement, cite further, switch to analyze / evaluate, or ask any follow-up to dig deeper.*`
+  - evaluate: `*Initial findings. Ralph Loop a layer score, cite further, switch to solve / analyze, or ask any follow-up to dig deeper.*`
+- Single italic line, no bullet menu, no "Say: [phrase]" scaffolding. R1 (working memory load at the most depleted moment) and R4 (resists survey-driven format expansion) constrain the format.
+
+**Solve protocol updates**
+- Each requirement (R1-R5) now includes a `**Citations:**` line listing 1-2 strongest supporting works.
+- Solve protocol gets an Output Closing step ending with the mode-conditional closing cue.
+
+**Mode detection extended**
+- Bare-skill activation now routes hypothetical / mechanism / behavioral phrasing to Mode 3 (analyze) automatically. Trigger phrases include "what happens if", "why is X working", "what would change", "imagine we replace", "what's the effect of".
+- Edge cases documented: URL plus hypothetical routes to analyze (the question dominates the artifact); URL with no question routes to evaluate; problem plus hypothetical phrasing routes to analyze.
+- Three-way ambiguity prompt added when input does not clearly hit one bucket.
+
+**SKILL.md updates**
+- "The Two Modes" section renamed "The Three Modes" with Mode 3 description added.
+- New section "The Analysis Protocol" parallel to the existing Derivation Protocol.
+- Anti-patterns table extended with four analyze-specific entries: slipping into solve mode during analysis, one-way effects when trade-offs exist, treating layers as siloed in analysis, shallow per-consequence depth.
+
+**Calibration**
+- Spec calibrated against the URL-bar/Chrome thought experiment that produced an expert "wow" reaction in the v2.1 era. v0.6.0 solve compressed that question to a verdict; v0.7.0 analyze produces the descriptive cascade the question actually warranted. The calibration target was the depth bar where expert reviewers recognize their own conclusions in the output, not just plausible-sounding labels.
+
+**Breaking changes**
+- None. Analyze and all are additive. Solve and evaluate behavior unchanged from v0.6.0.
+
+## Plugin v0.6.0 (2026-04-27): Marketplace Listing Readiness
+
+**Marketplace packaging**
+- Repo restructured to spec-canonical layout. `skills/`, `commands/`, `scripts/` now sit at repo root (the nested `skill/skills/` redundancy is gone).
+- Plugin manifest at `.claude-plugin/plugin.json`. Marketplace catalog at `.claude-plugin/marketplace.json` — single-plugin entry, `source: "./"`. Enables self-hosted install: `/plugin marketplace add skovalik/perception-first-design && /plugin install perception-first-design@perception-first-design`.
+- `NOTICE` at repo root with trademark terms, license summary, and explicit permitted/prohibited use examples.
+
+**Commands renamed (breaking)**
+- `pfd` → `solve` (Mode 2 — derive a solution from cognitive constraints).
+- `pfd-audit` → `evaluate` (Mode 1 — corpus-backed audit of an existing artifact).
+- Invocation: `/perception-first-design:solve` and `/perception-first-design:evaluate`.
+
+**Mode detection**
+- SKILL.md now auto-routes bare invocations ("pfd this") to Mode 1 or Mode 2 based on input shape. URL/screenshot/HTML → evaluate; problem statement/design question → solve. Replaces the prior "always Mode 2" default.
+
+**License simplified to single CC-BY-SA-4.0**
+- Was dual `MIT AND CC-BY-SA-4.0`. Now a single license with explicit practice exemption (applying PFD methodology in your work doesn't trigger share-alike).
+- `LICENSE-CONTENT` consolidated into `NOTICE`. `LICENSE` retained as canonical CC-BY-SA-4.0 text.
+
+**Content additions**
+- 9 atoms from the calibration campaign: l021–l029 (L4 ethics fusion, L4 symmetry threshold, falsifiability triad, AA-constrained token ladder, cascade-credit, aesthetic stability, internal acknowledgment signals, held-decision compounding, port-don't-install motion audit). Index regenerated to 29 atoms.
+- 4 atoms updated with calibration-campaign tags: l010, l011, l016, l017.
+- `mvs-psychology-reference.md` added to `skills/pfd/references/` (was corpus-only).
+- `scripts/gen-pfd-index.py` for atom index regeneration.
+
+**Hygiene**
+- `.gitignore` protects `CLAUDE.local.md`, `.claude/`, OS/editor noise, Python caches.
+- SKILL.md header gained a path-conventions note (skill-relative vs plugin-root-relative).
+- Fixed private path in SKILL.md (`Aurochs/docs/...` → `framework/...`).
+- Fixed dangling `corpus/core/corrections/` reference; corrections live at `references/practitioner-corrections.md` (single source).
+- Atom source-attribution scrub — removed `Aurochs/pfd-campaign/` workspace paths from l021/l028/l029.
+- Author field: added `email: admin@aurochs.agency` for marketplace contact.
+
+## Framework v3.6 + Skill v0.5.0 (2026-04-21)
+
+### Framework v3.6 (2026-04-20): International Citation Expansion
+
+**Added**
+- Methodology Siblings section naming parallel traditions PFD inherits from and stands alongside:
+  - Kansei Engineering (Nagamachi 1995): Japanese affective engineering methodology
+  - Gestalt psychology (Wertheimer 1923; Metzger 1936): German perceptual organization tradition
+  - Neuroaesthetics (Skov & Nadal 2020; Leder et al. 2004): European neural substrate of aesthetic response
+- Cultural Calibration meta-rule promoted from footnote to working rule. Western-centric perception science assumptions get flagged when artifact audience is non-Western; calibration priors applied explicitly rather than silently.
+- 7 new layer rules threaded across L0-L4:
+  - L0: Hassin (2013) implicit working memory costs; Pessiglione (2007) subliminal reward processing
+  - L1: Mori (1970) uncanny valley as L1 failure mode
+  - L2: Forster (2013) conceptual fluency distinct from perceptual fluency
+  - L3: Seckler (2015) trust as conjoint perceptual judgment; Hertwig (2009) description-experience gap
+  - L4: Trope & Liberman (2010) construal-level theory for decision architecture
+- Citation count: 82 to ~100
+
+### Skill v0.5.0 (2026-04-21): Sharded Learnings Architecture
+
+**Added**
+- 20 learnings migrated from monolithic `accumulated-learnings.md` to atom files under `references/learnings/` organized by primary layer: `L0/`, `L1/`, `L2/`, `L3/`, `L4/`, `meta/`, `cross/`.
+- `_index.md` and `_search.json` generated from YAML frontmatter across all atoms. Enables index-first scan without loading bodies.
+- SKILL.md loader rewritten for lazy-load: scan index first, read individual atoms on demand. Scales to 1000+ learnings without per-activation cost blowup.
+- Monolithic `accumulated-learnings.md` retained as a pointer/stub for backward compatibility with external links.
+
+**License**
+- Dual-licensed: **MIT** (code, scripts, loaders) + **CC BY-SA 4.0** (framework text, learnings, corpus content).
+- Practice exemption explicit in `LICENSE-CONTENT`: applying PFD in practice (running analyses, generating recommendations, delivering client work) does not create a derivative work and is not subject to share-alike. Only redistributions or modifications of the framework text trigger ShareAlike.
+
+## v3.5 (2026-04-02)
+
+### Added
+- Pre-verbal arousal formalized as the unified objective of the 5-layer stack
+- "What the stack produces" block in The Framework section
+- 5 new citations: Damasio (1994), LeDoux (1996), Lavie (1995), Servajean (2024), Joffily & Coricelli (2013)
+- Prediction error cascade logic grounding the dependency stack order
+
+### Changed
+- Citation count: 77 → 82
+- Version header updated to 3.5
+
+## v3.4 (2026-03-04)
+
+- 77 citations: 55 perception science + 22 ADHD cognitive neuroscience
+- Predictive processing backbone (Clark 2013, Friston 2010)
+- Ontic occlusion and open questions section
+- ADHD curb-cut framing and dual-foundation bibliography
+- Open-source release under CC BY-SA 4.0
+- Evaluation corpus: 26 heuristic rules, 7 worked examples, 3 design system profiles
+- Claude Code skill with `/pfd` and `/pfd-audit` commands
+
+## v3.3 (2026-02-26)
+
+- Bujack et al. (2022) non-Riemannian color perception citation
+- Citation standards document with evidence tier system
+- Processing fluency color infrastructure (Learning #16)
+- Near-miss color deviation principle
+- Brainard (2022) commentary integration
+
+## v3.2 (2026-02-25)
+
+- Audit corrections: Tractinsky 2006 recharacterized (replication, not critique)
+- Miller 1956 body text corrected (rhetorical observation, not working memory limit)
+- McGurk & MacDonald 1976: "override" corrected to "integrate with, producing fused percepts"
+- Zak 2015 hedge strengthened (intranasal oxytocin field has ~90% false positive rate)
+- Narrative persuasion evidence redirected to Green & Brock 2000, van Laer et al. 2014
+
+## v3.0 (2026-02-01)
+
+- 55 citations, fully verified
+- 5-layer dependency stack formalized (Foundation, L1, L2, L3, L4)
+- Derivation protocol (6-step generative process)
+- Rule Zero: no solutions before all layers analyzed
+- Accumulated learnings system
+- PFD-S spatial extension (v0.1)
