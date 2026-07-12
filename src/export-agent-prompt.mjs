@@ -292,11 +292,17 @@ export const buildAgentProtocolMd = (opts) => {
   out.push('NOT overwrite your own persistent skills, agent config, or dotfiles.');
   out.push('');
   if (skillsIndex && Array.isArray(skillsIndex.skills) && skillsIndex.skills.length) {
+    // Table-cell sanitizer for semi-trusted index strings (purposes come
+    // from vendored upstream frontmatter): escape the escape character
+    // FIRST, then the cell delimiter, and flatten newlines — otherwise a
+    // crafted purpose could break out of its cell and inject rows into a
+    // document agents treat as doctrine (CodeQL js/incomplete-sanitization).
+    const cell = (v) => String(v ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
     out.push('| id | locator (relative to extraction root) | purpose |');
     out.push('| --- | --- | --- |');
     for (const s of skillsIndex.skills) {
-      const invoke = s.invoke ? ` Invoke: \`${s.invoke}\`.` : '';
-      out.push(`| \`${s.id}\` | \`${s.path}\` | ${(s.purpose ?? '').replace(/\|/g, '\\|')}${invoke} |`);
+      const invoke = s.invoke ? ` Invoke: \`${cell(s.invoke)}\`.` : '';
+      out.push(`| \`${cell(s.id)}\` | \`${cell(s.path)}\` | ${cell(s.purpose)}${invoke} |`);
     }
     out.push('');
     out.push('Provenance (upstream repo + pinned commit + license) for every vendored');
