@@ -90,12 +90,28 @@ test('bootstrap: hydrates workspace/bundle/archive, parses as bash, idempotence-
   assert(script.startsWith('#!/usr/bin/env bash'));
 });
 
-test('tree: collapses big directories and stays deterministic', () => {
+test('tree: collapses big FLAT directories and stays deterministic', () => {
   const many = Array.from({ length: 40 }, (_, i) => `screenshots/s${i}.png`);
   const text = renderBundleTree(['README.md', ...many]);
   assert(text.includes('screenshots/ (40 files)'), text);
   assert(!text.includes('s17.png'), 'collapsed dirs must not enumerate children');
   assert.strictEqual(text, renderBundleTree([...many, 'README.md'].reverse()), 'order-insensitive');
+});
+
+test('tree: keeps skill-locator structure visible, not folded into one line', () => {
+  // The regression: a naive size-based collapse folded the whole .agents/
+  // tree into `.agents/ (35 files)`, hiding the very locators mapped_skills
+  // cites. Structured dirs must be descended so those paths stay visible.
+  const names = [
+    '.agents/skills/PinchGrab/SKILL.md',
+    ...Array.from({ length: 32 }, (_, i) => `.agents/skills/impeccable/reference/r${i}.md`),
+    'perception-first-design/skills/pfd/SKILL.md',
+  ];
+  const text = renderBundleTree(names);
+  assert(!/\.agents\/ \(\d+ files\)/.test(text), `.agents/ must NOT collapse to one opaque line:\n${text}`);
+  assert(text.includes('PinchGrab/'), 'PinchGrab skill dir must be visible');
+  assert(text.includes('pfd/'), 'pfd skill dir must be visible');
+  assert(/reference\/ \(32 files\)/.test(text), 'the flat 32-file reference dir may collapse');
 });
 
 // ─── AGENT-PROTOCOL.md ──────────────────────────────────────────────────────
