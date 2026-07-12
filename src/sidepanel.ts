@@ -902,8 +902,33 @@ import {serializeCaptureJson} from './export-capture.mjs';
       case 'feedback-add': onFeedbackAdd(msg); return;
       case 'preference-change': onPreferenceChange(msg as Extract<CsToPanel, {kind: 'preference-change'}>); return;
       case 'page-snapshot': onPageSnapshot((msg as Extract<CsToPanel, {kind: 'page-snapshot'}>).payload); return;
+      case 'select-mode': syncSelectMode((msg as Extract<CsToPanel, {kind: 'select-mode'}>).on); return;
       default: return;
     }
+  };
+
+  // ─── Sticky pinch mode ────────────────────────────────────────────────────
+  // Toggle "capture without holding Alt". The page owns the actual gesture
+  // gate + Esc-to-exit; the panel mirrors the state on its button and reflects
+  // the page's own exit (Esc) via the select-mode message.
+  let selectMode = false;
+  const reflectSelectMode = (): void => {
+    for (const b of document.querySelectorAll<HTMLElement>('[data-action="select-mode"]')) {
+      b.classList.toggle('toggled', selectMode);
+      b.setAttribute('aria-pressed', String(selectMode));
+    }
+  };
+  const syncSelectMode = (on: boolean): void => {
+    if (selectMode === on) return;
+    selectMode = on;
+    reflectSelectMode();
+    setStatus(on ? 'Pinch mode on — click the page to capture (Esc exits)' : 'Pinch mode off');
+  };
+  const onToggleSelectMode = (): void => {
+    selectMode = !selectMode;
+    void sendToCS({kind: 'select-mode', on: selectMode});
+    reflectSelectMode();
+    setStatus(selectMode ? 'Pinch mode on — click the page to capture (Esc exits)' : 'Pinch mode off');
   };
 
   const onPreferenceChange = ({reason, page}: {reason: string; page: any}): void => {
@@ -4904,6 +4929,7 @@ ORDER BY s.n;
     }},
     {id: 'duckdb', label: 'Generate DuckDB query snippet (SQL recipes)', run: () => void onDuckDbSnippet()},
     {id: 'import', label: 'Import JSONL file', run: onImport},
+    {id: 'select-mode', label: 'Toggle pinch mode (capture without holding Alt)', run: onToggleSelectMode},
     {id: 'validate', label: 'Re-check selectors', run: () => void onValidate()},
     {id: 'reattach', label: 'Re-attach to page (fix Alt+Click)', run: () => void onReattach()},
     {id: 'reload-extension', label: 'Reload the PinchGrab extension (last resort)', run: () => { if (inExtension) chrome.runtime.reload(); }},
@@ -5157,6 +5183,7 @@ ORDER BY s.n;
       case 'copy-path': void onCopyPath(); return;
       case 'import': onImport(); return;
       case 'validate': void onValidate(); return;
+      case 'select-mode': onToggleSelectMode(); return;
       case 'reattach': void onReattach(); return;
       case 'quiet-enable': void onQuietEnable(); return;
       case 'quiet-dismiss': onQuietDismiss(); return;

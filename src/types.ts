@@ -355,6 +355,9 @@ export type CsToPanel =
   | {kind: 'capture'; entry: Entry; page: PageContext; grouped?: boolean}
   | {kind: 'hover'; selector: string; tag: string; label: string; rect: Rect}
   | {kind: 'hover-end'}
+  // Page reports its sticky pinch-mode state (e.g. the user pressed Esc on
+  // the page to exit) so the panel toggle stays in sync.
+  | {kind: 'select-mode'; on: boolean}
   | {kind: 'pending-add'; entry: Entry}
   | {kind: 'pending-clear'}
   // Add a feedback row attached to a selector. The lookup is by
@@ -378,6 +381,9 @@ export type CsToPanel =
 export type PanelToCs =
   | {kind: 'outline'; selector: string; gold?: boolean; dashed?: boolean}
   | {kind: 'outline-clear'}
+  // Sticky "pinch mode": while on, plain hover/click captures without the
+  // Alt modifier, and the page shows a mode indicator. Esc exits.
+  | {kind: 'select-mode'; on: boolean}
   // Export-time request for the full serialized page (opt-in pref
   // includePageHTML). Replied with {ok, url, title, html}; never persisted
   // to chrome.storage — the payload goes straight into the tar.
