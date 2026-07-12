@@ -1648,6 +1648,11 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
     const stickToBottom = list.children.length === 0 || wasNearBottom();
     list.innerHTML = '';
 
+    // #29 — defer inert first-open chrome: the all-zero stats row and the
+    // advanced shortcuts (multi/stage/undo) only appear once there's state
+    // to act on. Reuses the same conditional pattern as the empty state.
+    document.querySelector('.panel')?.classList.toggle('has-captures', messages.length > 0);
+
     // Stats numbers
     let totalSelectors = 0;
     let totalComments = 0;
@@ -1745,7 +1750,7 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.innerHTML = `<img class="empty-icon pinch-img" src="pinch-mark.png" alt="" />
-        <div class="empty-title">Start with the page you want to critique.</div>
+        <div class="empty-title">Alt+Click anything on this page to capture it.</div>
         <div class="empty-body">Open a page, then capture an element. Comments stay paired with the thing you grabbed.</div>
         <div class="empty-keys">Alt+Click to capture</div>`;
       list.append(empty);

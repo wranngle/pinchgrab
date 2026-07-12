@@ -961,6 +961,34 @@ const startServer = () =>
     console.log('test 52 ok: Send-to-Agent review screen (prompt, copy tick, advanced, esc)');
   }
 
+  // Test 53 ── First-open chrome deferral (#29): with zero captures the stats
+  // row and advanced shortcuts are hidden; a capture reveals them.
+  {
+    await page.evaluate(() => window.__pinchgrab_panel.clear());
+    const empty = await page.evaluate(() => {
+      const vis = (sel: string) => { const el = document.querySelector<HTMLElement>(sel); return !!el && el.offsetParent !== null; };
+      return {
+        stats: vis('.stats[data-stats]'),
+        multi: vis('.sc[data-when-empty="hide"]'),
+        peek: vis('.shortcuts .sc:first-child'),
+        title: document.querySelector('.empty-title')?.textContent ?? '',
+      };
+    });
+    assert.strictEqual(empty.stats, false, 'all-zero stats row should be hidden on first open');
+    assert.strictEqual(empty.multi, false, 'advanced shortcuts should be hidden on first open');
+    assert.strictEqual(empty.peek, true, 'the core peek shortcut stays visible');
+    assert(/alt\+click/i.test(empty.title), `empty copy should teach Alt+Click, got "${empty.title}"`);
+    await page.evaluate(() => window.__pinchgrab_panel.pushMessage({ type: 'selector', id: 'fo1', ts: 't', entry: {
+      uid: 'fo', n: 1, ts: 't', url: 'https://x.test/', tag: 'div', selector: '#z', rect: { x: 0, y: 0, w: 1, h: 1 }, viewport: { w: 1, h: 1, dpr: 1 },
+    }}));
+    const after = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('.stats[data-stats]');
+      return !!el && el.offsetParent !== null;
+    });
+    assert.strictEqual(after, true, 'stats row appears once there is a capture');
+    console.log('test 53 ok: first-open defers inert chrome; a capture reveals it');
+  }
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();

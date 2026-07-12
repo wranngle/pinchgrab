@@ -23,8 +23,13 @@
   --yellow:       #ffb454;
   --red:          #ff5b66;
   --violet:       #9b8cff;
-  --mono: 'JetBrains Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --sans: 'Bricolage Grotesque','Outfit',system-ui,sans-serif;
+  /* #30 — these tokens must reflect what actually renders. The extension
+   * bundles no web fonts, so the leading 'JetBrains Mono' / 'Bricolage
+   * Grotesque' names silently fell back to the system stack. Naming the real
+   * stack removes the three-way mismatch (declared token vs. rendered font vs.
+   * store-screenshot font). Bundling the brand fonts is a separate follow-up. */
+  --mono: ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --sans: system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   /* Color-emoji fonts only, in the SAME order the toolbar icon canvas uses
    * (background.ts setEmojiIcon). 'Segoe UI Symbol' was removed: it is a
    * monochrome outline font that rendered an off-brand pinch glyph on some
@@ -44,6 +49,9 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
+/* #29 — first-open chrome deferral: hide the all-zero stats row and advanced
+ * shortcuts until there's at least one capture (panel gains .has-captures). */
+.panel:not(.has-captures) [data-when-empty="hide"] { display: none !important; }
 html, body { height: 100%; overflow: hidden; }
 body {
   background: var(--bg); color: var(--text);

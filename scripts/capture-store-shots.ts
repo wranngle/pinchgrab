@@ -60,7 +60,7 @@ const startServer = (): Promise<Served> =>
         // "your page + PinchGrab on it", not more panel chrome.
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Lumen — Pricing</title><style>
-          * { margin:0; box-sizing:border-box; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+          * { margin:0; box-sizing:border-box; font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
           body { background:#fafaf8; color:#1c1b22; }
           nav { display:flex; align-items:center; gap:28px; padding:18px 56px; border-bottom:1px solid #eceae4; background:#fff; }
           nav b { font-size:19px; } nav a { color:#5d5a6b; text-decoration:none; font-size:14px; }
@@ -290,7 +290,7 @@ const run = async (): Promise<void> => {
       body {
         width: 440px; height: 280px; overflow: hidden;
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-        font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         background:
           radial-gradient(360px 240px at 50% -20%, rgba(255,95,0,.30), transparent 62%),
           radial-gradient(300px 200px at 50% 120%, rgba(239,75,0,.22), transparent 60%),
@@ -319,7 +319,7 @@ const run = async (): Promise<void> => {
       * { margin: 0; box-sizing: border-box; }
       body {
         width: 1400px; height: 560px; overflow: hidden; display: flex;
-        font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         color: #fcfaf5;
         background:
           radial-gradient(900px 500px at 88% -10%, rgba(255,95,0,.16), transparent 60%),
@@ -419,7 +419,7 @@ const run = async (): Promise<void> => {
         body {
           width:1280px; height:800px; overflow:hidden;
           display:flex; flex-direction:column; align-items:center;
-          font-family:-apple-system,'Segoe UI',Roboto,sans-serif; color:#fcfaf5;
+          font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; color:#fcfaf5;
           background:
             radial-gradient(820px 460px at 85% -12%, rgba(255,95,0,.17), transparent 60%),
             radial-gradient(640px 420px at 2% 112%, rgba(239,75,0,.12), transparent 55%),
