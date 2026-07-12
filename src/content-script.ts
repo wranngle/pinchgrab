@@ -905,7 +905,11 @@ function init(): void {
       case 'scroll-to': {
         const el = safeQuery(msg.selector);
         if (!el) return false;
-        el.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
+        // `nearest` is deliberate: hovering a comment must NOT yank an
+        // already-visible element to screen center (the jarring scroll the
+        // operator flagged). It only scrolls when the element is off-screen.
+        // The loud "find this" paths (locate-flash, log-element) keep center.
+        el.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'nearest'});
         if (msg.sticky) trackElement('sticky', el, {label: compactTarget(el), gold: true});
         else flashElement(el);
         return false;

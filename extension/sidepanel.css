@@ -25,7 +25,11 @@
   --violet:       #9b8cff;
   --mono: 'JetBrains Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans: 'Bricolage Grotesque','Outfit',system-ui,sans-serif;
-  --emoji: 'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol','Noto Color Emoji',sans-serif;
+  /* Color-emoji fonts only, in the SAME order the toolbar icon canvas uses
+   * (background.ts setEmojiIcon). 'Segoe UI Symbol' was removed: it is a
+   * monochrome outline font that rendered an off-brand pinch glyph on some
+   * systems, so the header/empty-state 🤏 disagreed with the toolbar icon. */
+  --emoji: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',serif;
   /* Single unified radius — every existing variant aliases to it. */
   --r-xs: 14px; --r-sm: 14px; --r: 14px; --r-md: 14px; --r-lg: 14px;
   /* Z-stack tokens. Higher = paints on top. */
