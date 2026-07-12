@@ -27,20 +27,40 @@ export const workspaceRoot = (workspace) => `~/.pinchgrab/workspaces/${workspace
 export const extractDir = (workspace, bundleId) =>
   `${workspaceRoot(workspace)}/bundles/${bundleId}/extracted`;
 
+// Single-quote-safe interpolation for bash: 'it'\''s' survives any input.
+const sq = (v) => String(v).replace(/'/g, "'\\''");
+
 /**
  * Idempotent bash bootstrap. `archivePath` is the hydrated absolute path of
  * the .tar.zst on the operator's machine; pass the literal token
  * '<ARCHIVE_PATH>' to emit the tokenized copy shipped in AGENT-PROTOCOL.md.
+ *
+ * The script self-normalizes the archive path so "execute exactly as
+ * written" stays true everywhere the operator's browser and agent can
+ * disagree about path shape: a leading ~ is expanded, and a Windows
+ * drive path (Chrome on Windows + agent in WSL/Git-Bash) is converted
+ * via wslpath, cygpath, or a manual /mnt/<drive> fallback.
  */
 export const buildBootstrapScript = ({workspace, bundleId, archivePath, exportTs}) => [
   '#!/usr/bin/env bash',
   '# PinchGrab bootstrap — idempotent; safe to re-run.',
   'set -euo pipefail',
-  `WS='${workspace}'`,
-  `BID='${bundleId}'`,
-  `SRC='${archivePath}'`,
-  '# The clipboard may carry the ~/Downloads form; expand a leading ~.',
+  `WS='${sq(workspace)}'`,
+  `BID='${sq(bundleId)}'`,
+  `SRC='${sq(archivePath)}'`,
+  '# Normalize the archive path: expand a leading ~ (clipboard may carry the',
+  '# ~/Downloads form) and translate Windows drive paths for WSL/Git-Bash.',
   'SRC="${SRC/#\\~/$HOME}"',
+  'case "$SRC" in',
+  '  [A-Za-z]:[\\\\/]*)',
+  '    if command -v wslpath >/dev/null 2>&1; then SRC="$(wslpath -u "$SRC")";',
+  '    elif command -v cygpath >/dev/null 2>&1; then SRC="$(cygpath -u "$SRC")";',
+  '    else',
+  '      drive="$(printf %s "${SRC%%:*}" | tr "[:upper:]" "[:lower:]")"',
+  '      rest="${SRC#*:}"; rest="${rest//\\\\//}"',
+  '      SRC="/mnt/$drive$rest"',
+  '    fi;;',
+  'esac',
   'ROOT="$HOME/.pinchgrab/workspaces/$WS"',
   'DEST="$ROOT/bundles/$BID"',
   'if [ -f "$DEST/.extracted" ] && [ "$(cat "$DEST/.extracted")" = "$BID" ]; then',
@@ -59,12 +79,20 @@ export const buildBootstrapScript = ({workspace, bundleId, archivePath, exportTs
 ].join('\n');
 
 /**
- * Render the bundle's tar entry names as an indented tree. Directories with
- * more than `collapseAt` files collapse to one `dir/ (N files)` line so the
- * clipboard stays dense; output is capped at `maxLines` with a `… +N more`
- * tail. Deterministic: entries are sorted.
+ * Render the bundle's tar entry names as an indented tree. Collapse rules
+ * keep the clipboard dense WITHOUT hiding structure the protocol cites
+ * (a naive size-based collapse folded the whole `.agents/` skill tree into
+ * one opaque line):
+ *   • a directory collapses to `dir/ (N files)` only when it is FLAT
+ *     (no subdirectories) and holds more than `collapseAt` files —
+ *     screenshots/, impeccable's reference/ — or when it sits at
+ *     `collapseDepth` or deeper, where detail stops paying for itself;
+ *   • structured directories are descended so their skill/locator layout
+ *     stays visible.
+ * Output is capped at `maxLines` with a `… +N more` tail as a backstop.
+ * Deterministic: entries are sorted.
  */
-export const renderBundleTree = (entryNames, {collapseAt = 8, maxLines = 120} = {}) => {
+export const renderBundleTree = (entryNames, {collapseAt = 8, collapseDepth = 3, maxLines = 120} = {}) => {
   // Build a nested {dirs: Map, files: []} structure.
   const rootNode = {dirs: new Map(), files: []};
   for (const name of [...entryNames].sort()) {
@@ -82,7 +110,10 @@ export const renderBundleTree = (entryNames, {collapseAt = 8, maxLines = 120} = 
     const pad = '  '.repeat(depth);
     for (const [dir, child] of [...node.dirs.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
       const total = countFiles(child);
-      if (total > collapseAt) {
+      const flat = child.dirs.size === 0;
+      // `child` renders at this `depth` (emit's depth is the pad level of
+      // node's own children).
+      if ((flat && total > collapseAt) || depth >= collapseDepth) {
         lines.push(`${pad}${dir}/ (${total} files)`);
       } else {
         lines.push(`${pad}${dir}/`);
@@ -151,7 +182,7 @@ export const buildAgentPromptJsonl = (opts) => {
 
   lines.push({
     type: 'instruction',
-    text: `You have been handed a PinchGrab feedback bundle: ${counts.comments} operator comments pinned to live UI elements of the product built from <PROJECT_ROOT> (infer <PROJECT_ROOT> from your current working directory; if ambiguous, ask before editing). Do this now, in order: (1) execute the bash script in the next 'bootstrap' line exactly as written (its 'script' field is a JSON-escaped plain bash script; if the archive path is a Windows path and you run inside WSL, translate C:\\ to /mnt/c/ first); (2) read EVERY file listed in the 'files' line fully into context; (3) follow AGENT-PROTOCOL.md to map, plan, implement, test, audit, and verify a fix for every comment.`,
+    text: `You have been handed a PinchGrab feedback bundle: ${counts.comments} operator comments pinned to live UI elements of the product built from <PROJECT_ROOT> (infer <PROJECT_ROOT> from your current working directory; if ambiguous, ask before editing). Do this now, in order: (1) execute the bash script in the next 'bootstrap' line exactly as written (its 'script' field is a JSON-escaped plain bash script; it self-normalizes ~ and Windows drive paths for WSL/Git-Bash); (2) read EVERY file listed in the 'files' line fully into context; (3) follow AGENT-PROTOCOL.md to map, plan, implement, test, audit, and verify a fix for every comment.`,
   });
 
   lines.push({
