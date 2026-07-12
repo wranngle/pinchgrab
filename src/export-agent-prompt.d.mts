@@ -26,6 +26,9 @@ export type SkillsIndex = {
   skills: Array<{id: string; path: string; purpose?: string; source?: string; invoke?: string}>;
 };
 
+export const SIGNAL_PATHS: string[];
+export function isSignalPath(name: string, jsonlName: string): boolean;
+export function buildBundleIgnore(): string;
 export function workspaceRoot(workspace: string): string;
 export function extractDir(workspace: string, bundleId: string): string;
 export function buildBootstrapScript(opts: {workspace: string; bundleId: string; archivePath: string; exportTs: string}): string;
