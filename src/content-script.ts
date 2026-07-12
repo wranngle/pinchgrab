@@ -479,6 +479,10 @@ function init(): void {
   // ─── Alt-hover state machine ─────────────────────────────────────────────
   let altActive = false;
   let altForwarded = false;
+  // Sticky "pinch mode": when on, plain hover/click captures without the
+  // Alt modifier held. A fixed page badge signals it; Esc exits.
+  let manualSelect = false;
+  const pinchEngaged = (native: boolean): boolean => native || altForwarded || manualSelect;
   let lastHoverEl: Element | null = null;
   let lastMouse = {x: -1, y: -1};
   let knownCaptured = new Set<string>();
@@ -494,6 +498,36 @@ function init(): void {
     clearSpacingOverlay();
     lastHoverEl = null;
     sendToPanel({kind: 'hover-end'});
+  };
+
+  // ─── Sticky pinch-mode badge ──────────────────────────────────────────────
+  // A fixed pill in the overlay so the user always knows plain clicks are
+  // capturing (and how to leave). Lives in the shadow root, pointer-events
+  // none so it never eats a click.
+  let selectBadge: HTMLDivElement | null = null;
+  const showSelectBadge = (on: boolean): void => {
+    if (!on) { selectBadge?.remove(); selectBadge = null; return; }
+    if (selectBadge) return;
+    const b = document.createElement('div');
+    b.textContent = '🤏 Pinch mode — click to capture · Esc to exit';
+    Object.assign(b.style, {
+      position: 'fixed', left: '50%', bottom: '18px', transform: 'translateX(-50%)',
+      background: 'rgba(255,95,0,.95)', color: '#fff',
+      font: "600 12px/1 ui-monospace,'JetBrains Mono',Menlo,monospace",
+      padding: '8px 14px', borderRadius: '999px',
+      boxShadow: '0 4px 20px rgba(0,0,0,.35)', pointerEvents: 'none',
+      zIndex: '2147483647', whiteSpace: 'nowrap',
+    });
+    shadow.append(b);
+    selectBadge = b;
+  };
+  const setSelectMode = (on: boolean, notifyPanel = false): void => {
+    if (manualSelect === on) return;
+    manualSelect = on;
+    showSelectBadge(on);
+    bringToFront();
+    setAltActive(on);           // engage/disengage the hover ring immediately
+    if (notifyPanel) sendToPanel({kind: 'select-mode', on});
   };
 
   const setAltActive = (on: boolean): void => {
@@ -716,7 +750,7 @@ function init(): void {
       lastHoverEl = null;
       return;
     }
-    const altOn = e.altKey || altForwarded;
+    const altOn = pinchEngaged(e.altKey);
     if (!altOn) { if (altActive) setAltActive(false); return; }
     if (!altActive) setAltActive(true);
     const tgt = e.target;
@@ -754,7 +788,7 @@ function init(): void {
     if (!orphanGuard()) return;
     if (isInsideAnnotation(e)) return;
     if (annotationEl.style.display === 'block' && !annotation.isLocked()) annotation.hide();
-    if (!e.altKey || dragStart) return;
+    if (!pinchEngaged(e.altKey) || dragStart) return;
     if (isPinchgrabOwnUi(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -796,7 +830,7 @@ function init(): void {
       return;
     }
     if (isInsideAnnotation(event)) return;
-    if (!event.altKey) return;
+    if (!pinchEngaged(event.altKey)) return;
     if (isPinchgrabOwnUi(event)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -839,6 +873,12 @@ function init(): void {
   // them — the orphan-takeover path must leave zero listeners behind.
   const onKeyDownAlt = (e: KeyboardEvent): void => {
     if (!orphanGuard()) return;
+    // Esc leaves sticky pinch mode (when no comment box is capturing Esc).
+    if (e.key === 'Escape' && manualSelect && annotationEl.style.display !== 'block') {
+      e.preventDefault();
+      setSelectMode(false, /* notifyPanel */ true);
+      return;
+    }
     if (e.altKey) {
       setAltActive(true);
       // Pre-empt the browser's Alt → menu-bar focus shift on Windows. If we
@@ -857,14 +897,17 @@ function init(): void {
       // key intervening. Block it so our textarea keeps focus.
       if (annotationEl.style.display === 'block') e.preventDefault();
       altForwarded = false;
-      setAltActive(false);
+      // Sticky pinch mode keeps the ring engaged after Alt is released.
+      if (!manualSelect) setAltActive(false);
       // No auto-commit timer — the user explicitly clicks "Commit group"
       // in the side-panel pending bay (or Esc to cancel).
     }
   };
   const onWindowBlur = (): void => {
     altForwarded = false;
-    setAltActive(false);
+    // Sticky pinch mode survives a blur (clicking into the side panel) —
+    // otherwise switching to the panel would silently disengage it.
+    if (!manualSelect) setAltActive(false);
     // Note: don't cancel pendingMulti — clicking the side-panel commit button
     // blurs the host page and we'd lose the staging state right before commit.
   };
@@ -985,6 +1028,9 @@ function init(): void {
       case 'alt-state':
         altForwarded = msg.on;
         setAltActive(msg.on);
+        return false;
+      case 'select-mode':
+        setSelectMode(msg.on);
         return false;
       case 'manual-capture': {
         const el = safeQuery(msg.selector);

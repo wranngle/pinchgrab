@@ -287,18 +287,23 @@ const computeAndScroll = async (
       try { return document.querySelector(s); } catch { return null; }
     }).filter((e): e is Element => Boolean(e));
     if (!els.length) return null;
-    // Scroll union midpoint into view first; some pages have lazy images
-    // that won't paint until they're near the viewport.
     const rectsBefore = els.map((e) => e.getBoundingClientRect());
-    const minXAbs = Math.min(...rectsBefore.map((r) => r.left)) + window.scrollX;
-    const minYAbs = Math.min(...rectsBefore.map((r) => r.top)) + window.scrollY;
-    const maxXAbs = Math.max(...rectsBefore.map((r) => r.right)) + window.scrollX;
-    const maxYAbs = Math.max(...rectsBefore.map((r) => r.bottom)) + window.scrollY;
-    const cx = (minXAbs + maxXAbs) / 2;
-    const cy = (minYAbs + maxYAbs) / 2;
-    const targetX = Math.max(0, cx - window.innerWidth / 2);
-    const targetY = Math.max(0, cy - window.innerHeight / 2);
-    window.scrollTo({left: targetX, top: targetY, behavior: 'instant' as ScrollBehavior});
+    const uMinX = Math.min(...rectsBefore.map((r) => r.left));
+    const uMinY = Math.min(...rectsBefore.map((r) => r.top));
+    const uMaxX = Math.max(...rectsBefore.map((r) => r.right));
+    const uMaxY = Math.max(...rectsBefore.map((r) => r.bottom));
+    // DON'T scroll when the target is already on screen — scrolling a visible
+    // element to center is the jarring jump the operator flagged, and it's
+    // the common case (you capture what you can see). Only scroll when the
+    // element is off-screen or clipped (lazy images below the fold need it).
+    const fullyVisible = uMinX >= 0 && uMinY >= 0 && uMaxX <= window.innerWidth && uMaxY <= window.innerHeight;
+    if (!fullyVisible) {
+      const cx = (uMinX + uMaxX) / 2 + window.scrollX;
+      const cy = (uMinY + uMaxY) / 2 + window.scrollY;
+      const targetX = Math.max(0, cx - window.innerWidth / 2);
+      const targetY = Math.max(0, cy - window.innerHeight / 2);
+      window.scrollTo({left: targetX, top: targetY, behavior: 'instant' as ScrollBehavior});
+    }
 
     // Recompute bboxes after scroll.
     const rects = els.map((e) => e.getBoundingClientRect());
@@ -439,6 +444,10 @@ const shotElementCommon = async (
   // Hiding first means the whole scroll→yield→capture→restore window happens
   // with the overlay frozen and out of layout — no on-screen flash.
   await tellCs(tabId, {kind: 'hide-overlays'});
+  // Remember the operator's scroll so a capture never leaves the page moved.
+  // computeAndScroll only scrolls when the target is off-screen (a group
+  // that snapped past the fold); we always restore afterward regardless.
+  const origScroll = await runInPage<{x: number; y: number}>(tabId, () => ({x: window.scrollX, y: window.scrollY})) ?? {x: 0, y: 0};
   let dataUrl: string;
   let bbox: BboxResult | null = null;
   try {
@@ -450,6 +459,7 @@ const shotElementCommon = async (
     console.warn(LOG, 'captureVisibleTab failed', e);
     return null;
   } finally {
+    await restoreScroll(tabId, origScroll.x, origScroll.y);
     await tellCs(tabId, {kind: 'show-overlays'});
   }
 
