@@ -19,6 +19,7 @@ import {TEMPLATES_PRESENT} from './templates.gen.ts';
 import {BUNDLED_SKILLS_PRESENT, BUNDLED_SKILL_FILES} from './bundled-skills.gen.ts';
 import {buildAgentPromptJsonl, buildAgentProtocolMd, buildBundleIgnore, isSignalPath, type SkillsIndex} from './export-agent-prompt.mjs';
 import {serializeCaptureJson} from './export-capture.mjs';
+import {redactText, redactUrl, redactAttrs} from './redact.mjs';
 
 (() => {
   const LOG = '[PinchGrab/sp]';
@@ -238,6 +239,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // advanced settings). On by default so the paste target is visible;
     // power users can turn it off for the silent auto-copy.
     showAgentScreen: boolean;
+    // Redact PII/secrets (emails, phones, cards, SSNs, tokens) from captured
+    // page text/attrs/URLs on export. Off by default — it modifies exported
+    // data and can over/under-scrub; the manifest reports how many values it
+    // touched. Text layer only; screenshots are a separate layer.
+    redactPII: boolean;
     // Bundle the vendored third-party design skills (impeccable reference
     // set + perception-first-design) plus skills-index.json into archive
     // exports. On by default: the Send-to-Agent protocol's skill-mapping
@@ -275,6 +281,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     quietNudgeDismissed: false,
     autosaveToDisk: true,
     showAgentScreen: true,
+    redactPII: false,
     bundleSkills: true,
     includePageHTML: false,
   };
@@ -2844,8 +2851,34 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     if (opts.groupUid) out.groupUid = opts.groupUid;
 
+    // PII redaction (layer 1, opt-in). Scrubs the CAPTURED page content —
+    // text, accessible name, URL, attribute values, outerHTML — not the
+    // operator's own comment text (those are intentional). Counts hits into
+    // redactionTally for the manifest diagnostic.
+    if (prefs.redactPII) {
+      const scrub = (s: unknown): unknown => {
+        if (typeof s !== 'string') return s;
+        const r = redactText(s);
+        if (r !== s) redactionTally.count++;
+        return r;
+      };
+      if (out.text !== undefined) out.text = scrub(out.text);
+      if (out.renderedText !== undefined) out.renderedText = scrub(out.renderedText);
+      if (out.accessibleName !== undefined) out.accessibleName = scrub(out.accessibleName);
+      if (typeof out.url === 'string') { const ru = redactUrl(out.url); if (ru !== out.url) redactionTally.count++; out.url = ru; }
+      if (out.outerHTML !== undefined) out.outerHTML = scrub(out.outerHTML);
+      if (out.attrs && typeof out.attrs === 'object') {
+        const before = JSON.stringify(out.attrs);
+        out.attrs = redactAttrs(out.attrs);
+        if (JSON.stringify(out.attrs) !== before) redactionTally.count++;
+      }
+    }
+
     return out;
   };
+  // Per-export redaction counter, reset at the top of each buildSlim run and
+  // surfaced in the manifest so a reviewer knows scrubbing happened.
+  const redactionTally = {count: 0};
   // ─── Shared "slim data" pipeline ────────────────────────────────────────
   // JSONL renders off this intermediate representation. (Markdown used to
   // share it; the Markdown export was retired in favor of JSONL-only.)
@@ -2882,6 +2915,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   type SlimSelector = Record<string, any> & {v: 2; type: 'selector'; n: number; selector: string; feedback?: string[]};
   type SlimLine = SlimPage | SlimFeedback | SlimSelector;
   const buildSlim = (): SlimLine[] => {
+    redactionTally.count = 0; // fresh count per emit (slimEntry increments it)
     const lines: SlimLine[] = [];
     // Pre-compute visualOrder (top→bottom, left→right) for every
     // selector message. The previous single `n` field conflated
@@ -3307,6 +3341,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
               signalTokens: {type: 'integer'}, totalTokens: {type: 'integer'},
               ignore: {type: 'string'},
             },
+          },
+          redaction: {
+            type: 'object',
+            required: ['layer', 'values'],
+            properties: {layer: {const: 'text'}, values: {type: 'integer'}},
           },
           bundledSkills: {
             type: 'array',
@@ -4054,6 +4093,15 @@ import {serializeCaptureJson} from './export-capture.mjs';
       signalTokens: Math.ceil(signalBytes / 4), totalTokens: Math.ceil(totalBytes / 4),
       ignore: '.gitignore',
     };
+    // Redaction receipt: how many captured values the PII text layer scrubbed
+    // (0 when the pref is off). Surfaced so a reviewer knows scrubbing ran.
+    if (prefs.redactPII) {
+      manifest.redaction = {layer: 'text', values: redactionTally.count};
+      if (redactionTally.count) {
+        manifest.exportDiagnostics = [...(manifest.exportDiagnostics ?? []),
+          {severity: 'info', code: 'PII_REDACTED', detail: `${redactionTally.count} captured value(s) scrubbed by the text redaction layer`}];
+      }
+    }
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are
     // assembled but BEFORE we tar them, so we know what's in the

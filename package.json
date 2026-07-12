@@ -41,7 +41,7 @@
     "test:exports": "tsx tests/exports.spec.ts",
     "test:extension": "tsx tests/extension.spec.ts",
     "test:tour": "tsx tests/framework-tour.spec.ts",
-    "test:legacy": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs && node --test tests/annotator.test.mjs && node --test tests/agent-protocol.test.mjs && node --test tests/bundled-skills.test.mjs",
+    "test:legacy": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs && node --test tests/annotator.test.mjs && node --test tests/agent-protocol.test.mjs && node --test tests/bundled-skills.test.mjs && node --test tests/redact.test.mjs",
     "test:schema": "node --test tests/schema.test.mjs",
     "test:replay": "node tests/replay.test.mjs",
     "test:replay-auth": "node tests/replay-auth.test.mjs",

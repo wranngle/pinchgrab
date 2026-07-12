@@ -786,6 +786,29 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     console.log(`exports 16+17 ok: frozen-clock re-export byte-identical (${a.bytes.length} bytes) · vendored skills + protocol + manifest addenda in tar (${names.length} entries)`);
   }
 
+  // ─── Test 18 ── PII redaction (opt-in) scrubs captured content ─────────
+  {
+    await page.evaluate(() => window.__pinchgrab_panel.clear());
+    const out = await page.evaluate(() => {
+      const sp: any = window.__pinchgrab_panel;
+      sp.setPrefs({ redactPII: true });
+      sp.pushMessage({ type: 'selector', id: 'pii1', ts: 't', entry: {
+        uid: 'p1', n: 1, ts: 't', url: 'https://x.test/p?token=sk-ABCdef0123456789xyz&keep=1',
+        tag: 'div', selector: '#p', text: 'reach me: jane@acme.io / 415-555-0199',
+        accessibleName: 'ssn 123-45-6789', rect: { x: 0, y: 0, w: 1, h: 1 }, viewport: { w: 1, h: 1, dpr: 1 },
+      }});
+      const jsonl = sp.buildJsonl('pii.jsonl');
+      const sel = jsonl.split('\n').map((l: string) => { try { return JSON.parse(l); } catch { return {}; } })
+        .find((x: any) => x.type === 'selector');
+      sp.setPrefs({ redactPII: false });
+      return { text: sel.text, an: sel.accessibleName, url: sel.url };
+    });
+    assert(out.text.includes('[redacted-email]') && out.text.includes('[redacted-phone]'), `text should be scrubbed: ${out.text}`);
+    assert(out.an.includes('[redacted-ssn]'), `accessibleName ssn should be scrubbed: ${out.an}`);
+    assert(!out.url.includes('sk-ABCdef0123456789xyz') && /keep=1/.test(out.url), `url token scrubbed, non-secret kept: ${out.url}`);
+    console.log('exports 18 ok: PII redaction scrubs text / accessibleName / url query');
+  }
+
   console.log('exports.spec all tests passed');
   await browser.close();
   server.close();

@@ -603,6 +603,9 @@ export type ExportManifest = {
   bundledSkills?: Array<{id: string; kind: 'skill' | 'reference'; archivePath: string; invocation?: string}>;
   // Full-page HTML documents bundled under pages/ (opt-in pref).
   pagesHtml?: Array<{url: string; archivePath: string; bytes: number}>;
+  // PII redaction receipt (opt-in). `values` counts captured strings the
+  // text layer scrubbed; `layer` names which layer ran.
+  redaction?: {layer: 'text'; values: number};
   // Self-roast section. The export surfaces its own gaps so a
   // downstream LLM doesn't have to discover
   // them. Empty array = clean export. Each diagnostic has a stable
