@@ -200,6 +200,15 @@ for (const f of PASSTHROUGH) {
   console.log(`Copied ${basename(f)}`);
 }
 
+// The canonical brand pinch (Segoe glyph, committed under docs/brand). The
+// panel renders it as an <img> instead of relying on the OS emoji font, so
+// the pinch is identical to the toolbar icon on every platform.
+{
+  const pinchSrc = resolve(root, 'docs', 'brand', 'pinch-mark.png');
+  if (existsSync(pinchSrc)) { copyFileSync(pinchSrc, resolve(distDir, 'pinch-mark.png')); console.log('Copied pinch-mark.png'); }
+  else console.warn('docs/brand/pinch-mark.png missing — panel pinch image will 404');
+}
+
 // ─── Extension icons ───────────────────────────────────────────────────────
 // The manifest references icons/icon{16,32,48,128}.png for the toolbar action
 // and the Chrome Web Store tile. They're rendered source assets committed under
