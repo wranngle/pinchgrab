@@ -17,35 +17,15 @@ import {pg} from './types.ts';
 
 const LOG = '[PinchGrab/bg]';
 
-// ─── Toolbar icon: render the 🤏 emoji into ImageData ─────────────────────
-// We don't ship static PNG icons; we draw them at startup so the OS's own
-// pinch glyph is used (consistent with the brand in the side panel).
-async function setEmojiIcon(): Promise<void> {
-  try {
-    const sizes = [16, 32, 48, 128];
-    const imageData: Record<number, ImageData> = {};
-    for (const size of sizes) {
-      const c = new OffscreenCanvas(size, size);
-      const ctx = c.getContext('2d')!;
-      ctx.clearRect(0, 0, size, size);
-      ctx.font = `${Math.floor(size * 0.82)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🤏', size / 2, size / 2 + size * 0.04);
-      imageData[size] = ctx.getImageData(0, 0, size, size);
-    }
-    await chrome.action.setIcon({imageData});
-  } catch (e) { console.warn(LOG, 'setEmojiIcon', e); }
-}
+// Toolbar icon: the manifest's committed PNG icons (src/icons/icon*.png) ARE
+// the canonical Segoe pinch, so we no longer draw the emoji into ImageData at
+// startup. The old canvas render picked whatever emoji font the OS had, which
+// disagreed with the committed brand mark on non-Windows systems — dropping it
+// makes the toolbar icon match the panel + wordmark everywhere.
 
 chrome.runtime.onInstalled.addListener(async () => {
   try { chrome.contextMenus.create({id: 'pg-capture', title: 'PinchGrab — capture this element', contexts: ['all']}); }
   catch { /* may already exist */ }
-  void setEmojiIcon();
-});
-
-chrome.runtime.onStartup?.addListener(() => {
-  void setEmojiIcon();
 });
 
 // Ensure the toolbar click fires OUR action.onClicked (not Chrome's panel

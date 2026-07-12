@@ -1737,7 +1737,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     if (messages.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.innerHTML = `<div class="empty-icon">🤏</div>
+      empty.innerHTML = `<img class="empty-icon pinch-img" src="pinch-mark.png" alt="" />
         <div class="empty-title">Start with the page you want to critique.</div>
         <div class="empty-body">Open a page, then capture an element. Comments stay paired with the thing you grabbed.</div>
         <div class="empty-keys">Alt+Click to capture</div>`;
