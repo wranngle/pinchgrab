@@ -135,6 +135,55 @@ const PINCHGRAB_SKILL_PATH = '.agents/skills/PinchGrab/SKILL.md';
 const PFD_SKILL_PATH = 'perception-first-design/skills/pfd/SKILL.md';
 const SKILLS_INDEX_PATH = 'skills-index.json';
 
+// ─── Bundle token accounting ────────────────────────────────────────────────
+// The bundle's byte weight is dominated by read-lazily scaffolding (the ~1.2 MB
+// of vendored skills, licenses, screenshots, generated indexes). The "signal"
+// — what an agent actually reads end-to-end up front — is a small subset. We
+// ship a bundle .gitignore marking the lazy set so token estimators discount
+// it, and report signal-vs-total in the manifest. The bootstrap/AGENT-PROTOCOL
+// warns the agent NOT to honor the ignore too strictly (mapped skills are
+// still read on demand).
+
+/** Files the agent reads UP FRONT — the token "signal". */
+export const SIGNAL_PATHS = [
+  'AGENT-PROTOCOL.md', 'README.md', 'repair-index.md', 'DESIGN.md',
+  PINCHGRAB_SKILL_PATH, PFD_SKILL_PATH, SKILLS_INDEX_PATH,
+];
+
+/** True when `name` is part of the up-front read (signal), not lazy. */
+export const isSignalPath = (name, jsonlName) => name === jsonlName || SIGNAL_PATHS.includes(name);
+
+/** gitignore-syntax content for the bundle root — the lazy-read manifest. */
+export const buildBundleIgnore = () => [
+  '# PinchGrab bundle ignore — a token-accounting + read-lazily signal.',
+  '#',
+  '# The paths below are NOT part of the up-front read: vendored skills are',
+  '# consulted per-comment, screenshots per-comment, licenses/indexes on',
+  '# reference. Token estimators can discount them; the manifest\'s `tokens`',
+  '# field reports the signal (up-front) vs total counts.',
+  '#',
+  '# AGENTS: do NOT honor this too strictly. It is a lazy-read hint, NOT a',
+  '# never-open rule — you MUST still read the skill files you map to each',
+  '# comment, and any screenshot you are verifying (see AGENT-PROTOCOL.md).',
+  '',
+  '# Vendored design skills (read the ones you map per comment).',
+  '.agents/skills/impeccable/',
+  'perception-first-design/',
+  '!perception-first-design/skills/pfd/SKILL.md',
+  '',
+  '# Binaries + generated reference (open on demand).',
+  'screenshots/',
+  'pages/',
+  'duckdb.sql',
+  'schema.json',
+  '',
+  '# Upstream licenses / notices.',
+  '**/LICENSE',
+  '**/NOTICE',
+  '**/NOTICE.md',
+  '',
+].join('\n');
+
 const orchestrationText = ({workspace, bundleId, jsonlName}) =>
   `PHASE map: for EVERY comment row in ${jsonlName}, decide which bundled skills apply and append one comment row to ~/.pinchgrab/workspaces/${workspace}/work-manifest.jsonl carrying a mapped_skills field whose entries are locators — paths relative to the extraction root (e.g. .agents/skills/impeccable/reference/<file>.md, ${PFD_SKILL_PATH}, ${PINCHGRAB_SKILL_PATH}; the full index is ${SKILLS_INDEX_PATH}). The export pre-seeds heuristic suggestedSkills on each feedback row; verify and correct them, do not trust them blindly. ` +
   `PHASE plan: fan out one background atomic subagent per comment; pass each subagent a standalone JSONL subinstruction (template in AGENT-PROTOCOL.md) containing the full comment row, its parent selector row, the bundle manifest line, and the FULL TEXT of every mapped skill prompt; each subagent uses your /plan (planning) capability for its phase and returns a plan, saved to plans/${bundleId}/<FEEDBACK_UID>.plan.md; each subagent also polishes its plan with /perception-first-design:all. ` +
@@ -311,6 +360,13 @@ export const buildAgentProtocolMd = (opts) => {
   out.push('');
   out.push('Screenshots (`screenshots/`, indexed by `screenshots.json`) and the');
   out.push('impeccable reference files are read per-comment during the phases below.');
+  out.push('');
+  out.push('The bundle ships a `.gitignore` marking that lazy set (skills, screenshots,');
+  out.push('licenses, indexes) so token estimators can discount it — the manifest\'s');
+  out.push('`tokens` field reports the up-front `signal` vs `total`. **Do NOT honor the');
+  out.push('.gitignore too strictly:** it is a read-lazily hint, not a never-open rule.');
+  out.push('You MUST still read every skill file you map to a comment, and any');
+  out.push('screenshot you verify.');
   out.push('');
   if (designIsTemplate) {
     out.push('> **WARNING — DESIGN_MD_IS_STOCK_TEMPLATE.** ' + warningText);

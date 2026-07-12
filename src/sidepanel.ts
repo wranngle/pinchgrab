@@ -17,7 +17,7 @@ import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
 import {BUNDLED_SKILLS_PRESENT, BUNDLED_SKILL_FILES} from './bundled-skills.gen.ts';
-import {buildAgentPromptJsonl, buildAgentProtocolMd, type SkillsIndex} from './export-agent-prompt.mjs';
+import {buildAgentPromptJsonl, buildAgentProtocolMd, buildBundleIgnore, isSignalPath, type SkillsIndex} from './export-agent-prompt.mjs';
 import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
@@ -3269,6 +3269,15 @@ import {serializeCaptureJson} from './export-capture.mjs';
             required: ['archivePath'],
             properties: {archivePath: {type: 'string'}},
           },
+          tokens: {
+            type: 'object',
+            required: ['signalBytes', 'totalBytes', 'signalTokens', 'totalTokens', 'ignore'],
+            properties: {
+              signalBytes: {type: 'integer'}, totalBytes: {type: 'integer'},
+              signalTokens: {type: 'integer'}, totalTokens: {type: 'integer'},
+              ignore: {type: 'string'},
+            },
+          },
           bundledSkills: {
             type: 'array',
             items: {
@@ -3647,6 +3656,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
       '- `schema.json` — JSON-Schema (draft 2020-12) describing every row type.',
       '- `duckdb.sql` — copy-and-paste recipes for querying the JSONL with DuckDB.',
       manifest.bundledSkills?.length ? `- \`skills-index.json\` — locator index for the ${manifest.bundledSkills.length} bundled skill documents (id → archive path → purpose → upstream provenance).` : '',
+      manifest.tokens ? `- \`.gitignore\` — the read-lazily set (skills, screenshots, licenses). The up-front read is ~**${manifest.tokens.signalTokens.toLocaleString()}** tokens of ~**${manifest.tokens.totalTokens.toLocaleString()}** total; the rest is opened on demand. Do NOT honor it too strictly — you still read mapped skill files and verified screenshots.` : '',
       manifest.bundledSkills?.length ? '- `.agents/skills/impeccable/reference/*.md` + `perception-first-design/**` — vendored design skills, each with its upstream license; read them from this archive, no installation needed.' : '',
       manifest.pagesHtml?.length ? `- \`pages/*.html\` — full serialized HTML of ${manifest.pagesHtml.length} captured page${manifest.pagesHtml.length === 1 ? '' : 's'} (opt-in).` : '',
       manifest.design?.inline ? `- \`DESIGN.md\` — ${manifest.design.customized ? 'project-customized design source-of-truth (trust as canonical).' : manifest.design.template ? 'PinchGrab\'s bundled DESIGN.md template (placeholder — verify before applying).' : ''}` : '',
@@ -3884,7 +3894,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // waiting on the assembled archive.
     const {entries: pageHtmlEntries, pagesMeta, diagnostics: pageHtmlDiagnostics} = await collectPageHtmlEntries();
     const entryNames = [
-      'README.md', 'repair-index.md', jsonlName, 'screenshots.json', 'duckdb.sql', 'schema.json', 'AGENT-PROTOCOL.md',
+      'README.md', 'repair-index.md', jsonlName, 'screenshots.json', 'duckdb.sql', 'schema.json', 'AGENT-PROTOCOL.md', '.gitignore',
       ...shotEntries.map((e) => e.name),
       'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md',
       ...(prefs.bundleSkills && BUNDLED_SKILLS_PRESENT ? BUNDLED_SKILL_FILES.map((f) => f.archive) : []),
@@ -3995,6 +4005,25 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // agentPromptOpts (predicted entry names) as the clipboard payload, so
     // the in-bundle doctrine and the copied prompt agree exactly.
     tarEntries.push({name: 'AGENT-PROTOCOL.md', data: buildAgentProtocolMd({...agentPromptOpts, skillsIndex})});
+    // Bundle .gitignore: marks the read-lazily scaffolding (skills,
+    // screenshots, licenses, indexes) so token estimators discount it and
+    // agents load only the signal up front. Placed last so it can't shadow
+    // a real entry name.
+    tarEntries.push({name: '.gitignore', data: buildBundleIgnore()});
+    // Token budget: signal (up-front read) vs total. Reported in the
+    // manifest so the receipt reflects what the agent actually ingests,
+    // not the ~1.2 MB of lazy scaffolding.
+    let signalBytes = 0; let totalBytes = 0;
+    for (const e of tarEntries) {
+      const b = typeof e.data === 'string' ? new TextEncoder().encode(e.data).length : (e.data as Uint8Array).length;
+      totalBytes += b;
+      if (isSignalPath(e.name, jsonlName)) signalBytes += b;
+    }
+    manifest.tokens = {
+      signalBytes, totalBytes,
+      signalTokens: Math.ceil(signalBytes / 4), totalTokens: Math.ceil(totalBytes / 4),
+      ignore: '.gitignore',
+    };
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are
     // assembled but BEFORE we tar them, so we know what's in the
@@ -4372,28 +4401,45 @@ ORDER BY s.n;
   };
 
   // ─── Validation ─────────────────────────────────────────────────────────
-  const runValidation = async (): Promise<void> => {
+  // Returns a summary so the caller can give honest feedback: `attached`
+  // distinguishes "content script isn't on the page" (the silent-no-op case
+  // that made this feature feel useless) from a real resolve/miss count.
+  type ValidationResult = {total: number; resolved: number; attached: boolean};
+  const runValidation = async (): Promise<ValidationResult> => {
     const selectors = [...new Set(messages.filter((m): m is SelectorMessage => m.type === 'selector').map((m) => m.entry.selector))];
-    if (!selectors.length || !inExtension) return;
+    if (!selectors.length || !inExtension) return {total: selectors.length, resolved: 0, attached: true};
     try {
       const tabs = await chrome.tabs.query({active: true, currentWindow: true});
-      if (!tabs[0]) return;
+      if (!tabs[0]) return {total: selectors.length, resolved: 0, attached: false};
       liveTabUrl = tabs[0].url ?? liveTabUrl;
       liveTabPath = pathOf(liveTabUrl ?? '');
       const reply = await chrome.tabs.sendMessage(tabs[0].id!, pg({kind: 'validate', selectors})) as {valid?: Record<string, boolean>};
-      if (reply?.valid) {
-        for (const [sel, ok] of Object.entries(reply.valid)) {
-          selectorValidity.set(sel, ok);
-          if (!ok) selectorErrors.set(sel, 'No element on the live page matches this selector.');
-        }
-        render();
+      if (!reply?.valid) return {total: selectors.length, resolved: 0, attached: false};
+      let resolved = 0;
+      for (const [sel, ok] of Object.entries(reply.valid)) {
+        selectorValidity.set(sel, ok);
+        if (ok) resolved++;
+        else selectorErrors.set(sel, 'No element on the live page matches this selector.');
       }
-    } catch { /* tab not ready */ }
+      render();
+      return {total: selectors.length, resolved, attached: true};
+    } catch { return {total: selectors.length, resolved: 0, attached: false}; }
   };
   const onValidate = async (): Promise<void> => {
-    setStatus('Re-checking…', {kind: 'info'});
-    await runValidation();
-    setStatus('Validated');
+    if (!messages.some((m) => m.type === 'selector')) { setStatus('No selectors to re-check', {kind: 'info'}); return; }
+    setStatus('Re-checking selectors on the live page…', {kind: 'info'});
+    const r = await runValidation();
+    if (!r.attached) {
+      setStatus("Can't reach the page — use Re-attach to page (Cmd+K), then re-check", {kind: 'warn'});
+      return;
+    }
+    const missed = r.total - r.resolved;
+    setStatus(
+      missed === 0
+        ? `All ${r.total} selector${r.total === 1 ? '' : 's'} resolve on the live page ✓`
+        : `${r.resolved}/${r.total} selectors resolve · ${missed} no longer match (flagged Stale)`,
+      missed === 0 ? {kind: 'ok'} : {kind: 'warn'},
+    );
   };
 
   // (Screenshot machinery removed alongside the .preview tile.)

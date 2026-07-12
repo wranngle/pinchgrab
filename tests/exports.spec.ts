@@ -770,6 +770,15 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     assert(Array.isArray(manifest.bundledSkills) && manifest.bundledSkills.length >= 34,
       `manifest.bundledSkills should list the skill inventory, got ${manifest.bundledSkills?.length}`);
     assert(/^[0-9a-f]{16}$/.test(manifest.bundleId), 'manifest.bundleId should be 16 hex');
+    // Bundle .gitignore + token budget (signal < total, ignore points at it).
+    const ignore = entries.find((e) => e.name === '.gitignore');
+    assert(ignore, `tar should include a bundle .gitignore, got ${names.join(', ')}`);
+    const ignoreTxt = dec.decode(ignore!.data);
+    assert(/\.agents\/skills\/impeccable\//.test(ignoreTxt) && /do NOT honor this too strictly/i.test(ignoreTxt),
+      'bundle .gitignore must mark the lazy skills set and carry the not-too-strictly warning');
+    assert(manifest.tokens && manifest.tokens.ignore === '.gitignore', 'manifest.tokens should point at the .gitignore');
+    assert(manifest.tokens.signalTokens < manifest.tokens.totalTokens,
+      `signal tokens (${manifest.tokens?.signalTokens}) must be < total (${manifest.tokens?.totalTokens}) with skills bundled`);
     const fb = jsonl.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((l) => l.type === 'feedback');
     assert(Array.isArray(fb.suggestedSkills) && fb.suggestedSkills.some((s: any) => s.skill === 'pinchgrab'),
       `feedback rows should carry suggestedSkills locator seeds, got ${JSON.stringify(fb.suggestedSkills)}`);

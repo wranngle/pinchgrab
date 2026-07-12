@@ -586,6 +586,11 @@ export type ExportManifest = {
   // Where the agent doctrine lives inside the archive (Send-to-Agent
   // protocol). Absent on plain JSONL exports.
   agentProtocol?: {archivePath: string};
+  // Bundle token budget: `signal*` is the up-front read (AGENT-PROTOCOL,
+  // README, repair-index, the JSONL, DESIGN, the two SKILLs, skills-index);
+  // `total*` is the whole archive. The lazy remainder is enumerated in the
+  // bundle file named by `ignore`. Estimator heuristic: bytes / 4.
+  tokens?: {signalBytes: number; totalBytes: number; signalTokens: number; totalTokens: number; ignore: string};
   // Vendored skill documents bundled into this archive (subset of the
   // richer skills-index.json at the archive root). `invocation` carries a
   // plugin-command form for harnesses that support it.
