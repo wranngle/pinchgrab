@@ -73,16 +73,18 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
   };
   // Effective content used by the export pipeline and the modal. When the
-  // user has customized via the textarea/upload, that wins; otherwise we
-  // fall back to local.* (the developer's pre-baked override) then to
-  // the generic template.
+  // user has customized via the textarea/upload, that wins; otherwise the
+  // PLAIN STOCK template. The old `local.*` dev-override preference is
+  // gone (operator ruling 2026-07-11): it silently substituted the
+  // developer's own brand files as the "default", contaminating exports
+  // that the manifest still flagged as bundled-default content.
   const resolveDesignContent = async (): Promise<string> => {
     if (prefs.designMd && prefs.designMd.trim()) return prefs.designMd;
-    return (await loadTemplate('localDesign')) || (await loadTemplate('designTemplate'));
+    return loadTemplate('designTemplate');
   };
   const resolveSkillContent = async (): Promise<string> => {
     if (prefs.skillMd && prefs.skillMd.trim()) return prefs.skillMd;
-    return (await loadTemplate('localSkill')) || (await loadTemplate('skillTemplate'));
+    return loadTemplate('skillTemplate');
   };
   // True when the user hasn't customized → prefs.{designMd|skillMd} is
   // empty and we're falling back to a bundled template/local resource.
@@ -222,8 +224,12 @@ import {serializeCaptureJson} from './export-capture.mjs';
     pageShotPerCapture: boolean;
     // Suppress Chrome's download bubble while PinchGrab writes its own
     // files (screenshots + exports). Requires the optional `downloads.ui`
-    // permission — the settings checkbox requests it on enable.
+    // permission. Default ON as intent; until the permission is actually
+    // granted (needs a user gesture — the nudge banner or the settings
+    // checkbox), saves stay visible.
     quietSaves: boolean;
+    // The user dismissed the quiet-saves nudge banner — never re-show it.
+    quietNudgeDismissed: boolean;
     // Bundle the vendored third-party design skills (impeccable reference
     // set + perception-first-design) plus skills-index.json into archive
     // exports. On by default: the Send-to-Agent protocol's skill-mapping
@@ -257,7 +263,8 @@ import {serializeCaptureJson} from './export-capture.mjs';
     skillPath: '~/.agents/skills/PinchGrab/SKILL.md',
     skillMd: '',
     pageShotPerCapture: false,
-    quietSaves: false,
+    quietSaves: true,
+    quietNudgeDismissed: false,
     bundleSkills: true,
     includePageHTML: false,
   };
@@ -1779,7 +1786,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     let lastSelectorEl: HTMLElement | null = null;
     for (const node of [...list.children] as HTMLElement[]) {
       if (node.classList.contains('msg') && node.classList.contains('selector')) lastSelectorEl = node;
-      else if (node.classList.contains('msg') && node.classList.contains('feedback') && lastSelectorEl) drawNoodle(lastSelectorEl, node);
+      // Only THREADED comments get a connector — a detached comment must
+      // lose its noodle, not just its indent (the visible "disconnect").
+      else if (node.classList.contains('msg') && node.classList.contains('feedback') && node.classList.contains('threaded') && lastSelectorEl) drawNoodle(lastSelectorEl, node);
       else if (node.classList.contains('insert-rail') && node.classList.contains('expanded') && lastSelectorEl) {
         const target = node.querySelector<HTMLElement>('.inline-comment') ?? node;
         drawNoodle(lastSelectorEl, target);
@@ -2324,9 +2333,15 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // comment currently reads as threaded (FK or adjacency).
     if (lastSelectorSel || m.parentUid) {
       actions.append(actionBtn('unlink', 'Detach from its capture — make this a standalone comment', () => {
+        // Resolve by id from the LIVE array: workspace switches and
+        // undo/redo reassign `messages`, so the closure's `m` can be a
+        // stale object whose mutation would be silently dropped by the
+        // next persist().
+        const live = messages.find((x): x is FeedbackMessage => x.type === 'feedback' && x.id === m.id);
+        if (!live) { setStatus('Comment no longer exists', {kind: 'warn'}); return; }
         snapshot();
-        delete m.parentUid;
-        m.detached = true;
+        delete live.parentUid;
+        live.detached = true;
         persist();
         render();
         setStatus('Comment detached — drag its handle onto a capture to reattach');
@@ -3952,6 +3967,17 @@ import {serializeCaptureJson} from './export-capture.mjs';
     const tarBytes = buildTar(tarEntries);
     const archiveBytes = wrapZstd(tarBytes);
 
+    // Copy the Send-to-Agent payload NOW, while the click's focus is still
+    // fresh: the save below can take seconds (screenshot batches, download
+    // completion polling) and Chrome's download UI can steal focus, which
+    // makes navigator.clipboard writes fail silently. The predicted path is
+    // the stable Downloads-relative form (the bootstrap expands the ~);
+    // once the save resolves we re-copy with the real absolute path,
+    // best-effort — if that one fails, this copy already stands.
+    const predictedPath = `~/Downloads/pinchgrab/${activeWs}/exports/${archiveName}`;
+    lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: predictedPath});
+    const earlyCopied = await copyToClipboardSilent(lastExport.agentPrompt);
+
     if (inExtension) {
       console.log(LOG, 'onExportArchive →', {archiveName, tarBytes: tarBytes.length, archiveBytes: archiveBytes.length, screenshots: shotEntries.length});
       // Pass as a plain number[] over sendMessage; structured-clone of
@@ -3969,17 +3995,17 @@ import {serializeCaptureJson} from './export-capture.mjs';
         lastExport.tempPath = Boolean(reply.tempPath);
         lastExport.kind = 'tar.zst';
         updateCopyPathButton();
-        // Send to Agent: the clipboard gets the full JSONL prompt payload —
-        // instruction, idempotent bootstrap, mandatory-read file list,
-        // bundle tree, orchestration doctrine — hydrated with the REAL
-        // saved path (not just the bare path anymore).
+        // Refresh the already-copied payload with the REAL saved path.
+        // Best-effort: focus may be gone by now, and the early copy above
+        // already holds a valid payload (predicted ~/Downloads path).
         const pathToCopy = lastExport.copyPath ?? reply.absPath;
         lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: pathToCopy});
-        const promptCopied = await copyToClipboardSilent(lastExport.agentPrompt);
+        const lateCopied = await copyToClipboardSilent(lastExport.agentPrompt);
+        const promptCopied = lateCopied || earlyCopied;
         const leaf = pathToCopy.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? pathToCopy;
         if (promptCopied) showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
         setStatus(
-          `Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${promptCopied ? ' · prompt copied' : ''}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
+          `Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${promptCopied ? ' · prompt copied' : ' · clipboard blocked — use Cmd+K → Copy Send-to-Agent prompt'}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
         );
         return;
       }
@@ -4001,10 +4027,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     lastExport.tempPath = false;
     lastExport.kind = 'tar.zst';
     updateCopyPathButton();
-    lastExport.agentPrompt = buildAgentPromptJsonl(agentPromptOpts);
-    await copyToClipboardSilent(lastExport.agentPrompt);
+    // The predicted-path payload was already copied before the save.
     showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
-    setStatus(`Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled · prompt copied`);
+    setStatus(`Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${earlyCopied ? ' · prompt copied' : ''}`);
   };
 
   // Best-effort clipboard write — never throws; returns whether the
@@ -4356,6 +4381,39 @@ ORDER BY s.n;
     const reply = await sendToBg<{ok: boolean; error?: string}>({kind: 'pg-reinject'});
     if (reply?.ok) setStatus('Re-attached — Alt+Click is live');
     else setStatus(`Couldn't re-attach — click the PinchGrab toolbar button on the page${reply?.error ? ` · ${reply.error}` : ''}`, {kind: 'warn'});
+  };
+
+  // ─── Quiet-saves nudge ────────────────────────────────────────────────────
+  // quietSaves defaults ON as intent, but the optional downloads.ui
+  // permission Chrome demands can only be requested inside a user gesture.
+  // This banner is that gesture: shown while the pref is on, the permission
+  // is missing, and the user hasn't dismissed it.
+  const quietNudge = document.querySelector<HTMLElement>('[data-quiet-nudge]');
+  const maybeShowQuietNudge = async (): Promise<void> => {
+    if (!quietNudge || !inExtension || !chrome.permissions?.contains) return;
+    if (!prefs.quietSaves || prefs.quietNudgeDismissed) { quietNudge.hidden = true; return; }
+    try {
+      const granted = await chrome.permissions.contains({permissions: ['downloads.ui']});
+      quietNudge.hidden = granted;
+    } catch { quietNudge.hidden = true; }
+  };
+  const onQuietEnable = async (): Promise<void> => {
+    let granted = false;
+    try { granted = await chrome.permissions.request({permissions: ['downloads.ui']}); }
+    catch (err) { console.warn(LOG, 'downloads.ui permission request failed', err); }
+    prefs.quietSaves = granted;
+    if (!granted) prefs.quietNudgeDismissed = true; // declined once — never nag again
+    persistPrefs();
+    applyPrefsToUI();
+    if (quietNudge) quietNudge.hidden = true;
+    setStatus(granted ? 'Quiet saves on — no more download popups' : 'Saves stay visible — re-enable in Settings → Capture', granted ? {} : {kind: 'info'});
+  };
+  const onQuietDismiss = (): void => {
+    prefs.quietSaves = false;
+    prefs.quietNudgeDismissed = true;
+    persistPrefs();
+    applyPrefsToUI();
+    if (quietNudge) quietNudge.hidden = true;
   };
 
   // ─── Settings drawer / workspaces ───────────────────────────────────────
@@ -4829,16 +4887,22 @@ ORDER BY s.n;
   // other controls and can't strand mid-screen through re-renders.
   const TIP_IDLE = 'Alt+Click on the page to capture · hover any control for help';
   let tipFor: HTMLElement | null = null;
+  // The settings drawer overlays the strip (position:absolute, inset 0), so
+  // hover help for drawer controls lands in a second sink inside the
+  // drawer header. Both sinks always receive the same text.
+  const drawerTipEl = document.querySelector<HTMLElement>('[data-drawer-tip]');
   const showTip = (target: HTMLElement): void => {
     const text = target.getAttribute('data-tip');
     if (!text) return;
     tooltipEl.textContent = text;
     tooltipEl.dataset.shown = 'true';
+    if (drawerTipEl) { drawerTipEl.textContent = text; drawerTipEl.dataset.shown = 'true'; }
   };
   const hideTip = (): void => {
     tipFor = null;
     tooltipEl.textContent = TIP_IDLE;
     tooltipEl.dataset.shown = 'false';
+    if (drawerTipEl) { drawerTipEl.textContent = ''; drawerTipEl.dataset.shown = 'false'; }
   };
   document.addEventListener('mouseover', (e) => {
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
@@ -4999,6 +5063,8 @@ ORDER BY s.n;
       case 'import': onImport(); return;
       case 'validate': void onValidate(); return;
       case 'reattach': void onReattach(); return;
+      case 'quiet-enable': void onQuietEnable(); return;
+      case 'quiet-dismiss': onQuietDismiss(); return;
       case 'clear': onClear(); return;
       case 'github': onGithub(); return;
       case 'settings': openDrawer(); return;
@@ -5013,10 +5079,9 @@ ORDER BY s.n;
       }
       case 'design-template-download': {
         void (async () => {
-          // Prefer the user's local override if present (so a fork's
-          // "Download template" produces the same content the fork ships)
-          // otherwise the generic template.
-          const text = (await loadTemplate('localDesign')) || (await loadTemplate('designTemplate'));
+          // Always the PLAIN STOCK template — the local.* dev-override
+          // preference contaminated defaults with a developer's own brand.
+          const text = await loadTemplate('designTemplate');
           if (!text) { setStatus('Template not found', {kind: 'warn'}); return; }
           downloadText('DESIGN.template.md', text);
           setStatus('DESIGN.md template downloaded — fill in and re-upload');
@@ -5036,7 +5101,7 @@ ORDER BY s.n;
       }
       case 'skill-template-download': {
         void (async () => {
-          const text = (await loadTemplate('localSkill')) || (await loadTemplate('skillTemplate'));
+          const text = await loadTemplate('skillTemplate');
           if (!text) { setStatus('Template not found', {kind: 'warn'}); return; }
           downloadText('PinchGrab.SKILL.template.md', text);
           setStatus('SKILL.md template downloaded');
@@ -5192,6 +5257,7 @@ ORDER BY s.n;
     render();
     installTestApi();
     void runValidation();
+    void maybeShowQuietNudge();
     void fetchStars();
     updateComposerMeter();
     updateUndoButtons();

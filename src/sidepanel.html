@@ -71,6 +71,17 @@
       </div>
     </div>
 
+    <!-- ───────────────────────── Quiet-saves nudge ─────────────── -->
+    <!-- Chrome's download bubble fires on every capture PinchGrab saves.
+         Suppressing it needs the optional downloads.ui permission, which
+         Chrome only grants inside a user gesture — this banner is that
+         gesture. Shown until granted or dismissed. -->
+    <div class="quiet-nudge" data-quiet-nudge hidden>
+      <span class="quiet-nudge-text">Silence Chrome's download popup for PinchGrab's own saves?</span>
+      <button class="primary" type="button" data-action="quiet-enable">Silence popups</button>
+      <button class="iconbtn-x" type="button" data-action="quiet-dismiss" data-tip="Keep the popups (re-enable later in Settings → Capture)" aria-label="Dismiss"><span data-icon="x" data-size="11"></span></button>
+    </div>
+
     <!-- ───────────────────────── Find bar (Ctrl+F) ────────────── -->
     <!-- In-list visual find: filters + highlights the captured list. Opens on
          Ctrl+F, closes on Esc. Distinct from the command palette. -->
@@ -137,6 +148,9 @@
     <aside class="drawer" data-drawer hidden>
       <header class="drawer-head">
         <span class="drawer-title">Settings</span>
+        <!-- Drawer-local tip sink: the drawer covers the main context strip,
+             so hover help for settings controls surfaces here instead. -->
+        <span class="drawer-tip" data-drawer-tip></span>
         <button class="iconbtn" type="button" data-action="close-drawer" data-tip="Close settings" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
       </header>
       <div class="drawer-body">
@@ -171,7 +185,7 @@
           <label data-tip="Paint margin and padding stripes around alt-hovered elements"><input type="checkbox" data-pref="spacingOverlay" /> Show spacing overlay on hover</label>
           <label data-tip="Snap hover and click to the nearest component · off = capture the deepest element under the cursor"><input type="checkbox" data-pref="hoverSnap" checked /> Snap hover to component</label>
           <label data-tip="Save a PNG of the element (and the full page) under Downloads/.pinchgrab/&lt;workspace&gt;/screenshots/"><input type="checkbox" data-pref="autoScreenshot" checked /> Auto-screenshot on capture</label>
-          <label data-tip="Hide Chrome's download popup while PinchGrab saves its own screenshots and exports · asks once for the downloads.ui permission"><input type="checkbox" data-pref="quietSaves" /> Quiet saves (no download popups)</label>
+          <label data-tip="Hide Chrome's download popup while PinchGrab saves its own screenshots and exports · asks once for the downloads.ui permission"><input type="checkbox" data-pref="quietSaves" checked /> Quiet saves (no download popups)</label>
           <label data-tip="Fire a fresh page screenshot on every capture, not just the first per page · useful for multi-step flows · costs one PNG per capture"><input type="checkbox" data-pref="pageShotPerCapture" /> Page screenshot on every capture</label>
           <label class="ta-row" data-tip="Hosts to skip (comma-separated, substring match) · captures on these hosts won't write screenshots to disk">
             <span>Skip screenshots on these hosts</span>

@@ -39,6 +39,8 @@ export const buildBootstrapScript = ({workspace, bundleId, archivePath, exportTs
   `WS='${workspace}'`,
   `BID='${bundleId}'`,
   `SRC='${archivePath}'`,
+  '# The clipboard may carry the ~/Downloads form; expand a leading ~.',
+  'SRC="${SRC/#\\~/$HOME}"',
   'ROOT="$HOME/.pinchgrab/workspaces/$WS"',
   'DEST="$ROOT/bundles/$BID"',
   'if [ -f "$DEST/.extracted" ] && [ "$(cat "$DEST/.extracted")" = "$BID" ]; then',

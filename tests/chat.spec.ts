@@ -813,7 +813,21 @@ const startServer = () =>
     assert(strip.hovered.text!.includes('Re-check selectors'), `strip should show the control's tip, got "${strip.hovered.text}"`);
     assert.strictEqual(strip.after.shown, 'false', 'strip should return to idle on mouseout');
     assert(/alt\+click/i.test(strip.after.text ?? ''), 'idle strip should keep the Alt+Click hint');
-    console.log('test 48 ok: context strip shows hover help and returns to idle');
+    // The settings drawer covers the strip, so drawer controls surface
+    // their help in the drawer-head sink instead.
+    const drawerTip = await page.evaluate(() => {
+      window.__pinchgrab_panel.openDrawer();
+      const t = document.querySelector<HTMLElement>('.drawer [data-pref="quietSaves"]')!.closest('label')!;
+      t.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      const sink = document.querySelector<HTMLElement>('[data-drawer-tip]')!;
+      const shown = { text: sink.textContent, state: sink.dataset.shown };
+      t.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+      window.__pinchgrab_panel.closeDrawer();
+      return shown;
+    });
+    assert.strictEqual(drawerTip.state, 'true', 'drawer tip sink should activate on drawer-control hover');
+    assert(drawerTip.text!.includes('download popup'), `drawer sink should show the control's tip, got "${drawerTip.text}"`);
+    console.log('test 48 ok: context strip + drawer sink show hover help and return to idle');
   }
 
   // Test 49 ── Detach: the unlink action turns a threaded comment into a
@@ -828,23 +842,33 @@ const startServer = () =>
       }});
       sp.pushMessage({ type: 'feedback', id: 'df1', ts: new Date().toISOString(), text: 'detach this note', parentUid: 'det-uid' });
     });
-    const before = await page.evaluate(() => document.querySelectorAll('.msg.feedback.threaded').length);
-    assert.strictEqual(before, 1, 'seeded comment should render threaded');
+    // Noodles redraw on a rAF after render — wait for the connector.
+    await page.waitForFunction(() => document.querySelectorAll('.tree-noodle').length === 1);
+    const before = await page.evaluate(() => ({
+      threaded: document.querySelectorAll('.msg.feedback.threaded').length,
+      noodles: document.querySelectorAll('.tree-noodle').length,
+    }));
+    assert.strictEqual(before.threaded, 1, 'seeded comment should render threaded');
+    assert.strictEqual(before.noodles, 1, 'threaded comment should have a connector noodle');
     await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('button[aria-label^="Detach from its capture"]')!.click();
     });
+    // The visible "disconnect" is the noodle vanishing, not just the class.
+    await page.waitForFunction(() => document.querySelectorAll('.tree-noodle').length === 0);
     const after = await page.evaluate(() => {
       const threaded = document.querySelectorAll('.msg.feedback.threaded').length;
       const standalone = document.querySelectorAll('.msg.feedback:not(.threaded)').length;
+      const noodles = document.querySelectorAll('.tree-noodle').length;
       const fb = window.__pinchgrab_panel.buildJsonl('d.jsonl').split('\n').filter(Boolean)
         .map((l: string) => JSON.parse(l)).find((l: any) => l.type === 'feedback');
-      return { threaded, standalone, fb };
+      return { threaded, standalone, noodles, fb };
     });
     assert.strictEqual(after.threaded, 0, 'detached comment must not render threaded');
     assert.strictEqual(after.standalone, 1, 'detached comment should remain visible standalone');
+    assert.strictEqual(after.noodles, 0, 'detached comment must lose its connector noodle');
     assert.strictEqual(after.fb.parentUid, undefined, `detached export row must carry no parentUid, got ${JSON.stringify(after.fb)}`);
     assert.strictEqual(after.fb.detached, true, 'detached flag must round-trip into the export');
-    console.log('test 49 ok: detach makes a comment standalone in UI and export');
+    console.log('test 49 ok: detach disconnects — class, noodle, and export row');
   }
 
   // Test 50 ── 300px (side-panel minimum): drawer + prefs + palette all fit
