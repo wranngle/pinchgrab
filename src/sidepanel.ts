@@ -5249,6 +5249,38 @@ ORDER BY s.n;
     };
   };
 
+  // ─── Panel self-heal ─────────────────────────────────────────────────────
+  // After a dev extension reload (or an auto-update), the side panel keeps
+  // running its OLD code with an INVALIDATED chrome.runtime: chrome.runtime.id
+  // goes undefined and every chrome.* call throws "Extension context
+  // invalidated". A dead panel can't reach the background, so NO button in it
+  // works — which is exactly why the only recovery used to be "close the pane
+  // and reclick the toolbar". This heartbeat detects that death and reloads
+  // the panel page, which re-fetches the fresh code and reconnects. A
+  // sessionStorage counter (survives the reload) prevents a loop when the
+  // extension is genuinely gone rather than reloaded.
+  const watchContextHealth = (): void => {
+    if (!inExtension) return;
+    const RELOAD_KEY = 'pg.ctxReloads';
+    // Once we've been stably alive for a while, clear the loop guard.
+    setTimeout(() => { try { sessionStorage.removeItem(RELOAD_KEY); } catch { /* ignore */ } }, 15000);
+    setInterval(() => {
+      let alive = false;
+      try { alive = Boolean(chrome.runtime?.id); } catch { alive = false; }
+      if (alive) return;
+      let n = 0;
+      try { n = Number(sessionStorage.getItem(RELOAD_KEY) ?? '0'); } catch { /* ignore */ }
+      if (n >= 3) {
+        // Auto-recovery exhausted (extension likely uninstalled, not reloaded).
+        if (status) status.textContent = 'PinchGrab was reloaded — close this panel and reopen it from the toolbar.';
+        return;
+      }
+      try { sessionStorage.setItem(RELOAD_KEY, String(n + 1)); } catch { /* ignore */ }
+      if (status) status.textContent = 'PinchGrab reloaded — reconnecting…';
+      setTimeout(() => { try { location.reload(); } catch { /* ignore */ } }, 600);
+    }, 2000);
+  };
+
   // ─── Boot ──────────────────────────────────────────────────────────────
   void (async () => {
     await loadAll();
@@ -5261,6 +5293,7 @@ ORDER BY s.n;
     void fetchStars();
     updateComposerMeter();
     updateUndoButtons();
+    watchContextHealth();
     console.log(LOG, 'ready', {inExtension, ws: activeWs, messages: messages.length});
   })();
 })();
