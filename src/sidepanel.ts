@@ -230,6 +230,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     quietSaves: boolean;
     // The user dismissed the quiet-saves nudge banner — never re-show it.
     quietNudgeDismissed: boolean;
+    // Continuously mirror the workspace JSONL to disk (beside screenshots)
+    // so captures + comments survive a storage clear / extension reinstall.
+    // On by default — this is the safety net against silent annotation loss.
+    autosaveToDisk: boolean;
     // Bundle the vendored third-party design skills (impeccable reference
     // set + perception-first-design) plus skills-index.json into archive
     // exports. On by default: the Send-to-Agent protocol's skill-mapping
@@ -265,6 +269,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     pageShotPerCapture: false,
     quietSaves: true,
     quietNudgeDismissed: false,
+    autosaveToDisk: true,
     bundleSkills: true,
     includePageHTML: false,
   };
@@ -651,7 +656,42 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // resolve descendants → captured ancestor.
     const selectors = messages.filter((m): m is SelectorMessage => m.type === 'selector').map((m) => m.entry.selector);
     sendToCS({kind: 'set-captured', selectors});
+    scheduleAutosave();
   };
+
+  // ─── Disk autosave (crash/reinstall safety net) ───────────────────────────
+  // Captures + comments otherwise live ONLY in chrome.storage until an
+  // export. chrome.storage is per-extension-instance, so a Remove+re-add of
+  // an unpacked build (new extension id) — or a storage clear — silently
+  // wipes every workspace, and the on-disk screenshots become orphans with
+  // no annotations. This debounced mirror writes the workspace JSONL to
+  // Downloads/pinchgrab/<ws>/<ws>.autosave.jsonl (right beside screenshots/)
+  // so the work is always recoverable by Import, independent of the
+  // extension's storage. Overwrites in place; Quiet saves suppresses the
+  // download popup.
+  const AUTOSAVE_DEBOUNCE_MS = 12000;
+  let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let autosaveDirty = false;
+  const flushAutosave = (): void => {
+    autosaveDirty = false;
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = undefined; }
+    if (!inExtension || !prefs.autosaveToDisk || !messages.length) return;
+    const ws = activeWs;
+    const filename = `${ws}.autosave.jsonl`;
+    try {
+      const text = buildJsonl(filename, 'jsonl');
+      void sendToBg({kind: 'save-text', workspace: ws, filename, text, mime: 'application/jsonl', subdir: ''});
+    } catch (err) { console.warn(LOG, 'autosave failed', err); }
+  };
+  const scheduleAutosave = (): void => {
+    if (!inExtension || !prefs.autosaveToDisk) return;
+    autosaveDirty = true;
+    if (autosaveTimer) return; // one write per debounce window
+    autosaveTimer = setTimeout(() => { autosaveTimer = undefined; if (autosaveDirty) flushAutosave(); }, AUTOSAVE_DEBOUNCE_MS);
+  };
+  // Flush pending work the moment the panel is hidden/closed — the last
+  // debounce window would otherwise be lost on close.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && autosaveDirty) flushAutosave(); });
   const persistPrefs = (): void => {
     void Store.set(PREFS_STORAGE_NAME, prefs);
     // Push the subset of prefs the content script cares about so its
@@ -3834,9 +3874,40 @@ import {serializeCaptureJson} from './export-capture.mjs';
     const jsonlName = `${stem}.jsonl`;
     const manifestOpts = {nowIso: exportedAtIso, bundleId};
     const manifest = buildManifest(archiveName, 'tar.zst', manifestOpts);
-    // Load the tar-bound extras BEFORE the docs render so the README and
-    // manifest can describe exactly what ships: vendored skills (+ parsed
-    // skills index) and opt-in full-page HTML.
+
+    // ── Fast path: assemble + copy the Send-to-Agent prompt NOW, before the
+    // heavy work (fetching ~120 skill files, building + zstd-wrapping the tar,
+    // polling the download to completion). The clipboard write must land while
+    // the click's focus is fresh — Chrome's download UI steals focus and makes
+    // navigator.clipboard fail silently. The bundle tree's entry names are
+    // DETERMINISTIC, so we predict them from static data (no fetch) instead of
+    // waiting on the assembled archive.
+    const {entries: pageHtmlEntries, pagesMeta, diagnostics: pageHtmlDiagnostics} = await collectPageHtmlEntries();
+    const entryNames = [
+      'README.md', 'repair-index.md', jsonlName, 'screenshots.json', 'duckdb.sql', 'schema.json', 'AGENT-PROTOCOL.md',
+      ...shotEntries.map((e) => e.name),
+      'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md',
+      ...(prefs.bundleSkills && BUNDLED_SKILLS_PRESENT ? BUNDLED_SKILL_FILES.map((f) => f.archive) : []),
+      ...pageHtmlEntries.map((e) => e.name),
+    ].sort();
+    const agentPromptOpts = {
+      workspace: activeWs,
+      bundleId,
+      // Predicted Downloads-relative path (the bootstrap expands the ~); the
+      // real absolute path is re-copied after the save resolves.
+      archivePath: `~/Downloads/pinchgrab/${activeWs}/exports/${archiveName}`,
+      exportTs: exportedAtIso,
+      jsonlName,
+      counts: {comments: manifest.counts.feedback, selectors: manifest.counts.selectors, pages: manifest.counts.pages, screenshots: shotEntries.length},
+      entryNames,
+      designIsTemplate: isUsingTemplateDesign(),
+    };
+    lastExport.agentPrompt = buildAgentPromptJsonl(agentPromptOpts);
+    const earlyCopied = await copyToClipboardSilent(lastExport.agentPrompt);
+    if (earlyCopied) showCopied('Prompt copied', 'assembling the bundle…');
+
+    // Now the heavy assembly — the clipboard already holds the prompt. Load
+    // the vendored skills (+ parse the index for the manifest/README).
     const skillEntries: TarEntry[] = [];
     let skillsIndex: SkillsIndex | null = null;
     if (prefs.bundleSkills && BUNDLED_SKILLS_PRESENT) {
@@ -3851,7 +3922,6 @@ import {serializeCaptureJson} from './export-capture.mjs';
       }
       if (skipped) console.warn(LOG, `bundled skills: ${skipped}/${loaded.length} files missing from this build — export continues without them`);
     }
-    const {entries: pageHtmlEntries, pagesMeta, diagnostics: pageHtmlDiagnostics} = await collectPageHtmlEntries();
     manifest.agentProtocol = {archivePath: 'AGENT-PROTOCOL.md'};
     if (skillsIndex?.skills?.length) {
       manifest.bundledSkills = skillsIndex.skills.map((s) => ({
@@ -3921,21 +3991,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     // Vendored skills + opt-in page HTML (loaded above, before the docs).
     tarEntries.push(...skillEntries, ...pageHtmlEntries);
-    // AGENT-PROTOCOL.md — the full Send-to-Agent doctrine. Hydrated last so
-    // its bundle tree reflects every entry above (plus itself); the same
-    // options rebuild the clipboard payload after the save resolves the
-    // real absolute archive path.
-    const entryNamesForDocs = [...tarEntries.map((e) => e.name), 'AGENT-PROTOCOL.md'].sort();
-    const agentPromptOpts = {
-      workspace: activeWs,
-      bundleId,
-      archivePath: archiveName,
-      exportTs: exportedAtIso,
-      jsonlName,
-      counts: {comments: manifest.counts.feedback, selectors: manifest.counts.selectors, pages: manifest.counts.pages, screenshots: shotEntries.length},
-      entryNames: entryNamesForDocs,
-      designIsTemplate: isUsingTemplateDesign(),
-    };
+    // AGENT-PROTOCOL.md — the full Send-to-Agent doctrine. Uses the SAME
+    // agentPromptOpts (predicted entry names) as the clipboard payload, so
+    // the in-bundle doctrine and the copied prompt agree exactly.
     tarEntries.push({name: 'AGENT-PROTOCOL.md', data: buildAgentProtocolMd({...agentPromptOpts, skillsIndex})});
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are
@@ -3963,20 +4021,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
 
     // Stamp every entry with the export clock so archive bytes are a pure
     // function of content + clock (buildTar would otherwise sample now()).
+    // The Send-to-Agent prompt was already copied at the top of this
+    // function (fast path); only the archive bytes remain to be saved.
     for (const e of tarEntries) e.mtime ??= mtimeSec;
     const tarBytes = buildTar(tarEntries);
     const archiveBytes = wrapZstd(tarBytes);
-
-    // Copy the Send-to-Agent payload NOW, while the click's focus is still
-    // fresh: the save below can take seconds (screenshot batches, download
-    // completion polling) and Chrome's download UI can steal focus, which
-    // makes navigator.clipboard writes fail silently. The predicted path is
-    // the stable Downloads-relative form (the bootstrap expands the ~);
-    // once the save resolves we re-copy with the real absolute path,
-    // best-effort — if that one fails, this copy already stands.
-    const predictedPath = `~/Downloads/pinchgrab/${activeWs}/exports/${archiveName}`;
-    lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: predictedPath});
-    const earlyCopied = await copyToClipboardSilent(lastExport.agentPrompt);
 
     if (inExtension) {
       console.log(LOG, 'onExportArchive →', {archiveName, tarBytes: tarBytes.length, archiveBytes: archiveBytes.length, screenshots: shotEntries.length});
