@@ -918,6 +918,49 @@ const startServer = () =>
     console.log('test 51 ok: fresh inject takes over the orphan; overlay rides the top layer');
   }
 
+  // Test 52 ── Send-to-Agent review screen: seeds the prompt, copy tick,
+  // advanced pref toggle, palette re-open.
+  {
+    await page.setViewportSize({ width: 420, height: 800 });
+    await page.evaluate(() => {
+      const sp = window.__pinchgrab_panel;
+      sp.clear();
+      sp.pushMessage({ type: 'selector', id: 'as1', ts: new Date().toISOString(), entry: {
+        uid: 'as-uid', n: 1, ts: new Date().toISOString(), url: 'https://x.test/', tag: 'button',
+        selector: '#a', rect: { x: 0, y: 0, w: 10, h: 10 }, viewport: { w: 800, h: 600, dpr: 1 },
+      }});
+      sp.pushMessage({ type: 'feedback', id: 'af1', ts: new Date().toISOString(), text: 'fix this', parentUid: 'as-uid' });
+    });
+    // Export populates lastExport.agentPrompt; then open the review screen.
+    await page.evaluate(() => window.__pinchgrab_panel.onExportZip());
+    await page.waitForFunction(() => window.__pinchgrab_panel.getLastAgentPrompt() != null);
+    const screen = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-agent-screen]')!;
+      const ta = document.querySelector<HTMLTextAreaElement>('[data-agent-screen-textarea]')!;
+      const visible = !el.hidden; // showAgentScreen default-on opens it after export
+      const promptLoaded = ta.value.includes('pinchgrab-send-to-agent') && ta.value.split('\n').length >= 8;
+      // Advanced toggles reflect prefs.
+      const adv = el.querySelectorAll('input[data-agent-pref]').length;
+      return { visible, promptLoaded, adv };
+    });
+    assert.strictEqual(screen.visible, true, 'review screen should open after Send to Agent (showAgentScreen default on)');
+    assert.strictEqual(screen.promptLoaded, true, 'review screen textarea should hold the multi-line agent prompt');
+    assert(screen.adv >= 5, `advanced section should expose export toggles, got ${screen.adv}`);
+    // Copy tick appears on copy.
+    const tick = await page.evaluate(async () => {
+      document.querySelector<HTMLButtonElement>('[data-agent-screen-copy]')!.click();
+      await new Promise((r) => setTimeout(r, 50));
+      return !document.querySelector<HTMLElement>('[data-agent-screen-copied]')!.hidden;
+    });
+    assert.strictEqual(tick, true, 'a green "Copied" tick should show after clicking Copy');
+    // Esc closes; palette command re-opens.
+    await page.evaluate(() => document.querySelector<HTMLElement>('[data-agent-screen]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    const closed = await page.evaluate(() => document.querySelector<HTMLElement>('[data-agent-screen]')!.hidden);
+    assert.strictEqual(closed, true, 'Esc should close the review screen');
+    console.log('test 52 ok: Send-to-Agent review screen (prompt, copy tick, advanced, esc)');
+  }
+
   console.log('chat.spec all tests passed');
   await browser.close();
   server.close();
