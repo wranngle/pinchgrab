@@ -16,6 +16,10 @@ paths = [
   '''\.env\.sample$''',
   '''\.gitleaks\.toml$''',
   '''\.gitleaksignore$''',
+  # PII redaction module + its corpus carry deliberately fake secrets
+  # (test emails, tokens, cards, SSNs) as detector fixtures — not real.
+  '''tests/redact\.test\.mjs$''',
+  '''src/redact\.mjs$''',
 ]
 regexes = [
   '''(?i)(example|dummy|fake|mock|placeholder|sample|test)[_-]?(api[_-]?key|secret|token|password)''',
