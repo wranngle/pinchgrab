@@ -1,6 +1,6 @@
 {
   "name": "pinchgrab",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "alt+click any element, comment inline, and hand your coding agent a bundle it can act on",
   "keywords": [
     "cli",
@@ -25,6 +25,7 @@
   "scripts": {
     "build": "bun run scripts/build-extension.ts",
     "package": "bun run scripts/package-extension.ts",
+    "sync:skills": "bun run scripts/sync-bundled-skills.ts",
     "watch": "bun run --watch scripts/build-extension.ts",
     "typecheck": "tsc --noEmit",
     "lint": "xo",
@@ -40,7 +41,7 @@
     "test:exports": "tsx tests/exports.spec.ts",
     "test:extension": "tsx tests/extension.spec.ts",
     "test:tour": "tsx tests/framework-tour.spec.ts",
-    "test:legacy": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs && node --test tests/annotator.test.mjs",
+    "test:legacy": "node --test tests/schema.test.mjs && node tests/replay.test.mjs && node tests/replay-auth.test.mjs && node --test tests/export.test.mjs && node --test tests/export-puppeteer.test.mjs && node --test tests/export-english.test.mjs && node --test tests/visual-diff.test.mjs && node --test tests/cross-browser.test.mjs && node --test tests/network-replay.test.mjs && node --test tests/annotator.test.mjs && node --test tests/agent-protocol.test.mjs && node --test tests/bundled-skills.test.mjs",
     "test:schema": "node --test tests/schema.test.mjs",
     "test:replay": "node tests/replay.test.mjs",
     "test:replay-auth": "node tests/replay-auth.test.mjs",
@@ -74,6 +75,7 @@
     "bin/pinchgrab",
     "bin/replay-multi",
     "src/replay.mjs",
+    "src/recapture.mjs",
     "src/replay-multi.mjs",
     "src/healing.mjs",
     "src/export-playwright.mjs",
@@ -247,6 +249,8 @@
       "node_modules/**",
       "lib/**",
       "src/templates.gen.ts",
+      "src/bundled-skills.gen.ts",
+      "third_party/**",
       "tests/output/**",
       "tests/fixtures/**",
       "tests/_audit-export.mjs",

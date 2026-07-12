@@ -4,6 +4,25 @@ Everything up to the operator-only wall is done. This is the exact remaining
 path, plus the README edit to apply the moment a listing URL exists. Full
 background: [BROWSER-EXTENSION-DEPLOYMENT.md](BROWSER-EXTENSION-DEPLOYMENT.md).
 
+## v1.2.0 re-submission notes (Send-to-Agent release)
+
+- **Permissions delta:** install-time permissions are UNCHANGED. One addition
+  under `optional_permissions`: `downloads.ui`, requested at runtime only when
+  the user enables *Quiet saves* (suppresses Chrome's download bubble during
+  PinchGrab's own writes). Optional permissions do not trigger install-time
+  warnings or the disabled-on-update prompt.
+- **Package size:** the ZIP grows from ~157 KB to roughly ~600 KB because the
+  vendored design skills now ship under `extension/skills/` (Apache-2.0
+  impeccable reference guides + CC BY-SA 4.0 perception-first-design; see
+  `THIRD-PARTY-NOTICES.md`). All inert text/data — the two `.py` files inside
+  `perception-first-design/scripts/` are DATA bundled into exports, never
+  loaded or executed by the extension (no remote code, CSP unchanged).
+- **Behavior notes for the reviewer form:** the export button is now "Send to
+  Agent" (writes the same local files + copies a text prompt to the
+  clipboard); content-script injection remains strictly on-demand
+  (toolbar-click / panel re-attach / refresh of an already-attached tab via
+  `chrome.storage.session` tracking — still no `host_permissions`).
+
 ## Already done (nothing to redo here)
 
 - Manifest hardened: no persistent `host_permissions`, no always-on

@@ -299,6 +299,10 @@ export type FeedbackMessage = {
   // is the historical link; parentId makes it explicit and survives
   // re-ordering / split-group / import-export round-trips.
   parentUid?: string;
+  // User explicitly detached this comment from any selector. Without the
+  // flag, adjacency to the preceding selector would silently re-adopt the
+  // comment at render/export time.
+  detached?: boolean;
   tags?: string[];
   // Severity (`note` / `fix` / `block`) was removed from the UI in
   // 2026-05. The field is retained on the type as `unknown` so
@@ -374,6 +378,10 @@ export type CsToPanel =
 export type PanelToCs =
   | {kind: 'outline'; selector: string; gold?: boolean; dashed?: boolean}
   | {kind: 'outline-clear'}
+  // Export-time request for the full serialized page (opt-in pref
+  // includePageHTML). Replied with {ok, url, title, html}; never persisted
+  // to chrome.storage — the payload goes straight into the tar.
+  | {kind: 'page-html'}
   | {kind: 'outline-multi'; selectors: string[]}
   | {kind: 'outline-multi-clear'}
   | {kind: 'scroll-to'; selector: string; sticky?: boolean}
@@ -440,7 +448,11 @@ export type PanelToBg =
   // .sendMessage uses structured cloning, which preserves Uint8Array, so we
   // pass the typed array directly. number[] is accepted as a fallback for
   // older callers and tests that pre-serialize.
-  | {kind: 'save-bytes'; workspace: string; filename: string; bytes: Uint8Array | number[]; mime: string; subdir?: string};
+  | {kind: 'save-bytes'; workspace: string; filename: string; bytes: Uint8Array | number[]; mime: string; subdir?: string}
+  // Panel asks the background to (re)inject the content script — the fix
+  // for "Alt stopped working" after an extension reload orphans the page's
+  // content script. Defaults to the active tab.
+  | {kind: 'pg-reinject'; tabId?: number};
 
 export type ShotReply = {
   ok: boolean;
@@ -507,6 +519,11 @@ export type ExportManifest = {
   workspace: string;
   filename: string;
   format: 'jsonl' | 'markdown' | 'tar.zst';
+  // Content-derived identity: first 16 hex chars of a SHA-256 over the
+  // slim rows + screenshot names. Stable across re-exports of the same
+  // content, so downstream state (e.g. ~/.pinchgrab/workspaces/*/bundles/)
+  // keys on it without duplicating work.
+  bundleId?: string;
   hosts: string[];
   // Ambiguous totals. The previous `selectors / feedback / pages`
   // triple didn't say whether nested
@@ -538,6 +555,8 @@ export type ExportManifest = {
     // in this archive. Should always be 0; non-zero means the export
     // got truncated or a parent was deleted between capture + emit.
     orphanedFeedback?: number;
+    // Full-page HTML documents bundled under pages/ (opt-in pref).
+    pagesHtml?: number;
   };
   // Resolution root for every path field in the JSONL stream.
   //   • 'archive'   — paths are relative to the extracted archive root
@@ -564,6 +583,15 @@ export type ExportManifest = {
   // means the user supplied this content; `template: true` means it's
   // PinchGrab's bundled default.
   design?: {path?: string; inline?: boolean; archivePath?: string; template?: boolean; customized?: boolean};
+  // Where the agent doctrine lives inside the archive (Send-to-Agent
+  // protocol). Absent on plain JSONL exports.
+  agentProtocol?: {archivePath: string};
+  // Vendored skill documents bundled into this archive (subset of the
+  // richer skills-index.json at the archive root). `invocation` carries a
+  // plugin-command form for harnesses that support it.
+  bundledSkills?: Array<{id: string; kind: 'skill' | 'reference'; archivePath: string; invocation?: string}>;
+  // Full-page HTML documents bundled under pages/ (opt-in pref).
+  pagesHtml?: Array<{url: string; archivePath: string; bytes: number}>;
   // Self-roast section. The export surfaces its own gaps so a
   // downstream LLM doesn't have to discover
   // them. Empty array = clean export. Each diagnostic has a stable

@@ -4,9 +4,10 @@
 //
 // We pick tar (rather than zip) because zstd is the wire format we want to
 // pair it with and tar.zst is the standard combo (zip is its own
-// compression container). For files with paths longer than 100 chars we
-// throw rather than implement the GNU/PAX long-name extensions — the
-// PinchGrab archive layout uses short paths only.
+// compression container). Paths longer than 100 chars use the standard
+// ustar prefix field (155 bytes at offset 345): the path is split at a
+// slash into prefix(≤155)/name(≤100). Only unsplittable paths throw —
+// GNU/PAX long-name extensions are deliberately not implemented.
 
 const enc = new TextEncoder();
 
@@ -41,15 +42,27 @@ export type TarEntry = {
   mtime?: number; // unix epoch seconds; defaults to now
 };
 
+// ustar name split: paths ≤100 chars go straight into the name field;
+// longer paths split at the rightmost slash that leaves prefix ≤155 and
+// tail ≤100. The reader reassembles `prefix + '/' + name`.
+const splitTarName = (full: string): {name: string; prefix: string} => {
+  if (full.length <= 100) return {name: full, prefix: ''};
+  let cut = -1;
+  for (let i = full.indexOf('/'); i !== -1; i = full.indexOf('/', i + 1)) {
+    if (i <= 155 && full.length - i - 1 <= 100) cut = i;
+  }
+  if (cut === -1) {
+    throw new Error(`tar: path not splittable into ustar prefix(155)/name(100): ${full}`);
+  }
+  return {prefix: full.slice(0, cut), name: full.slice(cut + 1)};
+};
+
 export const buildTar = (entries: TarEntry[]): Uint8Array => {
   const blocks: Uint8Array[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
   for (const entry of entries) {
     const data = typeof entry.data === 'string' ? enc.encode(entry.data) : entry.data;
-    const name = entry.name;
-    if (name.length > 100) {
-      throw new Error(`tar: filename too long (${name.length} > 100 chars): ${name}`);
-    }
+    const {name, prefix} = splitTarName(entry.name);
     const header = new Uint8Array(512);
     writeAscii(header, 0, name, 100);
     writeOctal(header, 100, 0o644, 8);                         // mode
@@ -61,7 +74,8 @@ export const buildTar = (entries: TarEntry[]): Uint8Array => {
     header[156] = 0x30;                                        // typeflag '0' = regular file
     writeAscii(header, 257, 'ustar', 6);                       // magic
     writeAscii(header, 263, '00', 2);                          // version
-    // uname/gname/devmajor/devminor/prefix all left zero.
+    if (prefix) writeAscii(header, 345, prefix, 155);          // ustar prefix
+    // uname/gname/devmajor/devminor left zero.
 
     const checksum = headerChecksum(header);
     writeOctal(header, 148, checksum, 8);
@@ -213,7 +227,9 @@ export const parseTar = (buf: Uint8Array): ParsedTarEntry[] => {
     let allZero = true;
     for (let i = 0; i < 512; i++) { if (header[i] !== 0) { allZero = false; break; } }
     if (allZero) break; // trailer
-    const name = readNullStr(header, 0, 100);
+    const shortName = readNullStr(header, 0, 100);
+    const prefix = readNullStr(header, 345, 155);
+    const name = prefix ? `${prefix}/${shortName}` : shortName;
     const size = readOctal(header, 124, 12);
     pos += 512;
     if (size > 0) {

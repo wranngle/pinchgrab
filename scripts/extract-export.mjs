@@ -50,7 +50,9 @@ while (p + 512 <= raw.length) {
   let allZero = true;
   for (let i = 0; i < 512; i++) if (raw[p + i] !== 0) { allZero = false; break; }
   if (allZero) break;
-  const name = readNullStr(p, 100);
+  const shortName = readNullStr(p, 100);
+  const prefix = readNullStr(p + 345, 155);
+  const name = prefix ? `${prefix}/${shortName}` : shortName;
   const sizeStr = readNullStr(p + 124, 12).trim();
   const size = sizeStr ? parseInt(sizeStr, 8) : 0;
   p += 512;

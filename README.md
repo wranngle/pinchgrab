@@ -9,7 +9,7 @@
 
 # Hand your AI coding agent the exact element
 
-**[Quick start](#-quick-start) | [Features](#-features) | [Developer install](#-developer-install) | [AI coding agents](#-ai-coding-agents-claude-code-cursor-codex) | [Privacy](docs/PRIVACY.md) | [Deployment guide](docs/BROWSER-EXTENSION-DEPLOYMENT.md) |**
+**[Quick start](#-quick-start) | [Features](#-features) | [Developer install](#-developer-install) | [AI coding agents](#-ai-coding-agents-claude-code-cursor-codex) | [vs Claude Design](#-pinchgrab-vs-claude-design) | [Privacy](docs/PRIVACY.md) | [Deployment guide](docs/BROWSER-EXTENSION-DEPLOYMENT.md) |**
 
 <a href="https://chromewebstore.google.com/detail/pinchgrab/jenjnicjfmgbddgconejmjhmdfphhlji"><img src="docs/brand/chrome-web-store-badge.png" alt="Install PinchGrab from the Chrome Web Store" width="240"></a>
 
@@ -68,7 +68,7 @@ The step counts above are workflow facts you can count on your fingers. The dens
 
 - 🤏 **Export bundle**: one click writes the whole workspace to `Downloads/pinchgrab/<workspace>/` as JSONL, full-resolution screenshots, a `screenshots.json` index, `schema.json`, DuckDB recipes, and a single `.tar.zst` archive.
 
-- 🤏 **Agent handoff**: every bundle ships a `repair-index.md` punch list plus its own README, skill, and design context, so Claude Code, Cursor, or any coding agent can start fixing without extra prompting.
+- 🤏 **Send to Agent**: one click exports the bundle *and* copies a paste-ready JSONL prompt — bootstrap script, read list, work protocol — so Claude Code, Cursor, or any coding agent starts fixing without extra prompting; a `recapture` CLI lets the agent re-audit its own fixes against your comments.
 
 - 🤏 **Replay and diff CLI**: replay captures, generate visual diffs, replay network activity, annotate steps, and export to Playwright, Puppeteer, or plain-English recipes.
 
@@ -80,6 +80,16 @@ The step counts above are workflow facts you can count on your fingers. The dens
 - 🤏 **87.4% smaller on container grabs.** The 40 captures whose raw markup is 4 KB or more, the sections and cards people actually pinch, went from 355.5 KB raw to 44.8 KB of minified rows.
 - 🤏 **Every capture is a bounded ~632 byte row** no matter how deep the subtree underneath it goes, so a grabbed dashboard never arrives as 25 KB of sparkline spans.
 - 🤏 **A text-only feedback bundle averages 31.6 KB on disk**; with a full-resolution PNG of every captured element it averages 984.9 KB.
+
+## 🧭 What PinchGrab is — and is not
+
+PinchGrab is deliberately **not** another "chat with an AI until an app falls out" tool. It is the feedback half of the loop, built for people who already have a real app and an agent they trust:
+
+- **Point, don't prompt.** Annotate the live UI by typing — or dictating with your OS voice input — right beside the exact element. No waiting for a model turn between comments, no switching interfaces mid-thought.
+- **Completely model-agnostic.** The export is plain files. Claude, GPT, Gemini, a local model: anything that reads files can work the bundle.
+- **Any agent harness, zero ceremony.** Claude Code, Cursor, Codex, Copilot, or your own scripts consume the bundle as-is. Nothing to install into the harness, nothing to upgrade, maintain, or refactor when the harness changes.
+- **Works on whatever your browser can reach.** Localhost, staging, production, an intranet app, someone else's site — if the page renders, you can pinch it.
+- **It never tries to develop your app for you.** PinchGrab captures intent with surgical context and hands off; your agent and your toolchain do the work where the code actually lives.
 
 ## 🚀 Quick start
 
@@ -224,6 +234,8 @@ One export writes one folder and one archive. The manifest is not a separate fil
 
 🤏 **`<workspace>.jsonl`** is the source of truth: a leading `manifest` row (version, tool, counts, hosts, and an `archiveIntegrity` file list with sizes), then per-page header rows, then one row per capture, comment, and group, each with selectors, sanitized `outerHTML`, and the user's comments.
 
+🤏 **`AGENT-PROTOCOL.md`** is the agent's working doctrine: the map → plan → implement → audit → verify phases, the `~/.pinchgrab` persistence layout, the work-manifest row schemas, and the recapture verification loop — everything the clipboard prompt says, expanded, so a lost clipboard costs nothing.
+
 🤏 **`repair-index.md`** is the punch list: one `### F001` section per complaint with target selector, uid, accessible name, selector-match count, screenshot path, component source hints, ancestor chain, and a heuristic fix category.
 
 🤏 **`README.md`** (the bundle's own) is the entry point: counts, file list, three extraction fallbacks, a DuckDB starter, and a pointer to the triage materials.
@@ -236,7 +248,13 @@ One export writes one folder and one archive. The manifest is not a separate fil
 
 🤏 **`schema.json`** is a machine-readable JSON-Schema (draft 2020-12) describing every row type, so strict consumers can validate before they trust.
 
+🤏 **`skills-index.json`** maps every bundled skill document to its archive path, a one-line purpose, and its upstream source (repo + pinned commit), so an agent routes each comment to the right skill without guessing.
+
+🤏 **Bundled design skills** ride in every archive: 32 impeccable reference guides under `.agents/skills/impeccable/reference/` (Apache-2.0, from [pbakaus/impeccable](https://github.com/pbakaus/impeccable)) and the complete Perception-First Design framework under `perception-first-design/` (CC BY-SA 4.0, from [skovalik/perception-first-design](https://github.com/skovalik/perception-first-design)), each with its upstream license and notices intact. Agents read them from the export — nothing gets installed.
+
 🤏 **`DESIGN.md`** and **`.agents/skills/PinchGrab/SKILL.md`** ride along when configured, so the agent snaps visual fixes to your tokens instead of inventing its own taste.
+
+🤏 **`pages/*.html`** (opt-in) is the full serialized HTML of each captured page, collected from the live tab at export time.
 
 🤏 **`<workspace>.tar.zst`** wraps the lot into a single archive; the bundled README documents an extraction ladder from `tar --zstd` down to a pure-Node fallback.
 
@@ -253,19 +271,54 @@ ORDER BY n;
 
 Every `.tar.zst` export is handed to a **coding agent** as-is. There is no plugin, no API, and no server side; the bundle is the whole interface, and anything that can read files can consume one.
 
-### Extract the bundle
+### Paste the prompt
+
+**Send to Agent** copies a complete JSONL prompt to your clipboard alongside the export: the archive path, an idempotent bootstrap script that extracts into `~/.pinchgrab/workspaces/<workspace>/`, a mandatory read list, the bundle tree, and the full work protocol. Paste it into any coding agent and the loop starts itself.
+
+### Or extract by hand
 
 ```bash
 tar --zstd -xf <workspace>.tar.zst   # unpack next to (or inside) the project the feedback is about
 ```
 
-### Point your agent at the folder
-
-The bundle's own `README.md` sends the agent to `repair-index.md` first, then the skill and design context. No prompting is required beyond "read this folder and fix what it describes".
+The bundle's own `README.md` sends the agent to `AGENT-PROTOCOL.md` first — phases (map → plan → implement → audit → verify), the persistence layout, and the skill inventory — with `repair-index.md` as the per-comment punch list. No prompting is required beyond "read this folder and do what it describes".
 
 ### Work the repair index
 
 `repair-index.md` turns each comment into a task: the complaint verbatim, the target selector and uid, the screenshot path, component and source-file hints when detected, and a heuristic fix category (copy, layout, accessibility, state, visual polish). The agent cross-references the JSONL and `screenshots/`, makes the fix, and verifies against the captured before-state.
+
+### Close the loop
+
+When the fixes land, the agent re-audits its own work with the same locator machinery the extension uses:
+
+```bash
+npx -y pinchgrab recapture <extracted>/<workspace>.jsonl http://localhost:3000 \
+  --workspace-dir ~/.pinchgrab/workspaces/<workspace>
+```
+
+Every commented selector is re-located (CSS → XPath → accessibility fallback), screenshotted, and written to an append-only `recaptures/<runId>/` for before/after comparison against the bundle's original `screenshots/`.
+
+## 🥊 PinchGrab vs Claude Design
+
+Anthropic's [Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) generates new mockups, prototypes, and decks inside claude.ai. PinchGrab points the other direction: it captures feedback on the UI you already shipped and hands it to whatever agent maintains the real code. Where the goal is "get my UI feedback into a coding agent", here is how they differ:
+
+| | PinchGrab | Claude Design |
+| --- | --- | --- |
+| Works on | Any page your browser renders: localhost, staging, production, third-party sites | Generated mockups and prototypes inside claude.ai |
+| Output | Element-exact feedback bundle: validated selectors, sanitized HTML, screenshots, your comments | New design artifacts (HTML, PDF, PPTX, Canva), plus a handoff bundle for Claude Code |
+| Edits your codebase | Through *your* agent, in *your* repo | No — hands off to Claude Code for implementation |
+| Model | Any — the bundle is plain files | Claude models only |
+| Agent harness | Any that reads files; nothing to install, upgrade, or maintain | Claude ecosystem (claude.ai → Claude Code) |
+| Signal-to-noise | Bounded ~632-byte capture rows; 95.3% smaller than pasting the page | Full generated pages per iteration |
+| Messy, poorly-selectored UI in large apps | Spoonfed: validated selectors, component source hints, and ancestor chains welded to every complaint | You describe it; the model regenerates its own version |
+| Pace of a review pass | Annotate as fast as you can Alt+Click and type — no model turn between comments | Conversational; each revision is a model turn |
+| Prompt refinement | `AGENT-PROTOCOL.md` work phases, `repair-index.md` punch list, per-comment skill mapping, `DESIGN.md` token grounding | Prompt-driven |
+| Multi-site review | Per-tab workspaces keep critiques separate | Per-conversation |
+| Replay and verification | `recapture`, replay, visual-diff, and Playwright/Puppeteer export CLI | Not a stated feature |
+| Privacy | Local-only: no server side, exports land in your Downloads folder | Cloud (claude.ai) |
+| Price | Free, MIT-licensed | Paid claude.ai plans (research preview) |
+
+Fair is fair: Claude Design also has a web capture tool — it grabs elements from your site as *styling input* so new prototypes look like your product, which is a different job than annotating the shipped page itself. The Claude Design column reflects Anthropic's launch announcement (April 2026, research preview) and may change.
 
 ## 🤏 Works where you work
 
@@ -425,7 +478,7 @@ Getting oriented: extension source lives in `src/`, the generated unpacked exten
 
 ## License
 
-PinchGrab is available under the [MIT License](LICENSE).
+PinchGrab is available under the [MIT License](LICENSE). Bundled third-party skill content keeps its upstream licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## ⭐ Star History
 

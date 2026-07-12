@@ -1,0 +1,502 @@
+{
+  "repo": "https://github.com/skovalik/perception-first-design",
+  "ref": "main",
+  "sha": "1704ff61c18872a66d969e860c9b6e45a8f50f16",
+  "fetchedAt": "2026-07-11T22:07:46.388Z",
+  "license": "CC-BY-SA-4.0",
+  "trademark": "\"Perception-First Design\" and \"PFD\" are trademarks of Stefan Kovalik (U.S. Serial No. 99686343); used for attribution only.",
+  "include": [
+    "(whole tree)"
+  ],
+  "files": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "sha256": "defa8e2ef253f432fab7ad5596c0d74f43f98c8e083654ebfc90e4ab11810501",
+      "bytes": 1194
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "sha256": "4c21a8042d531e478324749155556b4875d95d19408916a910b95ba8a9b7c7a4",
+      "bytes": 755
+    },
+    {
+      "path": ".github/FUNDING.yml",
+      "sha256": "08edcbada430e2606d081ac49fa93a8fa1b331dbc063433defbe5e7eae06dad9",
+      "bytes": 47
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/design-system-profile.md",
+      "sha256": "6c3a646424b3493c1c8dd78c5edea9875a40a4f2850f79749dfa259e6431544f",
+      "bytes": 281,
+      "purpose": "**Framework name:**"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/framework-correction.md",
+      "sha256": "705f96ee6edaabe04cda98fe0dec1c48c49d4a8cd750e9881d49bba882bb6b3c",
+      "bytes": 389,
+      "purpose": "**Which section of the framework?**"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/learning-submission.md",
+      "sha256": "8cd0714e6b4deb4a72df22bc43edf1eb0f1b5959a5cbaac1c2b5674901959c2e",
+      "bytes": 364,
+      "purpose": "**What did you analyze?** (URL, screenshot, or description)"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/new-heuristic-rule.md",
+      "sha256": "b4a8bb4f28c63adf2150523cd17f9c31278565fa70166da44e45876cec24f8b9",
+      "bytes": 292,
+      "purpose": "**PFD Layer:** L0 / L1 / L2 / L3 / L4"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "sha256": "beb45a7728ca4ebd7468ab1a6b449d350e7301b3edb4a06c96d6cc088d4fdc70",
+      "bytes": 442,
+      "purpose": "- [ ] The Foundation (L0)"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "77fb4f20db54c8efe3e723d37a25a0e1b85770a668e8b959c6df8d9808e8ec71",
+      "bytes": 665
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "dd1473ed7ccaf0161ca7032c7e69c14ac97085e69568ffb9d12ab6527315f608",
+      "bytes": 13150,
+      "purpose": "**Contact**"
+    },
+    {
+      "path": "CITATION.cff",
+      "sha256": "b727f50013b209e3cbf1d2c7b749403a85767b175b8c6cedf37778f782ca1c1e",
+      "bytes": 1211
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "sha256": "c2ebe71b9446cbd02719c779bb9d54ed3c9466e388387b9891e2acf8a23d80d5",
+      "bytes": 274,
+      "purpose": "This project follows the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "70cd88ad443aaebbe4be8a4c9d04dd5160744876ffe9e1e206df9f58256eddda",
+      "bytes": 5561,
+      "purpose": "PFD is a living methodology. I built it over 15 years of applied design practice, and it keeps getting sharper. Contributions that improve t"
+    },
+    {
+      "path": "CONTRIBUTORS.md",
+      "sha256": "230b256a9535db24ca05efc61f59a1b7e66e854fc62c3f2e757465b73804c66d",
+      "bytes": 338,
+      "purpose": "Thanks to everyone who has contributed to Perception-First Design."
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "07a8fd2173f15d8ab15ebfe0662aa6ce2b5526b6122ba8b0d73404d7109f245a",
+      "bytes": 1155
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "859ae33f60099904e3e27b4ccb674cc08adaba8c85ec45a60e91e7be57b89ca1",
+      "bytes": 4582
+    },
+    {
+      "path": "README.md",
+      "sha256": "202c5d3c149c8853cac82b5e6792c18b1392164f9249524710dd714c15c1ddb9",
+      "bytes": 21704,
+      "purpose": "**People decide in 50 milliseconds. Now your design process can too.**"
+    },
+    {
+      "path": "commands/all.md",
+      "sha256": "85dbb9eb116f2b676267315b5f5b87f465ed9fb6f570b67167381bc47537996e",
+      "bytes": 3182,
+      "purpose": "Run all three PFD modes (analyze, solve, evaluate) on the same input. Produces three full outputs side-by-side, one per cognitive contract. "
+    },
+    {
+      "path": "commands/analyze.md",
+      "sha256": "6e8b6dec91aee6ff14c8f7cb4944e0e7dc1957e0c0ea2376112142c99f50960c",
+      "bytes": 10775,
+      "purpose": "Analyze a hypothetical change, mechanism, or behavioral pattern with Perception-First Design. Mode 3 descriptive analysis. Walks the 5 layer"
+    },
+    {
+      "path": "commands/evaluate.md",
+      "sha256": "ac488fb7f6ca81441eeec76e352ce1a07f1521e8cad2374e937fb006f868e295",
+      "bytes": 2838,
+      "purpose": "Evaluate an artifact (URL, HTML, screenshot, copy) with Perception-First Design. Mode 1 corpus-backed evaluation that loads heuristic rules,"
+    },
+    {
+      "path": "commands/solve.md",
+      "sha256": "7ec7bd0269f8535aa11405cf55006dc835b3277fc94d2bfb7a4db9986884fad2",
+      "bytes": 1613,
+      "purpose": "Solve a design, marketing, writing, or communication problem with Perception-First Design. Runs the Mode 2 derivation protocol — derives req"
+    },
+    {
+      "path": "corpus/core/anti-patterns.md",
+      "sha256": "4c40416b5321403f902592b3196f2513c0dc6f3373bae69f201e75c64fec1fd4",
+      "bytes": 2678,
+      "purpose": "These are common evaluation mistakes. If you catch yourself doing any of these, stop and re-evaluate."
+    },
+    {
+      "path": "corpus/core/constitutional-constraints.md",
+      "sha256": "64fa874d0c9dee829b38843a5e8c6ff39e024e9b4e6810b09fb8d919b27fdf36",
+      "bytes": 4592,
+      "purpose": "These rules are MANDATORY. They override the LLM's judgment. They are enforced both in the prompt and in post-processing validation."
+    },
+    {
+      "path": "corpus/core/output-schema.md",
+      "sha256": "454dfd13398cf58b16d13bc490287825d7f9461c065b78fa5d31a374ab574216",
+      "bytes": 10518,
+      "purpose": "> **For Claude Code use, this defines the expected content structure (conversational output).** The evaluation is rendered as structured Mar"
+    },
+    {
+      "path": "corpus/core/pfd-layer-rubric.md",
+      "sha256": "7cfc2823ce228ef95e1b0a6754bd84a04401bdd5380962d41bfb94ea2c724ef0",
+      "bytes": 11296,
+      "purpose": "The five layers exist to produce a single result: pre-verbal arousal. When all layers work, the viewer's nervous system fires before their a"
+    },
+    {
+      "path": "corpus/core/psychology/mvs-psychology-reference.md",
+      "sha256": "eaa5c4d886ea5d1c1c58a1ddaa3527deb0f446ccfa07d0f93f6377de5eb15966",
+      "bytes": 23425,
+      "purpose": "This is the condensed psychology corpus for MVS evaluation. Each layer lists its primary research citations with key findings and PFD implic"
+    },
+    {
+      "path": "corpus/core/tier2-prompt-template.md",
+      "sha256": "e4248d61bde3834bcc95fbc007d47c859a2ea441ba7519c3551d871afd7ef61c",
+      "bytes": 15888,
+      "purpose": "When Stefan requests a PFD evaluation, load files in this EXACT order. The ordering is derived from spec Section 4.7.1: critical framing at "
+    },
+    {
+      "path": "corpus/design-systems/web-frameworks/shopify-themes.md",
+      "sha256": "14623b79c990413fd71845ac0a0cb0acc8bae0ad07b293e567a4f2d2ed30ccbf",
+      "bytes": 27033,
+      "purpose": "- `cdn.shopify.com` in asset URLs (JS, CSS, images, fonts) — the single most reliable indicator. Assets served from `cdn.shopify.com/s/files"
+    },
+    {
+      "path": "corpus/design-systems/web-frameworks/tailwind.md",
+      "sha256": "45e242122a3495d157446ee3e3562d5bea9e6e536d6a5fec7c3537d20e2399c6",
+      "bytes": 27499,
+      "purpose": "> **Purpose:** Enable automated detection of Tailwind CSS (v3 and v4) from HTML/CSS inspection, and adjust PFD evaluation rules for Tailwind"
+    },
+    {
+      "path": "corpus/design-systems/web-frameworks/wordpress-themes.md",
+      "sha256": "9ec01bfbb366b5e25bffcd7c9eb7127b5c799e41ea4efed43db286e278762515",
+      "bytes": 22246,
+      "purpose": "- `<body>` class contains `wordpress` or `wp-` prefixed classes (e.g., `wp-custom-logo`, `wp-embed-responsive`)"
+    },
+    {
+      "path": "corpus/heuristics/universal/foundation-rules.yaml",
+      "sha256": "0539e0cbb003dc84ac9307211563881a72e78f52fa709644f8d335ceef745b71",
+      "bytes": 33881
+    },
+    {
+      "path": "corpus/heuristics/universal/l1-rules.yaml",
+      "sha256": "01feb9daf5f5a4e8da0ffeab09e1e4876cd020623718c38f876b3c31cb39c0a1",
+      "bytes": 36139
+    },
+    {
+      "path": "corpus/heuristics/universal/l2-rules.yaml",
+      "sha256": "32ae18bf2c50a718d21fd3905d86b12a863903a044dc16448f80c2afd53a073a",
+      "bytes": 39252
+    },
+    {
+      "path": "corpus/heuristics/universal/l3-rules.yaml",
+      "sha256": "6a405861d446dcb1f88aa499ace95c96e6d76d50242043fc7c1185ff233eb99b",
+      "bytes": 21677
+    },
+    {
+      "path": "corpus/heuristics/universal/l4-rules.yaml",
+      "sha256": "8103215c2200346a1cde737d58e539a0bdde42d094b5e47bd6579074289ce005",
+      "bytes": 24804
+    },
+    {
+      "path": "corpus/worked-examples/web/example-cross-layer.md",
+      "sha256": "95c0cd12f3ffd013000dee6f1923a850fa925ba888fe5986b5fed23adf068bcb",
+      "bytes": 28554,
+      "purpose": "**Site type:** B2B SaaS project management tool. The evaluated page is the pricing page specifically (not the full site), as it demonstrates"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-excellent.md",
+      "sha256": "d820425fda14b68aa0b97e56749712f2eb0487fd99b83da9161e9d01b25262c2",
+      "bytes": 17028,
+      "purpose": "**Site type:** B2B SaaS analytics dashboard. Subscription product with free trial. Target audience: marketing managers at mid-market compani"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-good.md",
+      "sha256": "948b07cd96fec8baf9e780f1596f582fb04f6819f9214316a987221a9791276b",
+      "bytes": 21333,
+      "purpose": "**Site type:** Direct-to-consumer women's clothing brand. Shopify storefront selling mid-range apparel ($40-$180 price point). Ships domesti"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-mediocre.md",
+      "sha256": "f3e5102750637563d861b6692932decf46cbe70391bef21692d670e6c7d0506d",
+      "bytes": 24377,
+      "purpose": "**Site type:** Local HVAC and plumbing company serving a metropolitan area. Lead generation model — phone calls and form submissions. 5-page"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-poor.md",
+      "sha256": "eea0d8d9c843b6941b580c3fe661577956e507631f6b0726b8be87524b31db3d",
+      "bytes": 26138,
+      "purpose": "**Site type:** Independent restaurant with online ordering. Dine-in, takeout, and delivery. Menu-driven site with ordering integration via t"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-terrible.md",
+      "sha256": "a8dd92d12ae7b1ecd3be762876da42a7a6d938d4a58eb233648ef37dc5688def",
+      "bytes": 20194,
+      "purpose": "**Site type:** Unclear. The site mentions \"consulting\" and \"solutions\" but the specific industry, service, and value proposition are not ide"
+    },
+    {
+      "path": "corpus/worked-examples/web/example-unconventional.md",
+      "sha256": "b9d9a3be1f5edc1c8ce2f2df0138783953618b92f98b59a7b48d906ede806bab",
+      "bytes": 23633,
+      "purpose": "**Site type:** Hybrid fashion brand and creative agency. Sells limited-run clothing collections alongside offering creative direction, photo"
+    },
+    {
+      "path": "framework/ADHD-CURB-CUT.md",
+      "sha256": "fb5c2084d833629a0704855e8ad90b91a1d341f23ed25d12b819e336c9a7a79c",
+      "bytes": 5305,
+      "purpose": "The cognitive constraints I design around are constraints every user has. Mine are just louder."
+    },
+    {
+      "path": "framework/PERCEPTION-FIRST-DESIGN.md",
+      "sha256": "69ff5a129cbe4a521250adc4a0784b179cd8741fb5e33328a76687f5b26d2bb5",
+      "bytes": 98770,
+      "purpose": "**Author:** Stefan Kovalik"
+    },
+    {
+      "path": "llms.txt",
+      "sha256": "c8bea77da26ee0ca12ffa8054dbec71d2e2a672e56380ab2065412e64aa61aa8",
+      "bytes": 6544
+    },
+    {
+      "path": "scripts/gen-pfd-index.py",
+      "sha256": "1be1138dbf9afff29aa2d0daa05115ff98711c1c1f8bea0286177b78673c2a4a",
+      "bytes": 4548
+    },
+    {
+      "path": "skills/pfd/SKILL.md",
+      "sha256": "54622462bbf1fcc9a1444f442655b10e4cc26c5b1ae61a540a0fa06774363f3a",
+      "bytes": 29259,
+      "purpose": "This skill should be used when working on any design, marketing, copywriting, writing, or communication task — including: \"run PFD\", \"apply "
+    },
+    {
+      "path": "skills/pfd/references/accumulated-learnings.md",
+      "sha256": "c9b66c836e76b0e3a9266f58e238678357ca19fc59108cb77ae535545fb6c9df",
+      "bytes": 722,
+      "purpose": "This file is retained as a pointer for backward compatibility with external links."
+    },
+    {
+      "path": "skills/pfd/references/citation-standards.md",
+      "sha256": "3e28f578b74046a5212d98ea71449ff2186c049a72b7f91aae7eb44502c49400",
+      "bytes": 13431,
+      "purpose": "PFD's credibility depends on honest sourcing. Load this file when presenting PFD to clients, writing about PFD publicly, or when precision o"
+    },
+    {
+      "path": "skills/pfd/references/insights-log.md",
+      "sha256": "44c66742527ca5512017adf6d21a8954e343251a1f1fe63da503c94a8dff2b0b",
+      "bytes": 742,
+      "purpose": "Running log of non-obvious findings from every PFD analysis."
+    },
+    {
+      "path": "skills/pfd/references/learnings/L0/l018-backend-mechanics-as-frontend-complexity.md",
+      "sha256": "8563579386e71cb92dd058ecaef88000f7431a7300d5b374678bb15f7b2a8699",
+      "bytes": 3615,
+      "purpose": "**Insight:** When internal system state (subscription tiers, feature flags, scarcity counters, user roles, information-architecture matrices"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L1/l011-visual-channel-audit.md",
+      "sha256": "bc03754a82a98d8a3e13a7d2832980f2e3b95f34f4b99f010871c1ba20664404",
+      "bytes": 3148,
+      "purpose": "**Insight:** Bertin's 7 visual variables (position, size, value/lightness, texture, color, orientation, shape) provide a systematic audit ch"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L2/l013-keyboard-density-is-l2.md",
+      "sha256": "d60ecc07dc5abcb579028ca0bccd13d99584c2270d54bcf152f167c760d26e28",
+      "bytes": 1451,
+      "purpose": "**Insight:** When multiple RL personas flagged \"too many keyboard shortcuts\" in Phase 5 (10 competitive patterns, 4+ new shortcuts), the ini"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L2/l016-near-miss-color-asymmetry.md",
+      "sha256": "99f96b8c4e288d2f59cff319a3c145f474023b3daa2bf727422bc719b853292e",
+      "bytes": 6136,
+      "purpose": "**Insight:** Human color perception is non-additive: large color differences are perceived as *less* than the sum of their small-step compon"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L2/l024-aa-constrained-token-ladder.md",
+      "sha256": "5305dfc53f689ae3799c6f95585cb5d4dedf81140023492ba0bb74cb38e750bc",
+      "bytes": 5030,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign produced the strongest distribution-level mechanism fin"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L3/l023-falsifiability-triad.md",
+      "sha256": "890cc576e51151d198c3fc37333724da1bf9ed4d335dccd867321d82583f3fbe",
+      "bytes": 4699,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign surfaced a recurring fix pattern at the L3 layer that t"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L4/l003-pre-send-vs-post-response.md",
+      "sha256": "33ce5ae9d6e076ace813525aefcc097fd9642cb416940480297a5df1ff2c1f95",
+      "bytes": 807,
+      "purpose": "**Insight:** Standard UX says \"show your sources after the response\" (attribution). PFD derivation says \"show what the AI will see before th"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L4/l006-infrastructure-vs-activation.md",
+      "sha256": "f4f994fa4c7e8456e5a7e2af6013877e6f61d93969d7827ace1194a6769508fe",
+      "bytes": 937,
+      "purpose": "**Insight:** Cognograph had ~80% of the codebase infrastructure needed to satisfy R1-R3 already built (`useSemanticZoom`, `useNodeContentVis"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L4/l008-epistemic-asymmetry.md",
+      "sha256": "54f0b7d30b6c1563495aa27df541aa0275b77a5ec9527b762729c5b75e51d0f4",
+      "bytes": 899,
+      "purpose": "**Insight:** When an AI system gathers context via invisible mechanisms (BFS graph traversal, connection strength priorities, depth limits),"
+    },
+    {
+      "path": "skills/pfd/references/learnings/L4/l022-l4-symmetry-threshold.md",
+      "sha256": "bedcbea622792b94269330d75ae1e80da0f95b3b79437ab2d7dcab4e6aac8d24",
+      "bytes": 4520,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign — specifically the 5-cancel-flow sub-cluster — surfaced"
+    },
+    {
+      "path": "skills/pfd/references/learnings/_index.md",
+      "sha256": "bc57a9d240f67e08873708043946becbc1b52c242c94f26f6625d35377b46f27",
+      "bytes": 3734,
+      "purpose": "> Generated from atom frontmatter by `scripts/gen-pfd-index.py`. DO NOT HAND-EDIT."
+    },
+    {
+      "path": "skills/pfd/references/learnings/_search.json",
+      "sha256": "2e642cbdc166df0de06cb049965ee8d44845d10ebc2cf90173c1d78b003f593a",
+      "bytes": 14104
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l009-temporal-session-continuity.md",
+      "sha256": "eedbc2600c4dd61b6a7f65d42a248860e36826872f22b2e2a349412053d1a009",
+      "bytes": 969,
+      "purpose": "**Insight:** PFD addresses what the user perceives NOW but not how they RE-ENTER a workspace or how RECENCY affects cognition. Personas with"
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l012-route-vs-survey-knowledge.md",
+      "sha256": "da64d977ef4531b4e0a4c601bd807bd9f8a080ae69371de69bef5c48994f266a",
+      "bytes": 939,
+      "purpose": "**Insight:** Siegel & White's spatial knowledge theory: users develop route knowledge (sequential, egocentric, fragile) before survey knowle"
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l015-experiential-self-contradiction.md",
+      "sha256": "abc41b86e70e7279b6788660cb26399b629dda98f7847e314cf6e219b5893db4",
+      "bytes": 1658,
+      "purpose": "**Insight:** When a hero section's thesis claims speed and simplicity (\"Your customers decide in milliseconds. I design for that.\") but the "
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l019-multi-artifact-engagement-field.md",
+      "sha256": "3bcd6e906825ff8e97684eac47c3cbf305882c303782490a4316a105b9480469",
+      "bytes": 5493,
+      "purpose": "**Insight:** PFD's 5-layer stack assumes (a) ONE artifact at a time and (b) a BUYER directly evaluating that artifact. Real B2B engagements "
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l021-l4-ethics-fusion.md",
+      "sha256": "f9d8528388f34db0fc22869fc9dbc3a1212d0a8f113beb9bb6d6667965f33441",
+      "bytes": 4119,
+      "purpose": "**Insight:** Learning #14 originally framed PFD ethics as operational, not structural — a generative principle that shapes how the framework"
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l025-cascade-credit.md",
+      "sha256": "39dd879e5ba60cfdfa72973a9302af1b78c5569b5e1a039442d765d71f870cf4",
+      "bytes": 5415,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign surfaced a counter-intuitive structural finding that in"
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l026-aesthetic-stability-as-trust-producer.md",
+      "sha256": "17df36584b0eeb7c7f4b4c23a5f8d0910b798de98d8e3ac949fcf77a539d4f2c",
+      "bytes": 5804,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign surfaced a finding that establishes a floor case for th"
+    },
+    {
+      "path": "skills/pfd/references/learnings/cross/l028-held-decision-compounding.md",
+      "sha256": "77d771d08bfdf09e397cd7e10a96b55745d881a1c25d0c237eb04a53459aaa1e",
+      "bytes": 5275,
+      "purpose": "**Insight:** Calibration testing within the campaign's essay-01 nine-firm investment-firm cluster surfaced a temporal-axis sharpening of Lea"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l001-generative-vs-evaluative.md",
+      "sha256": "f2a0456cb94b2d1acba5cae248acbc3fc732dbcee268fa49b4c53729be73a120",
+      "bytes": 673,
+      "purpose": "**Insight:** When personas were given solutions first and asked to evaluate through PFD, they missed R2 (pre-attentive content signaling) en"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l002-access-vs-signal.md",
+      "sha256": "ec5796061510d71b890664669b3c12441e7da04390be171e17fe3cfaa1a68fea",
+      "bytes": 759,
+      "purpose": "**Insight:** PFD's layers naturally distinguish between \"how do I access content?\" and \"how does the user know where content exists?\" These "
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l004-workspace-vs-product-separation.md",
+      "sha256": "e70d3a2c7536184688e8b499630778969a3bfc888b25e8f9d0b486bbc22c0717",
+      "bytes": 907,
+      "purpose": "**Insight:** When personas analyze a specific workspace through PFD, they naturally propose workspace-level fixes (rearrange nodes, rename t"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l005-recursive-validation.md",
+      "sha256": "6d2772e6c34b7db94c6ee19847e78649ea1b08f5662b6b82365822030290c345",
+      "bytes": 666,
+      "purpose": "**Insight:** When PFD is used to analyze a workspace that is ABOUT PFD, three levels operate simultaneously: (1) PFD as framework, (2) PFD a"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l007-convergent-gap-identification.md",
+      "sha256": "248679dc7deaa0b70163e7dc8188b7056c76a1153b26b28820455ee5b667ce20",
+      "bytes": 918,
+      "purpose": "**Insight:** R2 (pre-attentive content signaling) emerged as the unaddressed gap in every single round of analysis. Domain-focused personas "
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l010-constraints-are-distributions.md",
+      "sha256": "f9572df31f78d4d2b2c4b7d4ed605f29d8f52168488b94d9a633519a52fb38dd",
+      "bytes": 2907,
+      "purpose": "**Insight:** PFD states working memory holds \"~3-5 chunks\" as a hard constraint. This is a population mean. Neurodivergent users, users unde"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l014-operational-vs-structural-ethics.md",
+      "sha256": "a931bd0061a31e7720a73828aa3aad6f2ef81cde5dd5580b4e357dcb0f04a48b",
+      "bytes": 1524,
+      "purpose": "**Insight:** PFD's three ethical tests (Alignment, Sincerity, Golden Rule) are *operational* ethics — executable by one designer in a single"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l017-iterative-regression-is-visibility.md",
+      "sha256": "85f1678fe30d01c756130478b5d6e346bf9dd756070698c460696bc3130b5745",
+      "bytes": 4737,
+      "purpose": "**Insight:** When an iterative PFD analysis (multi-round \"Forge\" loop) shows a score DROP around rounds 3-6, the cause is almost never that "
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l020-international-citation-expansion.md",
+      "sha256": "152769a10927a808ec49281c16210c93f142576145ba0d7aa0f7991b7e0a81e9",
+      "bytes": 5665,
+      "purpose": "**Insight:** PFD's published-study base was ~80% Western before this pass. Three substantive findings emerged that would have stayed invisib"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l027-internal-acknowledgment-signals.md",
+      "sha256": "86ab6c6106d7be1298feb277380613a938484585055bb45fbc8c00b60f4d76cf",
+      "bytes": 6712,
+      "purpose": "**Insight:** Calibration testing across the n=25 PFD Calibration & Showcase Campaign surfaced a recurring forensic evidence class that PFD h"
+    },
+    {
+      "path": "skills/pfd/references/learnings/meta/l029-port-dont-install-motion-audit.md",
+      "sha256": "9683af0c4e9299282f8faf1454a4b70edf6e09ffcf2a617ce1cb76b7395beebf",
+      "bytes": 6024,
+      "purpose": "**Insight:** Calibration testing across the campaign's library-integration work — 15 reactbits / 21st-magic library components integrated ac"
+    },
+    {
+      "path": "skills/pfd/references/mvs-psychology-reference.md",
+      "sha256": "e2a9f88c7affed2349239cef87dd325d13d256951f584e4b459ee55140ad7bcf",
+      "bytes": 29785,
+      "purpose": "This is the condensed psychology corpus for MVS evaluation. Each layer lists its primary research citations with key findings and PFD implic"
+    },
+    {
+      "path": "skills/pfd/references/pfd-spatial-extension.md",
+      "sha256": "1dad3bf79bf56ebcd4fd577bc21d676740c9c2eaebac47db73f4a0b50c599afb",
+      "bytes": 2956,
+      "purpose": "Load this file when applying PFD to canvas tools, spatial interfaces, or any system where users create and navigate content layouts (Cognogr"
+    },
+    {
+      "path": "skills/pfd/references/practitioner-corrections.md",
+      "sha256": "96163a9a8a896077cb2be93fa338eb22013ec660350bc13063e344827079336d",
+      "bytes": 666,
+      "purpose": "Delta captures from manual evaluation reviews. Format: before → after with reasoning."
+    }
+  ]
+}

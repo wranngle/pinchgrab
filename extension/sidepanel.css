@@ -52,8 +52,8 @@ body {
 
 .panel {
   display: grid;
-  /* bar / shortcuts / toolbar / stats / body(1fr) / composer / status-row / footer */
-  grid-template-rows: auto auto auto auto 1fr auto auto auto;
+  /* bar / context-strip / shortcuts / toolbar / stats / body(1fr) / composer / status-row / footer */
+  grid-template-rows: auto auto auto auto auto 1fr auto auto auto;
   height: 100vh;
   border-left: 4px solid var(--orange);
   background: var(--bg);
@@ -130,17 +130,18 @@ body {
 .ws-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-mid);
   border-radius: 999px;
   background: var(--bg-elev);
-  color: var(--text-2);
-  font: 11px/1.2 var(--mono);
+  color: var(--text);
+  font: 600 11px/1.2 var(--mono);
   min-width: 0; max-width: 140px;
 }
+.ws-pill:hover { border-color: var(--orange); }
 .ws-pill select {
   background: transparent;
   border: 0; outline: 0;
-  color: var(--text-2);
+  color: var(--text);
   font: inherit;
   cursor: pointer;
   padding: 0 2px;
@@ -148,6 +149,9 @@ body {
   max-width: 100%;
   text-overflow: ellipsis;
 }
+/* The popup list inherits the page background per UA rules; keep options
+ * legible on the dark theme instead of white-on-white. */
+.ws-pill select option { background: var(--bg-elev-2); color: var(--text); font-weight: 500; }
 
 .g-pill {
   display: inline-flex; align-items: center;
@@ -1030,6 +1034,13 @@ body {
   }
   .composer .send { padding: 0 9px; }
   .toolbar-actions .iconbtn { width: 26px; height: 26px; }
+  /* Settings drawer at panel-minimum width: smaller label tier, stacked
+   * workspace controls, near-full-width palette. */
+  .prefs label { font-size: 11px; }
+  .ws-controls { flex-direction: column; }
+  .ws-controls .primary { align-self: flex-start; }
+  .palette { width: calc(100vw - 16px); }
+  .context-strip { font-size: 9px; height: 34px; }
 }
 .msg.feedback.editing {
   background: var(--bg-elev);
@@ -1257,24 +1268,51 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 [data-icon] { display: inline-flex; line-height: 0; }
 [data-icon] svg { display: block; }
 
-/* ────────── Custom tooltip (instant) ────────── */
-.custom-tip {
-  position: fixed;
-  pointer-events: none;
-  background: var(--bg-elev-3);
-  color: var(--text);
-  padding: 4px 8px;
-  border-radius: var(--r-sm);
-  font: 11px/1.3 var(--mono);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 4px 14px rgba(0,0,0,.45);
-  /* Tooltip rides above everything except the active modal/palette. */
-  z-index: calc(var(--z-palette) + 10);
-  max-width: 240px;
-  opacity: 0;
-  transition: opacity .08s linear;
+/* ────────── Context strip (hover help) ────────── */
+/* Always-visible strip under the header: [data-tip] hover text lands here
+ * (see showTip) instead of a floating bubble, so help never occludes the
+ * panel. Fixed two-line height = zero layout shift; long tips clamp. */
+.context-strip {
+  padding: 4px 10px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  color: var(--text-3);
+  font: 11px/1.4 var(--mono);
+  height: 38px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: color .08s linear, border-color .08s linear;
 }
-.custom-tip[data-shown="true"] { opacity: 1; }
+.context-strip[data-shown="true"] { color: var(--text); border-left-color: var(--orange); }
+
+/* Quiet-saves nudge banner: the downloads.ui permission needs a click. */
+.quiet-nudge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(180deg, var(--bg-elev) 0%, rgba(255,95,0,.07) 100%);
+  border-bottom: 1px solid var(--border);
+  font: 11px/1.35 var(--mono);
+  color: var(--text-2);
+}
+.quiet-nudge .quiet-nudge-text { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.quiet-nudge .primary { padding: 4px 10px; font: 700 11px/1 var(--sans); border-radius: var(--r-sm); white-space: nowrap; }
+
+/* Drawer-local tip sink (the drawer covers the main strip). */
+.drawer-tip {
+  flex: 1;
+  min-width: 0;
+  margin: 0 8px;
+  color: var(--text-3);
+  font: 10px/1.3 var(--mono);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.drawer-tip[data-shown="true"] { color: var(--text-2); }
 
 /* ────────── Stat drilldown popover ────────── */
 .drilldown {
@@ -1287,7 +1325,7 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   border: 1px solid var(--border-strong);
   box-shadow: 0 8px 28px rgba(0,0,0,.6);
   z-index: var(--z-popover);
-  max-width: 320px;
+  max-width: min(320px, calc(100vw - 16px));
   font: 11px/1.45 var(--mono);
 }
 .drilldown h5 {
@@ -1365,7 +1403,10 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 /* Checkbox-bearing rows: keep the box fixed and let the label text word-wrap
    so nothing is clipped at narrow panel widths. The label text is a bare
    flex item — give it room to wrap rather than overflow horizontally. */
-.prefs label { white-space: normal; overflow-wrap: anywhere; word-break: normal; min-width: 0; }
+/* break-word wraps at word boundaries first — `anywhere` caused mid-word
+ * breaks in prose labels at narrow widths. Long unbroken tokens still
+ * wrap via the code/small rule below. */
+.prefs label { white-space: normal; overflow-wrap: break-word; word-break: normal; min-width: 0; flex-wrap: wrap; }
 .prefs label > input[type=checkbox] { flex: 0 0 auto; margin-top: 2px; }
 .prefs input[type=checkbox] { accent-color: var(--orange); }
 /* Inline <code>/<small> contributions inside a label must also wrap, not
@@ -1418,6 +1459,12 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
 .ws-list li button { background: transparent; border: 0; color: var(--text-3); cursor: pointer; padding: 2px 4px; }
 .ws-list li button:hover { color: var(--orange); }
 .ws-list li button.danger:hover { color: var(--red); }
+
+/* Import lives with the workspace manager: imported files land in the
+ * active workspace, so the affordance sits beside the workspace list. */
+.ws-import { margin-top: 8px; }
+.ws-import .iconbtn { width: auto; padding: 0 10px; gap: 6px; }
+.ws-import .iconbtn .lbl { font: 600 11px/1 var(--sans); }
 
 /* Workspace snapshot history (Clear-all archives). */
 .ws-snapshots { margin-top: 10px; }
@@ -1522,6 +1569,8 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   font-size: 11px;
   line-height: 1.4;
   margin: 0 0 8px 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .design-md-controls {
   display: flex; align-items: center; gap: 6px;
@@ -1751,8 +1800,14 @@ button { border: 0; background: transparent; cursor: pointer; font-family: inher
   color: var(--text-3);
   font-size: 10px;
   font-family: var(--mono);
-  margin-left: 4px;
-  white-space: nowrap;
+  /* Own indented line under the checkbox label (checkbox 14px + gap 8px):
+   * a nowrap inline caption overflowed the pane at narrow widths. */
+  display: block;
+  flex-basis: 100%;
+  padding-left: 22px;
+  margin-left: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .contrib:empty { display: none; }
 

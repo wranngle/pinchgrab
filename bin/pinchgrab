@@ -11,9 +11,18 @@
 //                                  --auth-state loads a Playwright
 //                                  storageState file so replay runs
 //                                  against an already-logged-in page.
+//   recapture <bundle.jsonl> <url> [flags]
+//                                  The Send-to-Agent verification leg:
+//                                  re-locate every COMMENTED capture from a
+//                                  bundle export with the same fallback
+//                                  chain, screenshot each located element,
+//                                  and write an append-only run under
+//                                  recaptures/<runId>/ for before/after
+//                                  comparison (see AGENT-PROTOCOL.md).
 
+import { randomBytes } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -23,19 +32,35 @@ import {
   playwrightAdapter,
   replay,
 } from "../src/replay.mjs";
+import { parseBundleJsonl, recapture } from "../src/recapture.mjs";
 
-const usage = `pinchgrab — replay JSONL captures against a live page
+const usage = `pinchgrab — replay and re-verify JSONL captures against a live page
 
 Usage:
   pinchgrab replay <capture.jsonl> <url> [--auth-state <storage.json>]
+  pinchgrab recapture <bundle.jsonl> <url> [--workspace-dir <dir>] [--out <dir>]
+                      [--run-id <id>] [--auth-state <storage.json>] [--all]
 
-Flags:
+replay flags:
   --auth-state <path>   Playwright storageState file (cookies + origins).
                         Loaded into the browser context before navigation
                         so authenticated captures replay on logged-in pages.
 
-Exits 0 when every capture entry locates exactly one element on <url>;
-exits 1 otherwise. Prints a per-entry JSON summary on stdout.
+recapture flags:
+  --workspace-dir <dir> PinchGrab persistence root (usually
+                        ~/.pinchgrab/workspaces/<name>). Runs land in
+                        <dir>/recaptures/<runId>/ and a recapture-run row is
+                        appended to <dir>/work-manifest.jsonl.
+  --out <dir>           Explicit run directory (overrides --workspace-dir
+                        placement). Default: ./recaptures/<runId>/.
+  --run-id <id>         Run id (default: UTC timestamp + 4 hex). Each run is
+                        append-only — a fresh id never overwrites a prior run.
+  --auth-state <path>   Same as replay.
+  --all                 Recapture every selector, not just commented ones.
+
+replay exits 0 when every capture entry locates exactly one element on
+<url>; recapture exits 0 when every targeted (commented) selector locates.
+Both print a JSON summary on stdout.
 `;
 
 const die = (msg, code = 2) => {
@@ -93,6 +118,78 @@ const cmdReplay = async (rawArgs) => {
   }
 };
 
+// Flag parser for recapture: known --flag <value> pairs + boolean --all;
+// everything else is positional.
+const parseRecaptureArgs = (args) => {
+  const positional = [];
+  const flags = { authState: null, workspaceDir: null, out: null, runId: null, all: false };
+  const valueFlags = {
+    "--auth-state": "authState",
+    "--workspace-dir": "workspaceDir",
+    "--out": "out",
+    "--run-id": "runId",
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--all") {
+      flags.all = true;
+      continue;
+    }
+    const eq = a.indexOf("=");
+    const name = eq >= 0 ? a.slice(0, eq) : a;
+    if (valueFlags[name]) {
+      const value = eq >= 0 ? a.slice(eq + 1) : args[++i];
+      if (!value) die(`${name} requires a value`);
+      flags[valueFlags[name]] = value;
+    } else {
+      positional.push(a);
+    }
+  }
+  return { positional, flags };
+};
+
+const cmdRecapture = async (rawArgs) => {
+  const { positional, flags } = parseRecaptureArgs(rawArgs);
+  const [file, url] = positional;
+  if (!file || !url) die(usage);
+
+  const raw = readFileSync(resolve(file), "utf-8");
+  const parsed = parseBundleJsonl(raw);
+  if (!parsed.selectors.length) die(`no selector rows found in ${file}`, 1);
+
+  const storageState = flags.authState ? loadAuthState(flags.authState) : null;
+  // 20260711T012345Z-ab12 — sortable, collision-suffixed, append-only.
+  const runId =
+    flags.runId ??
+    `${new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "")}Z-${randomBytes(2).toString("hex")}`;
+  const workspaceDir = flags.workspaceDir ? resolve(flags.workspaceDir) : null;
+  const outDir = flags.out
+    ? resolve(flags.out)
+    : join(workspaceDir ?? resolve("."), "recaptures", runId);
+
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext(storageState ? { storageState } : {});
+  const page = await context.newPage();
+  try {
+    await page.goto(url);
+    const summary = await recapture(playwrightAdapter(page), parsed, {
+      url,
+      outDir,
+      runId,
+      ts: new Date().toISOString(),
+      all: flags.all,
+      workspaceDir,
+      sourceBundle: resolve(file),
+    });
+    stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    exit(summary.located === summary.total ? 0 : 1);
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+};
+
 const main = async () => {
   const [, , sub, ...rest] = argv;
   if (!sub || sub === "-h" || sub === "--help") {
@@ -100,6 +197,7 @@ const main = async () => {
     exit(0);
   }
   if (sub === "replay") return cmdReplay(rest);
+  if (sub === "recapture") return cmdRecapture(rest);
   die(`unknown subcommand: ${sub}\n\n${usage}`);
 };
 

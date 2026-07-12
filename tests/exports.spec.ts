@@ -37,6 +37,18 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
           return;
         }
       }
+      // Vendored skills fetched at export time via fetch('skills/…') —
+      // mirrors chrome.runtime.getURL resolution inside the extension.
+      const sk = /\/(skills\/.+)$/.exec(url);
+      if (sk) {
+        const p = path.resolve(SRC, sk[1]!);
+        if (p.startsWith(path.resolve(SRC, 'skills')) && fs.existsSync(p) && fs.statSync(p).isFile()) {
+          const ct = p.endsWith('.json') ? 'application/json' : 'text/plain';
+          res.writeHead(200, { 'Content-Type': ct + '; charset=utf-8' });
+          res.end(fs.readFileSync(p));
+          return;
+        }
+      }
       res.writeHead(404); res.end();
     });
     server.listen(0, '127.0.0.1', () => {
@@ -366,7 +378,11 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
       let allZero = true;
       for (let i = 0; i < 512; i++) if (tar[tp + i] !== 0) { allZero = false; break; }
       if (allZero) break;
-      const name = readNullStr(tp, 100);
+      // ustar prefix split: long paths carry their directory in the
+      // 155-byte prefix field at offset 345.
+      const short = readNullStr(tp, 100);
+      const prefix = readNullStr(tp + 345, 155);
+      const name = prefix ? `${prefix}/${short}` : short;
       const sizeStr = readNullStr(tp + 124, 12).trim();
       const size = sizeStr ? parseInt(sizeStr, 8) : 0;
       tp += 512;
@@ -385,11 +401,16 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     assert(names.some((n) => /\.jsonl$/.test(n)), `tar should include a .jsonl entry, got ${names.join(', ')}`);
     // Markdown report was eliminated — verify it's *not* bundled. The
     // only .md files that should appear are the README, the agent-
-    // friendly repair-index, the bundled DESIGN.md, and the PinchGrab
-    // triage SKILL.md (under .agents/).
-    const allowedMd = new Set(['README.md', 'repair-index.md', 'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md']);
-    assert(!names.some((n) => /\.md$/.test(n) && !allowedMd.has(n)),
+    // friendly repair-index, AGENT-PROTOCOL.md (Send-to-Agent doctrine),
+    // the bundled DESIGN.md, the PinchGrab triage SKILL.md (under
+    // .agents/), and the vendored skill trees (impeccable reference set +
+    // perception-first-design, when bundled).
+    const allowedMd = new Set(['README.md', 'repair-index.md', 'AGENT-PROTOCOL.md', 'DESIGN.md', '.agents/skills/PinchGrab/SKILL.md']);
+    const isVendoredSkillMd = (n: string): boolean =>
+      n.startsWith('.agents/skills/impeccable/') || n.startsWith('perception-first-design/');
+    assert(!names.some((n) => /\.md$/.test(n) && !allowedMd.has(n) && !isVendoredSkillMd(n)),
       `tar must not include a Markdown report .md, got ${names.join(', ')}`);
+    assert(names.includes('AGENT-PROTOCOL.md'), `tar should include AGENT-PROTOCOL.md, got ${names.join(', ')}`);
     // Screenshots: at least one screenshots/*.png entry from the seeded shotsFull.
     const pngEntries = tarEntries.filter((e) => /^screenshots\/.+\.png$/.test(e.name));
     assert(pngEntries.length >= 1, `tar should include at least one screenshot PNG, got: ${names.filter((n) => n.startsWith('screenshots/')).join(', ')}`);
@@ -588,6 +609,172 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     assert.strictEqual(manifestLine.design.inline, true,
       `manifest design.inline should be true when DESIGN.md is bundled, got ${JSON.stringify(manifestLine.design)}`);
     console.log(`exports 14 ok: DESIGN.md bundled (${designEntry.data.length} bytes) · manifest design.inline=true`);
+  }
+
+  // Shared helper for tests 15–17: run onExportZip with the download
+  // plumbing stubbed, returning the captured archive bytes + the payload.
+  const exportZipCaptured = async (): Promise<{bytes: number[]; prompt: string | null; relPath: string | null}> =>
+    page.evaluate(async () => {
+      const sp: any = window.__pinchgrab_panel;
+      let savedBytes: Uint8Array | null = null;
+      const origCreate = URL.createObjectURL;
+      URL.createObjectURL = () => 'blob:test://stub';
+      const origAnchorClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { /* no-op */ };
+      const origBlob = window.Blob;
+      (window as any).Blob = function (parts: any[], opts: any) {
+        if (parts && parts[0] && (parts[0] as any).byteLength) {
+          const p = parts[0];
+          savedBytes = p instanceof Uint8Array ? new Uint8Array(p) : new Uint8Array(p.buffer ?? p);
+        }
+        return new origBlob(parts, opts);
+      } as any;
+      await sp.onExportZip();
+      URL.createObjectURL = origCreate;
+      HTMLAnchorElement.prototype.click = origAnchorClick;
+      (window as any).Blob = origBlob;
+      return {
+        bytes: savedBytes ? Array.from(savedBytes as Uint8Array) : [],
+        prompt: sp.getLastAgentPrompt(),
+        relPath: sp.getLastExport().relPath,
+      };
+    });
+  // Prefix-aware tar extraction (ustar prefix field at offset 345).
+  const extractTar = (archive: number[]): {name: string; data: Uint8Array}[] => {
+    const u8 = Uint8Array.from(archive);
+    const fcs = u8[5]! | (u8[6]! << 8) | (u8[7]! << 16) | (u8[8]! * 0x1000000);
+    let pos = 9;
+    const tar = new Uint8Array(fcs);
+    let outPos = 0;
+    for (;;) {
+      const headerInt = u8[pos]! | (u8[pos + 1]! << 8) | (u8[pos + 2]! << 16);
+      pos += 3;
+      const isLast = (headerInt & 1) === 1;
+      const blockSize = (headerInt >>> 3) & 0x1f_ff_ff;
+      tar.set(u8.subarray(pos, pos + blockSize), outPos);
+      outPos += blockSize;
+      pos += blockSize;
+      if (isLast) break;
+    }
+    const dec2 = new TextDecoder();
+    const readStr = (offset: number, length: number): string => {
+      let end = offset + length;
+      for (let i = offset; i < offset + length; i++) if (tar[i] === 0) { end = i; break; }
+      return dec2.decode(tar.subarray(offset, end));
+    };
+    const out: {name: string; data: Uint8Array}[] = [];
+    let tp = 0;
+    while (tp + 512 <= tar.length) {
+      let allZero = true;
+      for (let i = 0; i < 512; i++) if (tar[tp + i] !== 0) { allZero = false; break; }
+      if (allZero) break;
+      const short = readStr(tp, 100);
+      const prefix = readStr(tp + 345, 155);
+      const name = prefix ? `${prefix}/${short}` : short;
+      const sizeStr = readStr(tp + 124, 12).trim();
+      const size = sizeStr ? parseInt(sizeStr, 8) : 0;
+      tp += 512;
+      if (size > 0) {
+        out.push({name, data: tar.subarray(tp, tp + size)});
+        tp += size;
+        const pad = (512 - (size % 512)) % 512;
+        tp += pad;
+      }
+    }
+    return out;
+  };
+
+  // ─── Test 15 ── Send-to-Agent clipboard payload: line order + contracts ─
+  // The payload is the product promise of the Send-to-Agent flow: exact
+  // line ordering, @-prefixed absolute paths, the non-optional no-grep
+  // rule, a hydrated idempotent bootstrap, and a stock-DESIGN warning that
+  // appears ONLY while the operator ships the template.
+  await seed();
+  {
+    await page.evaluate(() => window.__pinchgrab_panel.__setExportClock('2026-07-11T00:00:00.000Z'));
+    const templated = await exportZipCaptured();
+    assert(templated.prompt, 'Send to Agent should record an agent prompt');
+    const lines = templated.prompt!.split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(
+      lines.map((l) => l.type),
+      ['pinchgrab-send-to-agent', 'instruction', 'bootstrap', 'files', 'tree', 'orchestration', 'warning', 'verify', 'done'],
+      'payload line order must match the protocol exactly (warning present on template DESIGN.md)');
+    const header = lines[0];
+    assert(/^[0-9a-f]{16}$/.test(header.bundleId), `bundleId should be 16 hex, got ${header.bundleId}`);
+    assert.strictEqual(header.designIsStockTemplate, true);
+    assert.strictEqual(header.counts.comments, 1);
+    const files = lines.find((l) => l.type === 'files');
+    assert.strictEqual(files.noGrep, true);
+    assert.strictEqual(files.readFully, true);
+    assert(files.paths.every((p: string) => p.startsWith('@')), `every file path must be @-prefixed, got ${files.paths.join(', ')}`);
+    assert(files.paths.some((p: string) => p.endsWith('/AGENT-PROTOCOL.md')), 'files must include AGENT-PROTOCOL.md');
+    assert(/do not grep/i.test(files.rule), 'the no-grep rule must be spelled out');
+    const boot = lines.find((l) => l.type === 'bootstrap');
+    assert.strictEqual(boot.idempotent, true);
+    assert(boot.script.includes("WS='default'") && boot.script.includes(`BID='${header.bundleId}'`),
+      'bootstrap must hydrate workspace + bundleId');
+    assert(boot.script.includes('.extracted'), 'bootstrap must be guarded by the .extracted marker');
+    const orch = lines.find((l) => l.type === 'orchestration');
+    assert.deepStrictEqual(orch.phases, ['map', 'plan', 'implement', 'audit', 'verify']);
+    for (const phrase of ['mapped_skills', '/plan', 'roast', '/perception-first-design:all', 'NOT overwrite', 'SERIALLY']) {
+      assert(orch.text.includes(phrase), `orchestration must retain "${phrase}"`);
+    }
+    assert(lines.find((l) => l.type === 'verify').text.includes('pinchgrab recapture'),
+      'verify line must point at the recapture CLI');
+    // Customized DESIGN.md → warning line disappears.
+    await page.evaluate(() => window.__pinchgrab_panel.setPrefs({designMd: '# Product canon\n'}));
+    const customized = await exportZipCaptured();
+    const types2 = customized.prompt!.split('\n').map((l) => JSON.parse(l).type);
+    assert(!types2.includes('warning'), 'warning line must vanish once DESIGN.md is customized');
+    assert.strictEqual(JSON.parse(customized.prompt!.split('\n')[0]!).designIsStockTemplate, false);
+    await page.evaluate(() => window.__pinchgrab_panel.setPrefs({designMd: ''}));
+    console.log('exports 15 ok: Send-to-Agent payload (9-line order, @-paths, no-grep, hydrated bootstrap, conditional warning)');
+  }
+
+  // ─── Test 16 ── Frozen clock ⇒ re-export is byte-identical + same name ─
+  await seed();
+  {
+    await page.evaluate(() => window.__pinchgrab_panel.__setExportClock('2026-07-11T00:00:00.000Z'));
+    const a = await exportZipCaptured();
+    const b = await exportZipCaptured();
+    assert(a.bytes.length > 0, 'first export should produce bytes');
+    assert.strictEqual(a.relPath, b.relPath, 'unchanged content must re-export to the SAME filename (overwrite, not duplicate)');
+    assert.strictEqual(a.bytes.length, b.bytes.length, 'byte length must match across re-exports');
+    for (let i = 0; i < a.bytes.length; i++) {
+      if (a.bytes[i] !== b.bytes[i]) assert.fail(`archives diverge at byte ${i}`);
+    }
+
+    // ─── Test 17 ── Bundle extras: vendored skills, protocol, manifest ──
+    const entries = extractTar(a.bytes);
+    const names = entries.map((e) => e.name);
+    for (const expected of [
+      'AGENT-PROTOCOL.md',
+      'skills-index.json',
+      '.agents/skills/impeccable/reference/polish.md',
+      '.agents/skills/impeccable/LICENSE',
+      'perception-first-design/skills/pfd/SKILL.md',
+      'perception-first-design/LICENSE',
+      // 107 chars — proves the ustar prefix path survives end-to-end.
+      'perception-first-design/skills/pfd/references/learnings/L0/l018-backend-mechanics-as-frontend-complexity.md',
+    ]) {
+      assert(names.includes(expected), `tar must include ${expected} (got ${names.length} entries)`);
+    }
+    const dec = new TextDecoder();
+    const protocol = dec.decode(entries.find((e) => e.name === 'AGENT-PROTOCOL.md')!.data);
+    for (const phrase of ['work-manifest.jsonl', 'mapped_skills', 'pinchgrab recapture', 'never skip a phase', 'NOT overwrite']) {
+      assert(protocol.includes(phrase), `AGENT-PROTOCOL.md must retain "${phrase}"`);
+    }
+    const jsonl = dec.decode(entries.find((e) => /\.jsonl$/.test(e.name))!.data);
+    const manifest = JSON.parse(jsonl.split('\n')[0]!);
+    assert.strictEqual(manifest.agentProtocol?.archivePath, 'AGENT-PROTOCOL.md');
+    assert(Array.isArray(manifest.bundledSkills) && manifest.bundledSkills.length >= 34,
+      `manifest.bundledSkills should list the skill inventory, got ${manifest.bundledSkills?.length}`);
+    assert(/^[0-9a-f]{16}$/.test(manifest.bundleId), 'manifest.bundleId should be 16 hex');
+    const fb = jsonl.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((l) => l.type === 'feedback');
+    assert(Array.isArray(fb.suggestedSkills) && fb.suggestedSkills.some((s: any) => s.skill === 'pinchgrab'),
+      `feedback rows should carry suggestedSkills locator seeds, got ${JSON.stringify(fb.suggestedSkills)}`);
+    await page.evaluate(() => window.__pinchgrab_panel.__setExportClock(null));
+    console.log(`exports 16+17 ok: frozen-clock re-export byte-identical (${a.bytes.length} bytes) · vendored skills + protocol + manifest addenda in tar (${names.length} entries)`);
   }
 
   console.log('exports.spec all tests passed');

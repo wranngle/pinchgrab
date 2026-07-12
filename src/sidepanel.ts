@@ -16,6 +16,8 @@ import {pg} from './types.ts';
 import {PG_ICONS} from './lucide.ts';
 import {buildTar, wrapZstd, type TarEntry} from './tar.ts';
 import {TEMPLATES_PRESENT} from './templates.gen.ts';
+import {BUNDLED_SKILLS_PRESENT, BUNDLED_SKILL_FILES} from './bundled-skills.gen.ts';
+import {buildAgentPromptJsonl, buildAgentProtocolMd, type SkillsIndex} from './export-agent-prompt.mjs';
 import {serializeCaptureJson} from './export-capture.mjs';
 
 (() => {
@@ -71,21 +73,44 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
   };
   // Effective content used by the export pipeline and the modal. When the
-  // user has customized via the textarea/upload, that wins; otherwise we
-  // fall back to local.* (the developer's pre-baked override) then to
-  // the generic template.
+  // user has customized via the textarea/upload, that wins; otherwise the
+  // PLAIN STOCK template. The old `local.*` dev-override preference is
+  // gone (operator ruling 2026-07-11): it silently substituted the
+  // developer's own brand files as the "default", contaminating exports
+  // that the manifest still flagged as bundled-default content.
   const resolveDesignContent = async (): Promise<string> => {
     if (prefs.designMd && prefs.designMd.trim()) return prefs.designMd;
-    return (await loadTemplate('localDesign')) || (await loadTemplate('designTemplate'));
+    return loadTemplate('designTemplate');
   };
   const resolveSkillContent = async (): Promise<string> => {
     if (prefs.skillMd && prefs.skillMd.trim()) return prefs.skillMd;
-    return (await loadTemplate('localSkill')) || (await loadTemplate('skillTemplate'));
+    return loadTemplate('skillTemplate');
   };
   // True when the user hasn't customized → prefs.{designMd|skillMd} is
   // empty and we're falling back to a bundled template/local resource.
   const isUsingTemplateDesign = (): boolean => !prefs.designMd || !prefs.designMd.trim();
   const isUsingTemplateSkill = (): boolean => !prefs.skillMd || !prefs.skillMd.trim();
+
+  // Vendored third-party skill resources (impeccable reference set +
+  // perception-first-design), shipped under extension/skills/ by the build
+  // and inlined into bundle exports. Same lazy fetch + cache pattern as the
+  // templates above.
+  const bundledSkillCache = new Map<string, string>();
+  const loadBundledSkillFile = async (extPath: string): Promise<string | null> => {
+    const cached = bundledSkillCache.get(extPath);
+    if (cached !== undefined) return cached;
+    try {
+      const url = inExtension && chrome.runtime?.getURL ? chrome.runtime.getURL(extPath) : extPath;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const text = await res.text();
+      bundledSkillCache.set(extPath, text);
+      return text;
+    } catch (err) {
+      console.warn(LOG, `bundled skill fetch failed: ${extPath}`, err);
+      return null;
+    }
+  };
 
   // ─── Storage adapter ─────────────────────────────────────────────────────
   const Store = {
@@ -197,6 +222,23 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // since page screenshots are large and the first one already gives
     // a session-level reference.
     pageShotPerCapture: boolean;
+    // Suppress Chrome's download bubble while PinchGrab writes its own
+    // files (screenshots + exports). Requires the optional `downloads.ui`
+    // permission. Default ON as intent; until the permission is actually
+    // granted (needs a user gesture — the nudge banner or the settings
+    // checkbox), saves stay visible.
+    quietSaves: boolean;
+    // The user dismissed the quiet-saves nudge banner — never re-show it.
+    quietNudgeDismissed: boolean;
+    // Bundle the vendored third-party design skills (impeccable reference
+    // set + perception-first-design) plus skills-index.json into archive
+    // exports. On by default: the Send-to-Agent protocol's skill-mapping
+    // phase assumes their presence. ~1.2 MB of markdown per bundle.
+    bundleSkills: boolean;
+    // Bundle the full serialized HTML of each captured page under pages/.
+    // Off by default (documents can be huge); collected lazily at export
+    // time from live tabs, never persisted to chrome.storage.
+    includePageHTML: boolean;
   };
   const DEFAULT_PREFS: Prefs = {
     includeOuterHTML: true,
@@ -221,6 +263,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     skillPath: '~/.agents/skills/PinchGrab/SKILL.md',
     skillMd: '',
     pageShotPerCapture: false,
+    quietSaves: true,
+    quietNudgeDismissed: false,
+    bundleSkills: true,
+    includePageHTML: false,
   };
 
   // Rewrite the `name:` field in a SKILL.md's YAML frontmatter. The
@@ -282,8 +328,8 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // Last successful export — both the workspace-relative path (shown to the
   // user) and the OS-absolute path (copied by the "Copy as path" button).
   // Updated on JSONL/MD/ZIP/screenshot saves.
-  const lastExport: {relPath: string | null; absPath: string | null; copyPath: string | null; tempPath: boolean; kind: string | null} = {
-    relPath: null, absPath: null, copyPath: null, tempPath: false, kind: null,
+  const lastExport: {relPath: string | null; absPath: string | null; copyPath: string | null; tempPath: boolean; kind: string | null; agentPrompt: string | null} = {
+    relPath: null, absPath: null, copyPath: null, tempPath: false, kind: null, agentPrompt: null,
   };
   let workspaces: Workspace[] = [{name: 'default', createdAt: new Date().toISOString()}];
   let activeWs = 'default';
@@ -440,9 +486,26 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     return [...set].sort().slice(0, 20);
   };
-  // Build a filename of the shape `pinchgrab-<workspace>-<host>-<epoch>.<ext>`.
-  const buildExportFilename = (ext: 'jsonl' | 'md' | 'tar.zst'): string =>
-    `pinchgrab-${activeWs}-${dominantHostSlug()}-${Date.now()}.${ext}`;
+  // ─── Deterministic export identity ──────────────────────────────────────
+  // One clock per export: every timestamp inside a single export derives
+  // from the same instant, and tests can freeze it so two exports of the
+  // same content are byte-identical.
+  let exportClockOverride: string | null = null;
+  const exportNowIso = (): string => exportClockOverride ?? new Date().toISOString();
+  // Stable content identity: SHA-256 over the slim rows plus the sorted
+  // screenshot archive names. Same workspace content → same hash → same
+  // filename (the background saves with conflictAction 'overwrite'), so
+  // re-exporting unchanged content replaces rather than duplicates.
+  const computeContentHash = async (shotNames: string[]): Promise<string> => {
+    const payload = buildSlim().map((l) => JSON.stringify(l)).join('\n') + '\n' + [...shotNames].sort().join('\n');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  };
+  // Build a filename of the shape `pinchgrab-<workspace>-<host>-<stamp>.<ext>`.
+  // The stamp is the export's content-hash prefix when supplied (bundle and
+  // JSONL exports), falling back to the epoch for legacy callers.
+  const buildExportFilename = (ext: 'jsonl' | 'md' | 'tar.zst', stamp?: string): string =>
+    `pinchgrab-${activeWs}-${dominantHostSlug()}-${stamp ?? Date.now()}.${ext}`;
   // Skip-list match: substring (case-insensitive) match against the URL's
   // host. We intentionally don't use URL parsing on the patterns so the user
   // can write `wranngle.com` and have it match `app.wranngle.com` too.
@@ -1456,7 +1519,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
         flushGroup();
         curGroup = {kind: 'group', sel: m, trailing: []};
       } else {
-        if (curGroup) curGroup.trailing.push(m);
+        // Detached comments never travel with the preceding selector's
+        // group — they stay loose in export order.
+        if (curGroup && !m.detached) curGroup.trailing.push(m);
         else slots.push({kind: 'loose', m});
       }
     }
@@ -1640,7 +1705,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
         if (m.url === lastRenderedPageUrl) continue;
         lastRenderedPageUrl = m.url;
       }
-      const node = renderMessage(m, lastSelectorSel);
+      // Detached comments render unthreaded — adjacency must not re-adopt
+      // a comment the user explicitly disassociated.
+      const adjacency = m.type === 'feedback' && m.detached ? null : lastSelectorSel;
+      const node = renderMessage(m, adjacency);
       list.append(node);
       if (m.type === 'selector') lastSelectorSel = m.entry.selector;
       if (i < ordered.length - 1) list.append(insertRail(ordered[i + 1]!.id));
@@ -1718,7 +1786,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     let lastSelectorEl: HTMLElement | null = null;
     for (const node of [...list.children] as HTMLElement[]) {
       if (node.classList.contains('msg') && node.classList.contains('selector')) lastSelectorEl = node;
-      else if (node.classList.contains('msg') && node.classList.contains('feedback') && lastSelectorEl) drawNoodle(lastSelectorEl, node);
+      // Only THREADED comments get a connector — a detached comment must
+      // lose its noodle, not just its indent (the visible "disconnect").
+      else if (node.classList.contains('msg') && node.classList.contains('feedback') && node.classList.contains('threaded') && lastSelectorEl) drawNoodle(lastSelectorEl, node);
       else if (node.classList.contains('insert-rail') && node.classList.contains('expanded') && lastSelectorEl) {
         const target = node.querySelector<HTMLElement>('.inline-comment') ?? node;
         drawNoodle(lastSelectorEl, target);
@@ -2259,6 +2329,24 @@ import {serializeCaptureJson} from './export-capture.mjs';
     dragHandle.addEventListener('dragend', () => div.classList.remove('dragging'));
     dragHandle.addEventListener('click', (e) => e.stopPropagation());
     actions.append(dragHandle);
+    // Detach — the inverse of drag-to-reparent. Only meaningful when the
+    // comment currently reads as threaded (FK or adjacency).
+    if (lastSelectorSel || m.parentUid) {
+      actions.append(actionBtn('unlink', 'Detach from its capture — make this a standalone comment', () => {
+        // Resolve by id from the LIVE array: workspace switches and
+        // undo/redo reassign `messages`, so the closure's `m` can be a
+        // stale object whose mutation would be silently dropped by the
+        // next persist().
+        const live = messages.find((x): x is FeedbackMessage => x.type === 'feedback' && x.id === m.id);
+        if (!live) { setStatus('Comment no longer exists', {kind: 'warn'}); return; }
+        snapshot();
+        delete live.parentUid;
+        live.detached = true;
+        persist();
+        render();
+        setStatus('Comment detached — drag its handle onto a capture to reattach');
+      }));
+    }
     actions.append(actionBtn('copy', 'Copy comment text', async () => {
       await navigator.clipboard.writeText(m.text);
       setStatus('Copied comment');
@@ -2295,8 +2383,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
       if (dstIdx < 0) return;
       snapshot();
       // Update the FK pointer first — that's the source of truth in
-      // exports. Adjacency is just a render convenience.
+      // exports. Adjacency is just a render convenience. Reparenting is
+      // the inverse of detach, so the detached flag is cleared.
       src.parentUid = m.entry.uid;
+      delete src.detached;
       // Splice src out of its current slot and re-insert right after the
       // new parent (and any feedback already trailing it, so the most-
       // recent feedback ends up nearest the parent visually).
@@ -2705,7 +2795,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // exports stay clean.
   // `tags` is always emitted (default empty array) so DuckDB schema
   // inference always sees the column.
-  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; tags: string[]; isTestData?: boolean};
+  type SlimFeedback = {v: 2; type: 'feedback'; uid: string; ts: string; text: string; parentUid?: string; detached?: boolean; tags: string[]; isTestData?: boolean; suggestedSkills?: Array<{skill: string; locator: string}>};
   // Cheap test-data sniff: matches strings the user types while smoke-
   // testing the extension ("test", "asdf", "foo", "lorem ipsum",
   // "placeholder", or any phrase obviously stubbed-out). False positives
@@ -2812,7 +2902,14 @@ import {serializeCaptureJson} from './export-capture.mjs';
         // "Howdy , test feedback here", etc). Lets a downstream consumer
         // filter pollution from real intent without manual cleanup.
         if (looksLikeTestData(m.text)) rich.isTestData = true;
-        if (pendingSel) {
+        // A detached comment never adopts the pending selector via
+        // adjacency — the user explicitly disassociated it. The flag is
+        // emitted so import round-trips don't re-adopt by adjacency either.
+        if (m.detached) rich.detached = true;
+        // Heuristic skill locators for the agent's map phase (verified and
+        // rewritten into work-manifest mapped_skills by the consumer).
+        rich.suggestedSkills = suggestSkillsFor(m.text);
+        if (pendingSel && !m.detached) {
           rich.parentUid = m.parentUid ?? pendingSel.entry.uid;
           pendingFbStrings.push(m.text);
           pendingFbRich.push(rich);
@@ -2829,7 +2926,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // manifest carries the export filename + workspace + host(s) + counts so
   // a downstream LLM can resync the file with its workspace and grep for
   // duplicates across exports.
-  const buildManifest = (filename: string, format: ExportManifest['format']): ExportManifest => {
+  const buildManifest = (filename: string, format: ExportManifest['format'], opts: {nowIso?: string; bundleId?: string} = {}): ExportManifest => {
     let nSel = 0; let nFb = 0; let nPg = 0;
     let nGroupMembers = 0;
     let nFeedbackBearing = 0;
@@ -2865,10 +2962,11 @@ import {serializeCaptureJson} from './export-capture.mjs';
     for (const fbUid of feedbackParentSelectorIds) {
       if (!selectorUids.has(fbUid)) nOrphanedFb++;
     }
+    const nowIso = opts.nowIso ?? exportNowIso();
     const out: ExportManifest = {
       v: 2, type: 'manifest', tool: 'pinchgrab',
-      ts: new Date().toISOString(),
-      generated: Date.now(),
+      ts: nowIso,
+      generated: Date.parse(nowIso),
       workspace: activeWs,
       filename,
       format,
@@ -2899,6 +2997,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
       // Receivers no longer have to guess which path shape applies.
       pathRoot: format === 'tar.zst' ? 'archive' : 'workspace',
     };
+    // Content-derived identity (SHA-256 prefix over slim rows + screenshot
+    // names). Same content → same bundleId → downstream ~/.pinchgrab state
+    // keys stay stable across re-exports.
+    if (opts.bundleId) out.bundleId = opts.bundleId;
     // Indirection pointers so a downstream agent knows which UI skill
     // owns the triage flow + which DESIGN.md owns the visual identity.
     //
@@ -2997,9 +3099,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     }
     return out;
   };
-  const buildJsonl = (filenameForManifest?: string, format: ExportManifest['format'] = 'jsonl'): string => {
+  const buildJsonl = (filenameForManifest?: string, format: ExportManifest['format'] = 'jsonl', opts: {nowIso?: string; bundleId?: string} = {}): string => {
     const filename = filenameForManifest ?? buildExportFilename('jsonl');
-    const manifest = buildManifest(filename, format);
+    const manifest = buildManifest(filename, format, opts);
     const lines = buildSlim();
     if (!lines.length) {
       // Even an empty workspace gets a manifest line so downstream tools
@@ -3062,8 +3164,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
   };
   const onExport = async (): Promise<void> => {
     if (!messages.length) { setStatus('Nothing to export', {kind: 'warn'}); return; }
-    const filename = buildExportFilename('jsonl');
-    const text = buildJsonl(filename);
+    const contentHash = await computeContentHash([]);
+    const filename = buildExportFilename('jsonl', contentHash.slice(0, 8));
+    const text = buildJsonl(filename, 'jsonl', {nowIso: exportNowIso(), bundleId: contentHash.slice(0, 16)});
     await saveExportToDisk(text, filename, 'application/jsonl', 'jsonl');
   };
   // ─── tar.zst workspace export ────────────────────────────────────────────
@@ -3101,6 +3204,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
           workspace: {type: 'string'},
           filename: {type: 'string'},
           format: {enum: ['jsonl', 'markdown', 'tar.zst']},
+          bundleId: {type: 'string', pattern: '^[0-9a-f]{16}$'},
           hosts: {type: 'array', items: {type: 'string'}},
           pathRoot: {enum: ['archive', 'workspace']},
           counts: {
@@ -3117,6 +3221,37 @@ import {serializeCaptureJson} from './export-capture.mjs';
               screenshotsPage: {type: 'integer'},
               selectorsMissingScreenshot: {type: 'integer'},
               orphanedFeedback: {type: 'integer'},
+              pagesHtml: {type: 'integer'},
+            },
+          },
+          agentProtocol: {
+            type: 'object',
+            required: ['archivePath'],
+            properties: {archivePath: {type: 'string'}},
+          },
+          bundledSkills: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'kind', 'archivePath'],
+              properties: {
+                id: {type: 'string'},
+                kind: {enum: ['skill', 'reference']},
+                archivePath: {type: 'string'},
+                invocation: {type: 'string'},
+              },
+            },
+          },
+          pagesHtml: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['url', 'archivePath', 'bytes'],
+              properties: {
+                url: {type: 'string'},
+                archivePath: {type: 'string'},
+                bytes: {type: 'integer'},
+              },
             },
           },
           skill: {
@@ -3268,8 +3403,17 @@ import {serializeCaptureJson} from './export-capture.mjs';
           ts: {type: 'string', format: 'date-time'},
           text: {type: 'string'},
           parentUid: {type: 'string'},
+          detached: {type: 'boolean'},
           tags: {type: 'array', items: {type: 'string'}},
           isTestData: {type: 'boolean'},
+          suggestedSkills: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['skill', 'locator'],
+              properties: {skill: {type: 'string'}, locator: {type: 'string'}},
+            },
+          },
         },
       },
       viewport: {
@@ -3327,6 +3471,29 @@ import {serializeCaptureJson} from './export-capture.mjs';
     if (/\b(broken|crash|null|undefined|error|404|fail)/.test(t)) return 'state';
     if (/\b(ugly|color|gradient|shadow|polish|visual|style)/.test(t)) return 'visual-polish';
     return 'unspecified';
+  };
+  // Heuristic seed for the Send-to-Agent protocol's map phase: category →
+  // bundled-skill locators (ids match skills-index.json). The consuming
+  // agent is told to VERIFY these, not trust them — they exist so the map
+  // phase starts from something instead of nothing. Only locators that can
+  // actually exist in the archive are emitted (vendored ones gate on the
+  // bundleSkills pref).
+  const suggestSkillsFor = (text: string): Array<{skill: string; locator: string}> => {
+    const PINCHGRAB = {skill: 'pinchgrab', locator: '.agents/skills/PinchGrab/SKILL.md'};
+    const PFD = {skill: 'pfd', locator: 'perception-first-design/skills/pfd/SKILL.md'};
+    const imp = (slug: string): {skill: string; locator: string} =>
+      ({skill: `impeccable/${slug}`, locator: `.agents/skills/impeccable/reference/${slug}.md`});
+    const vendored = prefs.bundleSkills && BUNDLED_SKILLS_PRESENT;
+    if (!vendored) return [PINCHGRAB];
+    switch (inferFeedbackCategory(text)) {
+      case 'copy': return [PINCHGRAB, imp('clarify'), PFD];
+      case 'layout': return [PINCHGRAB, imp('layout'), PFD];
+      case 'affordance': return [PINCHGRAB, imp('interaction-design'), PFD];
+      case 'accessibility': return [PINCHGRAB, imp('audit'), PFD];
+      case 'state': return [PINCHGRAB, PFD];
+      case 'visual-polish': return [PINCHGRAB, imp('polish'), PFD];
+      default: return [PINCHGRAB, PFD];
+    }
   };
   const buildRepairIndex = (manifest: ExportManifest, jsonlName: string): string => {
     type Row = {feedback: FeedbackMessage; parent?: SelectorMessage};
@@ -3432,12 +3599,16 @@ import {serializeCaptureJson} from './export-capture.mjs';
       '',
       '## Files',
       '',
-      '- `repair-index.md` — agent-friendly triage punch list (start here).',
+      manifest.agentProtocol ? `- \`${manifest.agentProtocol.archivePath}\` — the agent working doctrine: phases, persistence layout, verification loop (**agents start here**).` : '',
+      '- `repair-index.md` — agent-friendly triage punch list (one task per comment).',
       `- \`${jsonlName}\` — JSONL stream (one capture per line, leading manifest, schema v2).`,
       '- `screenshots/*.png` — full-resolution PNGs of each captured element / group / page.',
       '- `screenshots.json` — uid-keyed index: `byUid[uid] → { element?, group?, page? }`, `byUrl[url] → { page?, uids[] }`, plus a flat `files[]` listing.',
       '- `schema.json` — JSON-Schema (draft 2020-12) describing every row type.',
       '- `duckdb.sql` — copy-and-paste recipes for querying the JSONL with DuckDB.',
+      manifest.bundledSkills?.length ? `- \`skills-index.json\` — locator index for the ${manifest.bundledSkills.length} bundled skill documents (id → archive path → purpose → upstream provenance).` : '',
+      manifest.bundledSkills?.length ? '- `.agents/skills/impeccable/reference/*.md` + `perception-first-design/**` — vendored design skills, each with its upstream license; read them from this archive, no installation needed.' : '',
+      manifest.pagesHtml?.length ? `- \`pages/*.html\` — full serialized HTML of ${manifest.pagesHtml.length} captured page${manifest.pagesHtml.length === 1 ? '' : 's'} (opt-in).` : '',
       manifest.design?.inline ? `- \`DESIGN.md\` — ${manifest.design.customized ? 'project-customized design source-of-truth (trust as canonical).' : manifest.design.template ? 'PinchGrab\'s bundled DESIGN.md template (placeholder — verify before applying).' : ''}` : '',
       manifest.skill?.inline ? `- \`.agents/skills/PinchGrab/SKILL.md\` — ${manifest.skill.customized ? 'project-customized triage skill.' : manifest.skill.template ? 'PinchGrab\'s bundled default triage skill (template content).' : ''}` : '',
       '',
@@ -3462,11 +3633,16 @@ import {serializeCaptureJson} from './export-capture.mjs';
       '',
       '```',
       `${jsonlName}                    # JSONL stream (the source of truth)`,
+      manifest.agentProtocol ? 'AGENT-PROTOCOL.md               # agent working doctrine (start here)' : '',
       `screenshots/                    # element / group / page PNGs`,
       `screenshots.json                # uid-keyed lookup index`,
       `duckdb.sql                      # copy-paste SQL recipes`,
       `schema.json                     # JSON-Schema for every row type`,
       `README.md                       # this file`,
+      manifest.bundledSkills?.length ? 'skills-index.json               # bundled-skill locator index' : '',
+      manifest.bundledSkills?.length ? '.agents/skills/impeccable/      # vendored reference guides (Apache-2.0)' : '',
+      manifest.bundledSkills?.length ? 'perception-first-design/        # vendored PFD framework (CC BY-SA 4.0)' : '',
+      manifest.pagesHtml?.length ? 'pages/                          # full page HTML (opt-in)' : '',
       manifest.design?.inline ? 'DESIGN.md                       # visual identity source-of-truth' : '',
       manifest.skill?.inline ? '.agents/skills/PinchGrab/SKILL.md  # triage instructions' : '',
       '```',
@@ -3496,7 +3672,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
   // The `inArchive` flag on each file mirrors the tar bundle membership
   // so a consumer downstream of the .tar.zst extraction can tell which
   // paths point INSIDE the archive (relative) vs at on-disk siblings.
-  const buildScreenshotsIndex = (bundled: Set<string>): string => {
+  const buildScreenshotsIndex = (bundled: Set<string>, nowIso?: string): string => {
     const byUid: Record<string, any> = {};
     const byUrl: Record<string, {page?: string; uids: string[]}> = {};
     const files: Array<{path: string; archivePath: string | null; kind: 'element' | 'group' | 'page'; uid?: string; n?: number; selector?: string; url?: string}> = [];
@@ -3538,7 +3714,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     const out = {
       v: 2,
       kind: 'pinchgrab/screenshots-index',
-      generated: new Date().toISOString(),
+      generated: nowIso ?? exportNowIso(),
       counts: {
         files: files.length,
         bundled: files.filter((f) => f.archivePath).length,
@@ -3592,20 +3768,113 @@ import {serializeCaptureJson} from './export-capture.mjs';
     return {entries, bundled};
   };
 
+  // Full-page HTML entries (opt-in includePageHTML pref). Collected LAZILY
+  // at export time from whichever live tabs still show a captured URL —
+  // never persisted to chrome.storage, so big documents can't evict
+  // full-res screenshots from the quota. URLs with no live tab are recorded
+  // as info-level diagnostics instead of failing the export.
+  const pageHtmlSlug = (url: string, taken: Set<string>): string => {
+    let slug = 'page';
+    try {
+      const u = new URL(url);
+      slug = `${u.host}${u.pathname}`.replace(/\/+$/, '').replace(/[^\w.-]+/g, '_').slice(0, 80) || u.host;
+    } catch { /* keep fallback */ }
+    let unique = slug;
+    for (let i = 2; taken.has(unique); i++) unique = `${slug}~${i}`;
+    taken.add(unique);
+    return unique;
+  };
+  const collectPageHtmlEntries = async (): Promise<{entries: TarEntry[]; pagesMeta: Array<{url: string; archivePath: string; bytes: number}>; diagnostics: ExportDiagnostic[]}> => {
+    const entries: TarEntry[] = [];
+    const pagesMeta: Array<{url: string; archivePath: string; bytes: number}> = [];
+    const diagnostics: ExportDiagnostic[] = [];
+    if (!prefs.includePageHTML || !inExtension) return {entries, pagesMeta, diagnostics};
+    const urls = new Set<string>();
+    for (const m of messages) {
+      if (m.type === 'selector' && m.entry.url) urls.add(m.entry.url);
+      else if (m.type === 'page' && m.url) urls.add(m.url);
+    }
+    if (!urls.size) return {entries, pagesMeta, diagnostics};
+    let tabs: chrome.tabs.Tab[] = [];
+    try { tabs = await chrome.tabs.query({}); } catch { /* fall through to diagnostics */ }
+    const taken = new Set<string>();
+    for (const url of [...urls].sort()) {
+      const tab = tabs.find((t) => t.url === url) ?? tabs.find((t) => (t.url ?? '').split('#')[0] === url.split('#')[0]);
+      let html: string | undefined;
+      if (tab?.id != null) {
+        try {
+          const reply = await chrome.tabs.sendMessage(tab.id, pg({kind: 'page-html'})) as {ok?: boolean; html?: string} | undefined;
+          if (reply?.ok && reply.html) html = reply.html;
+        } catch { /* tab has no live content script */ }
+      }
+      if (!html) {
+        diagnostics.push({severity: 'info', code: 'PAGE_HTML_UNAVAILABLE', detail: url});
+        continue;
+      }
+      const archivePath = `pages/${pageHtmlSlug(url, taken)}.html`;
+      entries.push({name: archivePath, data: html});
+      pagesMeta.push({url, archivePath, bytes: new TextEncoder().encode(html).length});
+    }
+    return {entries, pagesMeta, diagnostics};
+  };
+
   const onExportZip = async (): Promise<void> => {
     if (!messages.length) { setStatus('Nothing to export', {kind: 'warn'}); return; }
-    const archiveName = buildExportFilename('tar.zst');
+    // One clock + one content hash per export: every timestamp and the
+    // filename stem derive from these so re-exporting unchanged content
+    // produces the same filename (overwritten, not duplicated) and — with
+    // a frozen clock — byte-identical archives.
+    const exportedAtIso = exportNowIso();
+    const mtimeSec = Math.floor(Date.parse(exportedAtIso) / 1000);
+    const {entries: shotEntries, bundled} = collectScreenshotEntries();
+    const contentHash = await computeContentHash(shotEntries.map((e) => e.name));
+    const bundleId = contentHash.slice(0, 16);
+    const archiveName = buildExportFilename('tar.zst', contentHash.slice(0, 8));
     const stem = archiveName.replace(/\.tar\.zst$/, '');
     const jsonlName = `${stem}.jsonl`;
-    const manifest = buildManifest(archiveName, 'tar.zst');
+    const manifestOpts = {nowIso: exportedAtIso, bundleId};
+    const manifest = buildManifest(archiveName, 'tar.zst', manifestOpts);
+    // Load the tar-bound extras BEFORE the docs render so the README and
+    // manifest can describe exactly what ships: vendored skills (+ parsed
+    // skills index) and opt-in full-page HTML.
+    const skillEntries: TarEntry[] = [];
+    let skillsIndex: SkillsIndex | null = null;
+    if (prefs.bundleSkills && BUNDLED_SKILLS_PRESENT) {
+      const loaded = await Promise.all(BUNDLED_SKILL_FILES.map(async (f) => ({f, data: await loadBundledSkillFile(f.ext)})));
+      let skipped = 0;
+      for (const {f, data} of loaded) {
+        if (data == null) { skipped++; continue; }
+        skillEntries.push({name: f.archive, data});
+        if (f.archive === 'skills-index.json') {
+          try { skillsIndex = JSON.parse(data) as SkillsIndex; } catch { /* unreadable index — table degrades */ }
+        }
+      }
+      if (skipped) console.warn(LOG, `bundled skills: ${skipped}/${loaded.length} files missing from this build — export continues without them`);
+    }
+    const {entries: pageHtmlEntries, pagesMeta, diagnostics: pageHtmlDiagnostics} = await collectPageHtmlEntries();
+    manifest.agentProtocol = {archivePath: 'AGENT-PROTOCOL.md'};
+    if (skillsIndex?.skills?.length) {
+      manifest.bundledSkills = skillsIndex.skills.map((s) => ({
+        id: s.id,
+        kind: s.id.startsWith('impeccable/') ? 'reference' as const : 'skill' as const,
+        archivePath: s.path,
+        ...(s.invoke ? {invocation: s.invoke} : {}),
+      }));
+    }
+    if (pagesMeta.length) {
+      manifest.pagesHtml = pagesMeta;
+      manifest.counts.pagesHtml = pagesMeta.length;
+    }
+    if (pageHtmlDiagnostics.length) {
+      manifest.exportDiagnostics = [...(manifest.exportDiagnostics ?? []), ...pageHtmlDiagnostics];
+    }
     // The JSONL inside the archive must declare itself as part of a
     // tar.zst bundle so its manifest's `design.inline` / `skill.inline`
     // flags match what's actually present in the surrounding tar.
-    const jsonlText = buildJsonl(jsonlName, 'tar.zst');
+    const jsonlText = buildJsonl(jsonlName, 'tar.zst', manifestOpts);
     const sql = duckDbSnippet(jsonlName);
-    const {entries: shotEntries, bundled} = collectScreenshotEntries();
     const readme = buildReadme(manifest, jsonlName, shotEntries.length);
-    const shotsJson = buildScreenshotsIndex(bundled);
+    const shotsJson = buildScreenshotsIndex(bundled, exportedAtIso);
 
     // Markdown export was dropped: it carried no data the JSONL didn't
     // already have (the human-readable surface was just a curated subset
@@ -3650,6 +3919,24 @@ import {serializeCaptureJson} from './export-capture.mjs';
       const rebranded = rebrandSkillName(skillContent, 'PinchGrab');
       tarEntries.push({name: '.agents/skills/PinchGrab/SKILL.md', data: rebranded});
     }
+    // Vendored skills + opt-in page HTML (loaded above, before the docs).
+    tarEntries.push(...skillEntries, ...pageHtmlEntries);
+    // AGENT-PROTOCOL.md — the full Send-to-Agent doctrine. Hydrated last so
+    // its bundle tree reflects every entry above (plus itself); the same
+    // options rebuild the clipboard payload after the save resolves the
+    // real absolute archive path.
+    const entryNamesForDocs = [...tarEntries.map((e) => e.name), 'AGENT-PROTOCOL.md'].sort();
+    const agentPromptOpts = {
+      workspace: activeWs,
+      bundleId,
+      archivePath: archiveName,
+      exportTs: exportedAtIso,
+      jsonlName,
+      counts: {comments: manifest.counts.feedback, selectors: manifest.counts.selectors, pages: manifest.counts.pages, screenshots: shotEntries.length},
+      entryNames: entryNamesForDocs,
+      designIsTemplate: isUsingTemplateDesign(),
+    };
+    tarEntries.push({name: 'AGENT-PROTOCOL.md', data: buildAgentProtocolMd({...agentPromptOpts, skillsIndex})});
     // Rebuild the manifest line in the JSONL with archiveIntegrity
     // (file list + sizes). Has to happen AFTER all tarEntries are
     // assembled but BEFORE we tar them, so we know what's in the
@@ -3674,8 +3961,22 @@ import {serializeCaptureJson} from './export-capture.mjs';
       console.warn(LOG, 'archiveIntegrity computation failed', err);
     }
 
+    // Stamp every entry with the export clock so archive bytes are a pure
+    // function of content + clock (buildTar would otherwise sample now()).
+    for (const e of tarEntries) e.mtime ??= mtimeSec;
     const tarBytes = buildTar(tarEntries);
     const archiveBytes = wrapZstd(tarBytes);
+
+    // Copy the Send-to-Agent payload NOW, while the click's focus is still
+    // fresh: the save below can take seconds (screenshot batches, download
+    // completion polling) and Chrome's download UI can steal focus, which
+    // makes navigator.clipboard writes fail silently. The predicted path is
+    // the stable Downloads-relative form (the bootstrap expands the ~);
+    // once the save resolves we re-copy with the real absolute path,
+    // best-effort — if that one fails, this copy already stands.
+    const predictedPath = `~/Downloads/pinchgrab/${activeWs}/exports/${archiveName}`;
+    lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: predictedPath});
+    const earlyCopied = await copyToClipboardSilent(lastExport.agentPrompt);
 
     if (inExtension) {
       console.log(LOG, 'onExportArchive →', {archiveName, tarBytes: tarBytes.length, archiveBytes: archiveBytes.length, screenshots: shotEntries.length});
@@ -3694,15 +3995,17 @@ import {serializeCaptureJson} from './export-capture.mjs';
         lastExport.tempPath = Boolean(reply.tempPath);
         lastExport.kind = 'tar.zst';
         updateCopyPathButton();
-        // Auto-copy the absolute path to clipboard so the user doesn't
-        // have to hunt for it. The toolbar collapsed the dedicated
-        // "copy path" button into this single action.
+        // Refresh the already-copied payload with the REAL saved path.
+        // Best-effort: focus may be gone by now, and the early copy above
+        // already holds a valid payload (predicted ~/Downloads path).
         const pathToCopy = lastExport.copyPath ?? reply.absPath;
-        const pathCopied = await copyToClipboardSilent(pathToCopy);
+        lastExport.agentPrompt = buildAgentPromptJsonl({...agentPromptOpts, archivePath: pathToCopy});
+        const lateCopied = await copyToClipboardSilent(lastExport.agentPrompt);
+        const promptCopied = lateCopied || earlyCopied;
         const leaf = pathToCopy.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? pathToCopy;
-        if (pathCopied) showCopied('Exported and copied', leaf);
+        if (promptCopied) showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
         setStatus(
-          `Exported · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${pathCopied ? ' · path copied' : ''}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
+          `Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${promptCopied ? ' · prompt copied' : ' · clipboard blocked — use Cmd+K → Copy Send-to-Agent prompt'}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
         );
         return;
       }
@@ -3724,9 +4027,9 @@ import {serializeCaptureJson} from './export-capture.mjs';
     lastExport.tempPath = false;
     lastExport.kind = 'tar.zst';
     updateCopyPathButton();
-    await copyToClipboardSilent(archiveName);
-    showCopied('Exported and copied', archiveName);
-    setStatus(`Workspace exported · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled · path copied`);
+    // The predicted-path payload was already copied before the save.
+    showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
+    setStatus(`Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${earlyCopied ? ' · prompt copied' : ''}`);
   };
 
   // Best-effort clipboard write — never throws; returns whether the
@@ -3914,6 +4217,7 @@ ORDER BY s.n;
             ts: o.ts ?? new Date().toISOString(), text: o.text,
           };
           if (o.parentUid) fb.parentUid = o.parentUid;
+          if (o.detached) fb.detached = true;
           if (Array.isArray(o.tags) && o.tags.length) fb.tags = o.tags;
           if (o.severity) fb.severity = o.severity;
           imported.push(fb);
@@ -3999,9 +4303,9 @@ ORDER BY s.n;
   };
 
   const onClear = (): void => {
-    if (!confirm('Clear all captures and comments?')) return;
+    if (!confirm('Clear all captures? A snapshot will be saved to Settings → Workspaces first.')) return;
     // Archive the workspace BEFORE wiping so it can be restored later.
-    archiveWorkspaceSnapshot();
+    const snap = archiveWorkspaceSnapshot();
     snapshot();
     messages = [];
     liveTabUrl = null;
@@ -4014,7 +4318,8 @@ ORDER BY s.n;
     persist();
     render();
     renderWsControls();
-    setStatus('Cleared · snapshot saved');
+    // Never claim a snapshot that didn't happen (empty workspace no-ops).
+    setStatus(snap ? 'Cleared · snapshot saved — restore in Settings → Workspaces' : 'Cleared');
   };
 
   // ─── Validation ─────────────────────────────────────────────────────────
@@ -4065,6 +4370,50 @@ ORDER BY s.n;
     const url = 'https://github.com/wranngle/pinchgrab';
     if (inExtension) chrome.tabs.create({url});
     else window.open(url, '_blank', 'noopener');
+  };
+
+  // Re-inject the content script into the active tab — the recovery path
+  // for "Alt+Click stopped working" (an extension reload orphans the page's
+  // script). Refreshing an attached tab re-injects automatically; this
+  // covers every other case without hunting for the toolbar icon.
+  const onReattach = async (): Promise<void> => {
+    if (!inExtension) { setStatus('Re-attach only works inside the extension', {kind: 'warn'}); return; }
+    const reply = await sendToBg<{ok: boolean; error?: string}>({kind: 'pg-reinject'});
+    if (reply?.ok) setStatus('Re-attached — Alt+Click is live');
+    else setStatus(`Couldn't re-attach — click the PinchGrab toolbar button on the page${reply?.error ? ` · ${reply.error}` : ''}`, {kind: 'warn'});
+  };
+
+  // ─── Quiet-saves nudge ────────────────────────────────────────────────────
+  // quietSaves defaults ON as intent, but the optional downloads.ui
+  // permission Chrome demands can only be requested inside a user gesture.
+  // This banner is that gesture: shown while the pref is on, the permission
+  // is missing, and the user hasn't dismissed it.
+  const quietNudge = document.querySelector<HTMLElement>('[data-quiet-nudge]');
+  const maybeShowQuietNudge = async (): Promise<void> => {
+    if (!quietNudge || !inExtension || !chrome.permissions?.contains) return;
+    if (!prefs.quietSaves || prefs.quietNudgeDismissed) { quietNudge.hidden = true; return; }
+    try {
+      const granted = await chrome.permissions.contains({permissions: ['downloads.ui']});
+      quietNudge.hidden = granted;
+    } catch { quietNudge.hidden = true; }
+  };
+  const onQuietEnable = async (): Promise<void> => {
+    let granted = false;
+    try { granted = await chrome.permissions.request({permissions: ['downloads.ui']}); }
+    catch (err) { console.warn(LOG, 'downloads.ui permission request failed', err); }
+    prefs.quietSaves = granted;
+    if (!granted) prefs.quietNudgeDismissed = true; // declined once — never nag again
+    persistPrefs();
+    applyPrefsToUI();
+    if (quietNudge) quietNudge.hidden = true;
+    setStatus(granted ? 'Quiet saves on — no more download popups' : 'Saves stay visible — re-enable in Settings → Capture', granted ? {} : {kind: 'info'});
+  };
+  const onQuietDismiss = (): void => {
+    prefs.quietSaves = false;
+    prefs.quietNudgeDismissed = true;
+    persistPrefs();
+    applyPrefsToUI();
+    if (quietNudge) quietNudge.hidden = true;
   };
 
   // ─── Settings drawer / workspaces ───────────────────────────────────────
@@ -4256,7 +4605,23 @@ ORDER BY s.n;
   drawer?.addEventListener('change', (e) => {
     const t = e.target as HTMLInputElement | HTMLTextAreaElement;
     if ((t as HTMLInputElement).dataset?.pref) {
-      (prefs as any)[t.dataset.pref!] = Boolean((t as HTMLInputElement).checked);
+      const key = t.dataset.pref!;
+      const checked = Boolean((t as HTMLInputElement).checked);
+      // Quiet saves needs the optional downloads.ui permission; request it
+      // inside this user gesture and revert the checkbox on decline.
+      if (key === 'quietSaves' && checked && inExtension && chrome.permissions?.request) {
+        void (async () => {
+          let granted = false;
+          try { granted = await chrome.permissions.request({permissions: ['downloads.ui']}); }
+          catch (err) { console.warn(LOG, 'downloads.ui permission request failed', err); }
+          prefs.quietSaves = granted;
+          (t as HTMLInputElement).checked = granted;
+          persistPrefs();
+          setStatus(granted ? 'Quiet saves on — no more download popups' : 'Permission declined — saves stay visible', granted ? {} : {kind: 'warn'});
+        })();
+        return;
+      }
+      (prefs as any)[key] = checked;
       persistPrefs();
       render();
       return;
@@ -4433,11 +4798,20 @@ ORDER BY s.n;
   const COMMANDS: Command[] = [
     {id: 'copy-all', label: 'Copy all as JSONL', run: () => void onCopyAll()},
     {id: 'export', label: 'Download JSONL file', run: () => void onExport()},
-    {id: 'export-zip', label: 'Export workspace as .tar.zst (JSONL + screenshots + DuckDB + README)', run: () => void onExportZip()},
+    {id: 'export-zip', label: 'Send to Agent — export .tar.zst + copy the agent prompt', run: () => void onExportZip()},
     {id: 'copy-path', label: 'Copy path of last export', run: () => void onCopyPath()},
+    {id: 'copy-agent-prompt', label: 'Copy Send-to-Agent prompt (last export)', run: () => {
+      void (async () => {
+        if (!lastExport.agentPrompt) { setStatus('No export yet — Send to Agent first', {kind: 'warn'}); return; }
+        const ok = await copyToClipboardSilent(lastExport.agentPrompt);
+        setStatus(ok ? 'Agent prompt copied' : 'Clipboard unavailable', ok ? {} : {kind: 'warn'});
+      })();
+    }},
     {id: 'duckdb', label: 'Generate DuckDB query snippet (SQL recipes)', run: () => void onDuckDbSnippet()},
     {id: 'import', label: 'Import JSONL file', run: onImport},
     {id: 'validate', label: 'Re-check selectors', run: () => void onValidate()},
+    {id: 'reattach', label: 'Re-attach to page (fix Alt+Click)', run: () => void onReattach()},
+    {id: 'reload-extension', label: 'Reload the PinchGrab extension (last resort)', run: () => { if (inExtension) chrome.runtime.reload(); }},
     {id: 'clear', label: 'Clear all captures', run: onClear},
     {id: 'settings', label: 'Open settings', run: openDrawer},
     {id: 'github', label: 'Open GitHub repo', run: onGithub},
@@ -4507,27 +4881,28 @@ ORDER BY s.n;
   });
   palette.addEventListener('click', (e) => { if (e.target === palette) closePalette(); });
 
-  // ─── Custom tooltip ─────────────────────────────────────────────────────
+  // ─── Context strip (hover help) ─────────────────────────────────────────
+  // Replaces the old floating cursor tooltip: [data-tip] hover text is
+  // written into the fixed strip under the header, so help never occludes
+  // other controls and can't strand mid-screen through re-renders.
+  const TIP_IDLE = 'Alt+Click on the page to capture · hover any control for help';
   let tipFor: HTMLElement | null = null;
+  // The settings drawer overlays the strip (position:absolute, inset 0), so
+  // hover help for drawer controls lands in a second sink inside the
+  // drawer header. Both sinks always receive the same text.
+  const drawerTipEl = document.querySelector<HTMLElement>('[data-drawer-tip]');
   const showTip = (target: HTMLElement): void => {
     const text = target.getAttribute('data-tip');
     if (!text) return;
     tooltipEl.textContent = text;
-    tooltipEl.hidden = false;
-    const r = target.getBoundingClientRect();
-    const tipR = tooltipEl.getBoundingClientRect();
-    let top = r.bottom + 4;
-    let left = r.left + r.width / 2 - tipR.width / 2;
-    if (top + tipR.height + 4 > window.innerHeight) top = r.top - tipR.height - 4;
-    if (left < 4) left = 4;
-    if (left + tipR.width > window.innerWidth - 4) left = window.innerWidth - tipR.width - 4;
-    tooltipEl.style.cssText = `top:${top}px;left:${left}px;`;
     tooltipEl.dataset.shown = 'true';
+    if (drawerTipEl) { drawerTipEl.textContent = text; drawerTipEl.dataset.shown = 'true'; }
   };
   const hideTip = (): void => {
-    tooltipEl.dataset.shown = 'false';
     tipFor = null;
-    tooltipEl.hidden = true;
+    tooltipEl.textContent = TIP_IDLE;
+    tooltipEl.dataset.shown = 'false';
+    if (drawerTipEl) { drawerTipEl.textContent = ''; drawerTipEl.dataset.shown = 'false'; }
   };
   document.addEventListener('mouseover', (e) => {
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
@@ -4539,13 +4914,9 @@ ORDER BY s.n;
     const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
     if (t && t === tipFor && !t.contains(e.relatedTarget as Node)) hideTip();
   });
-  // The panel re-renders aggressively (render() resets list.innerHTML, confirm
-  // buttons replaceWith, delete-confirm reverts on a timer) and the list
-  // scrolls — in all of those the anchored node leaves the DOM or moves
-  // without ever firing mouseout, which used to strand the tooltip on screen
-  // (covering other elements, never dismissing). Dismiss on any such signal.
-  window.addEventListener('scroll', hideTip, true);
-  document.addEventListener('pointerdown', hideTip, true);
+  // Re-renders can drop the hovered node without ever firing mouseout
+  // (render() resets list.innerHTML, confirm buttons replaceWith); reset
+  // the strip to its idle hint when that happens.
   const tipGuard = new MutationObserver(() => {
     if (tipFor && !tipFor.isConnected) hideTip();
   });
@@ -4691,6 +5062,9 @@ ORDER BY s.n;
       case 'copy-path': void onCopyPath(); return;
       case 'import': onImport(); return;
       case 'validate': void onValidate(); return;
+      case 'reattach': void onReattach(); return;
+      case 'quiet-enable': void onQuietEnable(); return;
+      case 'quiet-dismiss': onQuietDismiss(); return;
       case 'clear': onClear(); return;
       case 'github': onGithub(); return;
       case 'settings': openDrawer(); return;
@@ -4705,10 +5079,9 @@ ORDER BY s.n;
       }
       case 'design-template-download': {
         void (async () => {
-          // Prefer the user's local override if present (so a fork's
-          // "Download template" produces the same content the fork ships)
-          // otherwise the generic template.
-          const text = (await loadTemplate('localDesign')) || (await loadTemplate('designTemplate'));
+          // Always the PLAIN STOCK template — the local.* dev-override
+          // preference contaminated defaults with a developer's own brand.
+          const text = await loadTemplate('designTemplate');
           if (!text) { setStatus('Template not found', {kind: 'warn'}); return; }
           downloadText('DESIGN.template.md', text);
           setStatus('DESIGN.md template downloaded — fill in and re-upload');
@@ -4728,7 +5101,7 @@ ORDER BY s.n;
       }
       case 'skill-template-download': {
         void (async () => {
-          const text = (await loadTemplate('localSkill')) || (await loadTemplate('skillTemplate'));
+          const text = await loadTemplate('skillTemplate');
           if (!text) { setStatus('Template not found', {kind: 'warn'}); return; }
           downloadText('PinchGrab.SKILL.template.md', text);
           setStatus('SKILL.md template downloaded');
@@ -4820,6 +5193,7 @@ ORDER BY s.n;
       duckDbSnippet, onExportZip, onExport, onCopyPath,
       denormalizeEntry,
       getLastExport: () => ({...lastExport}),
+      getLastAgentPrompt: () => lastExport.agentPrompt,
       // Test hatch: seed every selector capture with the same full PNG dataURL
       // so the archive export has something to bundle. Real captures populate
       // shotsFull from the bg `runShot` reply; tests can't easily run a
@@ -4831,6 +5205,10 @@ ORDER BY s.n;
         persistShotsFull();
       },
       __getShotsFull: () => shotsFull,
+      // Freeze the export clock (ISO string) so tests can assert two
+      // exports of identical content are byte-identical. Pass null to
+      // restore wall-clock behavior.
+      __setExportClock: (iso: string | null) => { exportClockOverride = iso; },
       // setSearch drives the Ctrl+F visual-find path (the header search now
       // opens the command palette instead of filtering).
       setSearch: (q: string) => {
@@ -4879,6 +5257,7 @@ ORDER BY s.n;
     render();
     installTestApi();
     void runValidation();
+    void maybeShowQuietNudge();
     void fetchStars();
     updateComposerMeter();
     updateUndoButtons();

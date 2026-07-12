@@ -96,6 +96,15 @@ const copyTree = (absSrc: string): void => {
 };
 copyTree(extensionDir);
 
+// The vendored skills must ship in the store ZIP — exports read them at
+// runtime via chrome.runtime.getURL('skills/…'). A missing index means the
+// build regressed (or sync:skills was never run); fail loudly rather than
+// shipping a package that silently exports skill-less bundles.
+if (!included.includes('skills/skills-index.json')) {
+  console.error('skills/skills-index.json missing from the staged package — run `bun run sync:skills` and rebuild.');
+  process.exit(1);
+}
+
 // ─── 4. Zip the CONTENTS of the staged dir (manifest.json at the root) ───────
 mkdirSync(distDir, {recursive: true});
 const zipPath = resolve(distDir, `pinchgrab-${version}.zip`);

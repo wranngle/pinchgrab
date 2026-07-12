@@ -62,6 +62,52 @@ void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick: false})
 // action grants activeTab for the clicked tab; we inject the capture script
 // there and open the side panel. Each activated tab becomes its own workspace,
 // tracked panel-side via the pg-tab-activated message below.
+// ─── Activated-tab tracking ─────────────────────────────────────────────────
+// Tabs PinchGrab is attached to (toolbar click or panel re-attach). Session
+// storage survives service-worker restarts and clears on browser exit — the
+// same lifetime as the activeTab grant chain the re-inject path relies on.
+const ACTIVE_TABS_KEY = 'pg.activeTabs';
+const readActiveTabs = async (): Promise<Record<string, boolean>> => {
+  try {
+    const o = await chrome.storage.session.get(ACTIVE_TABS_KEY);
+    return (o[ACTIVE_TABS_KEY] as Record<string, boolean> | undefined) ?? {};
+  } catch { return {}; }
+};
+const trackActiveTab = async (tabId: number): Promise<void> => {
+  const cur = await readActiveTabs();
+  cur[String(tabId)] = true;
+  try { await chrome.storage.session.set({[ACTIVE_TABS_KEY]: cur}); } catch { /* ignore */ }
+};
+const untrackActiveTab = async (tabId: number): Promise<void> => {
+  const cur = await readActiveTabs();
+  if (!(String(tabId) in cur)) return;
+  delete cur[String(tabId)];
+  try { await chrome.storage.session.set({[ACTIVE_TABS_KEY]: cur}); } catch { /* ignore */ }
+};
+
+chrome.tabs.onRemoved.addListener((tabId) => void untrackActiveTab(tabId));
+
+// Re-inject after a refresh / same-tab navigation of an attached tab, so
+// Alt+Click survives reloads without another toolbar click. The activeTab
+// grant persists across reloads of the granted tab; when Chrome revokes it
+// (e.g. cross-origin navigation) executeScript rejects and we untrack —
+// the panel's re-attach affordance covers that case.
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status !== 'complete') return;
+  if (!tab.url || !/^https?:/.test(tab.url)) return;
+  void (async () => {
+    const tracked = await readActiveTabs();
+    if (!tracked[String(tabId)]) return;
+    try {
+      await chrome.scripting.executeScript({target: {tabId, allFrames: false}, files: ['content-script.js'], injectImmediately: true});
+      console.log(LOG, 'reinjected after navigation', tabId);
+    } catch (e) {
+      console.warn(LOG, 'reinject after navigation failed (grant revoked?)', tabId, e);
+      await untrackActiveTab(tabId);
+    }
+  })();
+});
+
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.id) return;
   const tabId = tab.id;
@@ -75,6 +121,7 @@ chrome.action.onClicked.addListener((tab) => {
       files: ['content-script.js'],
       injectImmediately: true,
     }).catch((e) => console.warn(LOG, 'activate inject FAILED', e));
+    void trackActiveTab(tabId);
   } else {
     console.warn(LOG, 'activate: cannot inject into', tab.url);
   }
@@ -487,6 +534,51 @@ const blobToDataUrl = async (blob: Blob): Promise<string> => {
   return `data:${mime};base64,${btoa(binary)}`;
 };
 
+// ─── Quiet saves ────────────────────────────────────────────────────────────
+// With the optional `downloads.ui` permission granted and the quietSaves
+// pref on, Chrome's download bubble is suppressed while PinchGrab writes its
+// own files, then restored after a short debounce so back-to-back captures
+// don't flap the UI and the user's other downloads keep their surface.
+// Depth-counted: concurrent saves share one suppression window.
+const QUIET_RESTORE_MS = 1500;
+let quietDepth = 0;
+let quietRestoreTimer: ReturnType<typeof setTimeout> | undefined;
+const setDownloadUi = (enabled: boolean): void => {
+  try {
+    const api = (chrome.downloads as unknown as {setUiOptions?: (o: {enabled: boolean}) => Promise<void>}).setUiOptions;
+    if (api) void api.call(chrome.downloads, {enabled}).catch((e: unknown) => console.warn(LOG, 'setUiOptions', e));
+  } catch (e) { console.warn(LOG, 'setUiOptions threw', e); }
+};
+const quietSavesActive = async (): Promise<boolean> => {
+  try {
+    const store = await chrome.storage.local.get('pinchgrab.prefs.v2');
+    const prefs = store['pinchgrab.prefs.v2'] as {quietSaves?: boolean} | undefined;
+    if (!prefs?.quietSaves) return false;
+    return await chrome.permissions.contains({permissions: ['downloads.ui']});
+  } catch { return false; }
+};
+const beginQuiet = async (): Promise<boolean> => {
+  if (!(await quietSavesActive())) return false;
+  quietDepth++;
+  if (quietRestoreTimer) { clearTimeout(quietRestoreTimer); quietRestoreTimer = undefined; }
+  setDownloadUi(false);
+  return true;
+};
+const endQuiet = (): void => {
+  if (quietDepth > 0) quietDepth--;
+  if (quietDepth === 0) {
+    if (quietRestoreTimer) clearTimeout(quietRestoreTimer);
+    quietRestoreTimer = setTimeout(() => { quietRestoreTimer = undefined; setDownloadUi(true); }, QUIET_RESTORE_MS);
+  }
+};
+// Worker-start restore guard: if a previous worker died mid-suppression the
+// bubble would stay hidden for every download in the browser. setUiOptions
+// state outlives the worker, so re-enable on every start (permission-gated,
+// no-op otherwise).
+void chrome.permissions?.contains({permissions: ['downloads.ui']})
+  .then((granted) => { if (granted) setDownloadUi(true); })
+  .catch(() => { /* permissions API unavailable in some harnesses */ });
+
 const saveDownload = async (
   blob: Blob,
   workspace: string,
@@ -496,6 +588,20 @@ const saveDownload = async (
   const relPath = subdir ? `${subdir}/${filename}` : filename;
   const fullPath = `pinchgrab/${workspace}/${relPath}`;
   console.log(LOG, 'saveDownload start', {fullPath, mime: blob.type, size: blob.size});
+  const quiet = await beginQuiet();
+  try {
+    return await saveDownloadInner(blob, workspace, relPath, fullPath);
+  } finally {
+    if (quiet) endQuiet();
+  }
+};
+
+const saveDownloadInner = async (
+  blob: Blob,
+  workspace: string,
+  relPath: string,
+  fullPath: string,
+): Promise<SavedFile> => {
   const url = await blobToDataUrl(blob);
   const downloadId = await new Promise<number>((resolve, reject) => {
     chrome.downloads.download(
@@ -689,6 +795,32 @@ chrome.runtime.onMessage.addListener((msg: PgEnvelope<AnyMessage> | any, sender,
             sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
           }
         });
+      } catch (e) {
+        sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
+      }
+    })();
+    return true;
+  }
+
+  // Panel-triggered content-script (re)injection — the recovery path for
+  // "Alt stopped working" (extension reload orphaned the page's script).
+  if (msg.kind === 'pg-reinject') {
+    void (async () => {
+      try {
+        let tabId: number | undefined = msg.tabId;
+        if (tabId == null) {
+          const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+          tabId = tabs[0]?.id;
+        }
+        if (tabId == null) { sendResponse({ok: false, error: 'no active tab'}); return; }
+        const tab = await chrome.tabs.get(tabId);
+        if (tab.url && !/^https?:/.test(tab.url)) {
+          sendResponse({ok: false, error: `cannot attach to ${tab.url}`});
+          return;
+        }
+        await chrome.scripting.executeScript({target: {tabId, allFrames: false}, files: ['content-script.js'], injectImmediately: true});
+        await trackActiveTab(tabId);
+        sendResponse({ok: true, tabId});
       } catch (e) {
         sendResponse({ok: false, error: String((e as Error)?.message ?? e)});
       }
