@@ -809,6 +809,42 @@ const startServer = (): Promise<{ server: http.Server; base: string }> =>
     console.log('exports 18 ok: PII redaction scrubs text / accessibleName / url query');
   }
 
+  // ─── Test 19 ── Duplicate capture index gets a unique displayLabel ─────
+  // The content-script pin counter restarts per session, so an accreted
+  // workspace can reuse `n`. `n` stays honest (matches the on-disk
+  // screenshot filenames), but `displayLabel` must disambiguate, and the
+  // manifest must self-report the collision.
+  {
+    await page.evaluate(() => window.__pinchgrab_panel.clear());
+    const jsonl = await page.evaluate(() => {
+      const sp: any = window.__pinchgrab_panel;
+      const base = { ts: '2026-05-08T10:00:00.000Z', url: 'https://x.test/', tag: 'div', rect: { x: 0, y: 0, w: 1, h: 1 } };
+      sp.pushMessage({ type: 'selector', id: 'd1', ts: 't', entry: { ...base, uid: 'u1', n: 2, selector: '#u1' } });
+      sp.pushMessage({ type: 'selector', id: 'd2', ts: 't', entry: { ...base, uid: 'u2', n: 2, selector: '#u2' } }); // same n
+      return sp.buildJsonl('dup.jsonl');
+    });
+    const lines = jsonl.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const sels = lines.filter((l) => l.type === 'selector');
+    assert.deepStrictEqual(sels.map((s) => s.n).sort(), [2, 2], 'n stays honest to the capture counter');
+    const labels = sels.map((s) => s.displayLabel);
+    assert.strictEqual(new Set(labels).size, 2, `displayLabel must be unique, got ${labels.join(',')}`);
+    assert(labels.every((l) => /^2\.\d+$/.test(l)), `collided labels should be 2.k, got ${labels.join(',')}`);
+    const manifest = lines.find((l) => l.type === 'manifest');
+    assert(manifest.exportDiagnostics?.some((d) => d.code === 'DUPLICATE_DISPLAY_INDEX'),
+      'manifest must flag the duplicate display index');
+    // A non-colliding export keeps displayLabel === String(n) (byte-stable).
+    const solo = await page.evaluate(() => {
+      const sp: any = window.__pinchgrab_panel;
+      sp.clear();
+      sp.pushMessage({ type: 'selector', id: 'x1', ts: 't', entry: {
+        uid: 'x', n: 7, ts: 'tt', url: 'https://x.test/', tag: 'div', selector: '#x', rect: { x: 0, y: 0, w: 1, h: 1 } } });
+      return sp.buildJsonl('solo.jsonl');
+    });
+    const soloSel = solo.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((l) => l.type === 'selector');
+    assert.strictEqual(soloSel.displayLabel, '7', 'unique n → displayLabel mirrors n');
+    console.log('exports 19 ok: duplicate n disambiguates via displayLabel + DUPLICATE_DISPLAY_INDEX diagnostic');
+  }
+
   console.log('exports.spec all tests passed');
   await browser.close();
   server.close();

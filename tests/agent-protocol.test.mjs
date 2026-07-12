@@ -17,6 +17,8 @@ import {
   buildBootstrapScript,
   renderBundleTree,
   extractDir,
+  isSignalPath,
+  SIGNAL_PATHS,
 } from '../src/export-agent-prompt.mjs';
 import { parseBundleJsonl, recapture, selectTargets, toReplayEntry } from '../src/recapture.mjs';
 
@@ -78,6 +80,34 @@ test('payload: files line paths are @-prefixed under the extraction dir', () => 
   const noPfd = buildAgentPromptJsonl({ ...OPTS, entryNames: OPTS.entryNames.filter((n) => !n.startsWith('perception-first-design/')) });
   const files2 = noPfd.split('\n').map((l) => JSON.parse(l)).find((l) => l.type === 'files');
   assert(!files2.paths.some((p) => p.includes('perception-first-design')), 'files list must not promise absent entries');
+});
+
+test('payload: the multi-MB JSONL is a query target, not an up-front full read', () => {
+  const files = buildAgentPromptJsonl(OPTS).split('\n').map((l) => JSON.parse(l)).find((l) => l.type === 'files');
+  // The capture stream must NOT be in the mandatory full-read paths…
+  assert(!files.paths.some((p) => p.endsWith(OPTS.jsonlName)), 'JSONL must not be a mandatory full read');
+  // …it lives on the `query` descriptor pointing at the stream + its digest.
+  assert(files.query, 'files line must carry a query descriptor');
+  assert.strictEqual(files.query.readFully, false);
+  assert(files.query.path.endsWith(OPTS.jsonlName), 'query.path targets the JSONL');
+  assert(files.query.digest.endsWith('repair-index.md'), 'digest points at repair-index');
+  assert(files.query.tools.includes('duckdb.sql'), 'query names the duckdb recipe');
+});
+
+test('signal accounting: the JSONL is lazy (not up-front signal), the docs are signal', () => {
+  assert.strictEqual(isSignalPath(OPTS.jsonlName, OPTS.jsonlName), false, 'JSONL must be lazy, not signal');
+  assert.strictEqual(isSignalPath('repair-index.md', OPTS.jsonlName), true);
+  assert.strictEqual(isSignalPath('AGENT-PROTOCOL.md', OPTS.jsonlName), true);
+  for (const p of SIGNAL_PATHS) assert.strictEqual(isSignalPath(p, OPTS.jsonlName), true, `${p} should be signal`);
+});
+
+test('protocol doc: JSONL is query-not-ingest; verify covers baseline-less comments', () => {
+  const md = buildAgentProtocolMd({ ...OPTS, skillsIndex: { skills: [] } });
+  assert(md.includes('Do NOT read it end-to-end'), 'must warn against full-reading the JSONL');
+  assert(md.includes('duckdb.sql'), 'must point at duckdb for querying');
+  // The JSONL must NOT appear as a numbered mandatory read item.
+  assert(!new RegExp(`\\d+\\.\\s+\`[^\`]*${OPTS.jsonlName}\``).test(md), 'JSONL must not be a numbered mandatory read');
+  assert(md.includes('FEEDBACK_PARENT_MISSING_SCREENSHOT'), 'verify phase must handle comments with no baseline shot');
 });
 
 test('bootstrap: hydrates workspace/bundle/archive, parses as bash, idempotence-guarded', () => {
