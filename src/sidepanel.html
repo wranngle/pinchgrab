@@ -44,9 +44,9 @@
     <div class="shortcuts hint">
       <span class="sc" data-tip="Outline the element under your cursor"><kbd>Alt</kbd><span class="lbl">peek</span></span>
       <span class="sc" data-tip="Capture the hovered element"><kbd>Alt+Click</kbd><span class="lbl">capture</span></span>
-      <span class="sc" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+Drag</kbd><span class="lbl">multi</span></span>
-      <span class="sc" data-tip="Stage one element into a pending group"><kbd>Alt+Shift+Click</kbd><span class="lbl">stage</span></span>
-      <span class="sc" data-tip="Undo last edit"><kbd data-mod-z>Cmd+Z</kbd><span class="lbl">undo</span></span>
+      <span class="sc" data-when-empty="hide" data-tip="Rubber-band over elements to stage a group"><kbd>Alt+Drag</kbd><span class="lbl">multi</span></span>
+      <span class="sc" data-when-empty="hide" data-tip="Stage one element into a pending group"><kbd>Alt+Shift+Click</kbd><span class="lbl">stage</span></span>
+      <span class="sc" data-when-empty="hide" data-tip="Undo last edit"><kbd data-mod-z>Cmd+Z</kbd><span class="lbl">undo</span></span>
     </div>
 
     <!-- ───────────────────────── Toolbar ───────────────────────── -->
@@ -101,7 +101,7 @@
          drilldown is the tooltip equivalent and showing both produced two
          overlapping bubbles. The two right stats (Tokens / Words) have
          no drilldown, so they keep a plain data-tip. -->
-    <div class="stats" data-stats>
+    <div class="stats" data-stats data-when-empty="hide">
       <span class="stat" data-stat="selectors"><span class="stat-label">Selectors</span><span class="stat-num">0</span></span>
       <span class="stat" data-stat="comments"><span class="stat-label">Comments</span><span class="stat-num">0</span></span>
       <span class="stat warn" data-stat="stale"><span class="stat-label">Stale</span><span class="stat-num">0</span></span>
