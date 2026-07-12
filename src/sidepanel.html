@@ -356,6 +356,43 @@
       </div>
     </div>
 
+    <!-- ───────────────────────── Send-to-Agent review screen ─── -->
+    <!-- Shown after Send to Agent: the editable prompt to paste into a
+         coding agent, a copy button with a dopamine green tick, and an
+         Advanced disclosure for the export settings. -->
+    <div class="agent-screen-overlay" data-agent-screen hidden>
+      <div class="agent-screen">
+        <header class="agent-screen-head">
+          <span class="agent-screen-title"><span class="emoji" aria-hidden="true">🤏</span> Sent to Agent</span>
+          <button class="iconbtn" type="button" data-agent-screen-close data-tip="Close (Esc)" aria-label="Close"><span data-icon="x" data-size="14"></span></button>
+        </header>
+        <p class="agent-screen-tip">Copy this and paste it into your coding agent — Claude Code, Cursor, Codex, or your own. It tells the agent where the bundle is and exactly what to do with your comments.</p>
+        <textarea class="agent-screen-textarea" data-agent-screen-textarea spellcheck="false" aria-label="Agent prompt"></textarea>
+        <footer class="agent-screen-foot">
+          <button class="primary agent-screen-copy" type="button" data-agent-screen-copy>
+            <span data-icon="copy" data-size="14"></span><span class="lbl">Copy prompt</span>
+          </button>
+          <span class="agent-screen-copied" data-agent-screen-copied hidden>✓ Copied — paste into your agent</span>
+          <span class="agent-screen-spacer"></span>
+          <label class="agent-screen-auto" data-tip="Show this screen after every Send to Agent"><input type="checkbox" data-pref="showAgentScreen" checked /> Show after each export</label>
+        </footer>
+        <details class="agent-screen-advanced">
+          <summary>Advanced — export settings</summary>
+          <div class="agent-screen-advanced-body">
+            <label data-tip="Trim whitespace + drop empty objects (smaller token footprint)"><input type="checkbox" data-agent-pref="minify" /> Minify export</label>
+            <label data-tip="Keep the captured element's outerHTML"><input type="checkbox" data-agent-pref="includeOuterHTML" /> Include <code>outerHTML</code></label>
+            <label data-tip="Keep matched stylesheet rules"><input type="checkbox" data-agent-pref="includeMatchedRules" /> Include matched CSS rules</label>
+            <label data-tip="Keep resolved computed styles"><input type="checkbox" data-agent-pref="includeStyles" /> Include computed styles</label>
+            <label data-tip="Bundle the vendored design skills (~1.2 MB)"><input type="checkbox" data-agent-pref="bundleSkills" /> Bundle design skills</label>
+            <label data-tip="Serialize each captured page's full HTML into pages/"><input type="checkbox" data-agent-pref="includePageHTML" /> Include full page HTML</label>
+            <div class="agent-screen-reexport">
+              <button class="iconbtn" type="button" data-agent-screen-reexport data-tip="Re-run Send to Agent with these settings and refresh the prompt above"><span data-icon="refresh-cw" data-size="13"></span><span class="lbl">Re-export with these settings</span></button>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
     <!-- ───────────────────────── Custom tooltip target ─────── -->
 
     <!-- ───────────────────────── Stat drilldown popover ────── -->

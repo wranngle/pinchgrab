@@ -234,6 +234,10 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // so captures + comments survive a storage clear / extension reinstall.
     // On by default — this is the safety net against silent annotation loss.
     autosaveToDisk: boolean;
+    // After Send to Agent, open the review screen (editable prompt + copy +
+    // advanced settings). On by default so the paste target is visible;
+    // power users can turn it off for the silent auto-copy.
+    showAgentScreen: boolean;
     // Bundle the vendored third-party design skills (impeccable reference
     // set + perception-first-design) plus skills-index.json into archive
     // exports. On by default: the Send-to-Agent protocol's skill-mapping
@@ -270,6 +274,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
     quietSaves: true,
     quietNudgeDismissed: false,
     autosaveToDisk: true,
+    showAgentScreen: true,
     bundleSkills: true,
     includePageHTML: false,
   };
@@ -4110,6 +4115,7 @@ import {serializeCaptureJson} from './export-capture.mjs';
         setStatus(
           `Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${promptCopied ? ' · prompt copied' : ' · clipboard blocked — use Cmd+K → Copy Send-to-Agent prompt'}${lastExport.tempPath ? ' · Playwright temp hidden' : ''} · ${leaf}`,
         );
+        if (prefs.showAgentScreen) openAgentScreen();
         return;
       }
       const err = reply?.error ?? 'no reply from background';
@@ -4133,7 +4139,60 @@ import {serializeCaptureJson} from './export-capture.mjs';
     // The predicted-path payload was already copied before the save.
     showCopied('Sent to agent', 'prompt copied — paste into your coding agent');
     setStatus(`Sent to agent · ${shotEntries.length} screenshot${shotEntries.length === 1 ? '' : 's'} bundled${earlyCopied ? ' · prompt copied' : ''}`);
+    if (prefs.showAgentScreen) openAgentScreen();
   };
+
+  // ─── Send-to-Agent review screen ──────────────────────────────────────────
+  // Shows the copied prompt (editable), a copy button with a green tick, and
+  // an Advanced disclosure for the export settings. The auto-copy already
+  // happened; this is the visible, editable, re-copyable surface.
+  const agentScreenEl = document.querySelector<HTMLElement>('[data-agent-screen]');
+  const agentTextarea = document.querySelector<HTMLTextAreaElement>('[data-agent-screen-textarea]');
+  const closeAgentScreen = (): void => { if (agentScreenEl) agentScreenEl.hidden = true; };
+  const openAgentScreen = (): void => {
+    if (!agentScreenEl || !agentTextarea) return;
+    if (!lastExport.agentPrompt) { setStatus('No export yet — Send to Agent first', {kind: 'warn'}); return; }
+    agentTextarea.value = lastExport.agentPrompt;
+    // Reflect current export prefs onto the Advanced checkboxes.
+    for (const el of agentScreenEl.querySelectorAll<HTMLInputElement>('input[data-agent-pref]')) {
+      el.checked = Boolean(prefs[el.dataset.agentPref as keyof Prefs]);
+    }
+    const showAuto = agentScreenEl.querySelector<HTMLInputElement>('input[data-pref="showAgentScreen"]');
+    if (showAuto) showAuto.checked = prefs.showAgentScreen;
+    agentScreenEl.hidden = false;
+    agentTextarea.focus();
+    agentTextarea.setSelectionRange(0, 0);
+  };
+  {
+    // Wire the review screen once at boot.
+    agentScreenEl?.querySelector('[data-agent-screen-close]')?.addEventListener('click', closeAgentScreen);
+    agentScreenEl?.addEventListener('click', (e) => { if (e.target === agentScreenEl) closeAgentScreen(); });
+    agentScreenEl?.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Escape') closeAgentScreen(); });
+    const copyBtn = agentScreenEl?.querySelector<HTMLButtonElement>('[data-agent-screen-copy]');
+    const copiedTick = agentScreenEl?.querySelector<HTMLElement>('[data-agent-screen-copied]');
+    copyBtn?.addEventListener('click', async () => {
+      const ok = await copyToClipboardSilent(agentTextarea?.value ?? '');
+      if (copiedTick) { copiedTick.hidden = !ok; if (ok) setTimeout(() => { copiedTick.hidden = true; }, 2200); }
+      if (!ok) setStatus('Clipboard blocked — select the text and copy manually', {kind: 'warn'});
+    });
+    // Advanced export toggles (own pref channel so they don't collide with
+    // the settings drawer's data-pref handler).
+    agentScreenEl?.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t?.dataset?.agentPref) {
+        (prefs as any)[t.dataset.agentPref] = t.checked;
+        persistPrefs();
+        setStatus('Setting saved — Re-export to apply it to the prompt', {kind: 'info'});
+      } else if (t?.dataset?.pref === 'showAgentScreen') {
+        prefs.showAgentScreen = t.checked;
+        persistPrefs();
+      }
+    });
+    agentScreenEl?.querySelector('[data-agent-screen-reexport]')?.addEventListener('click', () => {
+      closeAgentScreen();
+      void onExportZip(); // re-runs export with the new prefs, reopens the screen
+    });
+  }
 
   // Best-effort clipboard write — never throws; returns whether the
   // write succeeded so the caller can adjust the status message.
@@ -4929,6 +4988,7 @@ ORDER BY s.n;
     }},
     {id: 'duckdb', label: 'Generate DuckDB query snippet (SQL recipes)', run: () => void onDuckDbSnippet()},
     {id: 'import', label: 'Import JSONL file', run: onImport},
+    {id: 'agent-screen', label: 'Open Send-to-Agent screen (review + copy the prompt)', run: openAgentScreen},
     {id: 'select-mode', label: 'Toggle pinch mode (capture without holding Alt)', run: onToggleSelectMode},
     {id: 'validate', label: 'Re-check selectors', run: () => void onValidate()},
     {id: 'reattach', label: 'Re-attach to page (fix Alt+Click)', run: () => void onReattach()},
