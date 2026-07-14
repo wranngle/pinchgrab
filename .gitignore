@@ -114,8 +114,17 @@ dist/
 # Mac OS
 .DS_Store
 
-# Chrome extension unzipped
-# extension/ (We actually want to commit the extension folder so people can install it directly from the repo, so keeping this un-ignored)
+# Chrome extension unzipped output. extension/ is the BUILD OUTPUT of
+# `bun run build` (scripts/build-extension.ts), not source. The documented
+# install flow is clone → `bun run build` → Load unpacked (README "Clone and
+# build"; install-...ps1 builds if missing), so the generated JS bundles are
+# NOT tracked: committing them churned the tree on every build/package (the
+# package step minifies in place; esbuild stamps a fresh debugId) and shipped
+# a stale artifact once. Static assets (manifest.json, *.html/*.css, icons,
+# templates) stay tracked; only the generated bundles + skills/ are ignored.
+extension/background.js
+extension/content-script.js
+extension/sidepanel.js
 
 # Symphony per-issue scratch workspaces (regenerated on demand)
 .symphony/workspaces/
