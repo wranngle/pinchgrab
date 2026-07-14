@@ -239,15 +239,18 @@ const startServer = () =>
     return e && getComputedStyle(e).display !== 'none';
   });
   assert(peekSummaryVisible, 'stale peek-summary should be visible inline');
-  // Expand the bubble; full peek-error should now appear.
-  await page.evaluate(() => {
-    const head = document.querySelector('.msg.selector.stale .head');
-    head.click();
-  });
-  const peekErrorAfterExpand = await page.evaluate(() => {
-    const e = document.querySelector('.msg.selector.stale.expanded .peek-error');
-    return e && getComputedStyle(e).display !== 'none';
-  });
+  // Expand the bubble; full peek-error should now appear. Stale re-checks can
+  // replace the bubble node between a click and a one-shot assert, so click and
+  // check atomically, retrying until the *live* node is expanded.
+  const peekErrorAfterExpand = await page
+    .waitForFunction(() => {
+      const stale = document.querySelector('.msg.selector.stale');
+      if (!stale) return false;
+      if (!stale.classList.contains('expanded')) (stale.querySelector('.head') as HTMLElement)?.click();
+      const e = document.querySelector('.msg.selector.stale.expanded .peek-error');
+      return Boolean(e && getComputedStyle(e).display !== 'none');
+    }, undefined, {timeout: 5000})
+    .then(() => true, () => false);
   assert(peekErrorAfterExpand, 'full peek-error should appear when expanded');
   console.log('test 15 ok: peek-summary collapsed; peek-error on expand');
 
