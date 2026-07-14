@@ -74,7 +74,11 @@ export const buildBootstrapScript = ({workspace, bundleId, archivePath, exportTs
   '  printf \'%s\' "$BID" > "$DEST/.extracted"',
   '  echo "extracted $DEST/extracted"',
   'fi',
-  `[ -f "$ROOT/work-manifest.jsonl" ] || printf '%s\\n' '{"v":1,"type":"work-manifest-header","tool":"pinchgrab","workspace":"${workspace}","created":"${exportTs}"}' > "$ROOT/work-manifest.jsonl"`,
+  // Harden the seed row the same way WS/BID/SRC are hardened above:
+  // JSON.stringify guards the JSON, sq() guards the bash single-quoted
+  // literal — so a workspace name carrying a quote can neither corrupt the
+  // row nor escape into shell execution.
+  `[ -f "$ROOT/work-manifest.jsonl" ] || printf '%s\\n' '${sq(`{"v":1,"type":"work-manifest-header","tool":"pinchgrab","workspace":${JSON.stringify(workspace)},"created":${JSON.stringify(exportTs)}}`)}' > "$ROOT/work-manifest.jsonl"`,
   'echo "workdir $ROOT"',
 ].join('\n');
 
@@ -150,8 +154,16 @@ export const SIGNAL_PATHS = [
   PINCHGRAB_SKILL_PATH, PFD_SKILL_PATH, SKILLS_INDEX_PATH,
 ];
 
-/** True when `name` is part of the up-front read (signal), not lazy. */
-export const isSignalPath = (name, jsonlName) => name === jsonlName || SIGNAL_PATHS.includes(name);
+/**
+ * True when `name` is part of the up-front read (signal), not lazy.
+ *
+ * The raw capture JSONL is deliberately NOT signal: it is the source-of-truth
+ * DATA file (often multiple MB), queried on demand via duckdb.sql / jq /
+ * schema.json, and already digested per-comment into repair-index.md. Counting
+ * it as signal reported a multi-hundred-K-token "up-front read" that no agent
+ * can actually ingest. The `jsonlName` arg is retained for signature stability.
+ */
+export const isSignalPath = (name, _jsonlName) => SIGNAL_PATHS.includes(name);
 
 /** gitignore-syntax content for the bundle root — the lazy-read manifest. */
 export const buildBundleIgnore = () => [
@@ -194,7 +206,7 @@ const orchestrationText = ({workspace, bundleId, jsonlName}) =>
   `SKILLS RULE: the bundled skills are for this job only — read them from the extraction directory; there is NO need to install them permanently, and you must NOT overwrite your own persistent skills, agent config, or dotfiles.`;
 
 const verifyText = ({workspace, xDir, jsonlName}) =>
-  `Final verification pass, only after implementation and audit: start the product locally, then run: npx -y pinchgrab recapture ${xDir}/${jsonlName} <APP_URL> --workspace-dir ~/.pinchgrab/workspaces/${workspace} (use bunx if npx is unavailable). This re-locates every commented selector with PinchGrab's own CSS->XPath->a11y chain, screenshots each element, and writes an append-only run under recaptures/<runId>/. Read each recaptured PNG next to its original in ${xDir}/screenshots/ and confirm every comment is visibly resolved; then update the matching work-manifest.jsonl rows to status done, or blocked with a reason.`;
+  `Final verification pass, only after implementation and audit: start the product locally, then run: npx -y pinchgrab recapture ${xDir}/${jsonlName} <APP_URL> --workspace-dir ~/.pinchgrab/workspaces/${workspace} (use bunx if npx is unavailable). This re-locates every commented selector with PinchGrab's own CSS->XPath->a11y chain, screenshots each element, and writes an append-only run under recaptures/<runId>/. Read each recaptured PNG next to its original in ${xDir}/screenshots/ and confirm every comment is visibly resolved. Some comments have NO baseline element screenshot to diff against — page-level comments with no target selector, and selectors flagged FEEDBACK_PARENT_MISSING_SCREENSHOT or HOVER_STATE_NO_SCREENSHOT in the manifest's exportDiagnostics; verify those by re-exercising the flow and asserting the DOM/behavior instead, and record that evidence. Then update the matching work-manifest.jsonl rows to status done, or blocked with a reason.`;
 
 const doneText = ({bundleId}) =>
   `You are finished when every comment has a work-manifest.jsonl row with status done or blocked, plans/${bundleId}/ holds one plan per comment, audits/${bundleId}/ holds at least one roast, and the latest recapture run locates every commented selector. work-manifest.jsonl is append-only: add rows, never rewrite history.`;
@@ -231,7 +243,7 @@ export const buildAgentPromptJsonl = (opts) => {
 
   lines.push({
     type: 'instruction',
-    text: `You have been handed a PinchGrab feedback bundle: ${counts.comments} operator comments pinned to live UI elements of the product built from <PROJECT_ROOT> (infer <PROJECT_ROOT> from your current working directory; if ambiguous, ask before editing). Do this now, in order: (1) execute the bash script in the next 'bootstrap' line exactly as written (its 'script' field is a JSON-escaped plain bash script; it self-normalizes ~ and Windows drive paths for WSL/Git-Bash); (2) read EVERY file listed in the 'files' line fully into context; (3) follow AGENT-PROTOCOL.md to map, plan, implement, test, audit, and verify a fix for every comment.`,
+    text: `You have been handed a PinchGrab feedback bundle: ${counts.comments} operator comments pinned to live UI elements of the product built from <PROJECT_ROOT> (infer <PROJECT_ROOT> from your current working directory; if ambiguous, ask before editing). Do this now, in order: (1) execute the bash script in the next 'bootstrap' line exactly as written (its 'script' field is a JSON-escaped plain bash script; it self-normalizes ~ and Windows drive paths for WSL/Git-Bash); (2) read every file in the 'files' line's 'paths' fully into context — they are bounded — but do NOT read the raw capture JSONL whole: it is the 'files' line's 'query' target, so read its leading manifest line and query the rest (repair-index.md is its per-comment digest); (3) follow AGENT-PROTOCOL.md to map, plan, implement, test, audit, and verify a fix for every comment.`,
   });
 
   lines.push({
@@ -243,15 +255,25 @@ export const buildAgentPromptJsonl = (opts) => {
     `@${xDir}/AGENT-PROTOCOL.md`,
     `@${xDir}/README.md`,
     `@${xDir}/repair-index.md`,
-    `@${xDir}/${jsonlName}`,
   ];
   if (has('DESIGN.md')) paths.push(`@${xDir}/DESIGN.md`);
   if (has(PINCHGRAB_SKILL_PATH)) paths.push(`@${xDir}/${PINCHGRAB_SKILL_PATH}`);
   if (has(PFD_SKILL_PATH)) paths.push(`@${xDir}/${PFD_SKILL_PATH}`);
   lines.push({
     type: 'files', readFully: true, noGrep: true,
-    rule: 'Read each path below END-TO-END with your file-reading tool. This is NON-OPTIONAL. Do NOT grep them, do NOT head/tail them, do NOT sample line ranges — full contents into context. Screenshots and the impeccable reference files are read per-comment later, as AGENT-PROTOCOL.md directs.',
+    rule: 'Read each path below END-TO-END with your file-reading tool. This is NON-OPTIONAL. Do NOT grep them, do NOT head/tail them, do NOT sample line ranges — full contents into context. These are the bounded docs; screenshots and the impeccable reference files are read per-comment later, as AGENT-PROTOCOL.md directs.',
     paths,
+    // The raw capture JSONL is the source-of-truth DATA file — often multiple
+    // MB. Do NOT read it end-to-end; it can overflow your context. repair-index.md
+    // already carries the per-comment digest. Read only the leading `manifest`
+    // line (counts + exportDiagnostics), then QUERY rows on demand.
+    query: {
+      path: `@${xDir}/${jsonlName}`,
+      readFully: false,
+      digest: `@${xDir}/repair-index.md`,
+      tools: ['duckdb.sql', 'jq', 'schema.json'],
+      note: 'Source-of-truth data file. Read its first line (the manifest) for counts + exportDiagnostics; get per-comment detail from repair-index.md; query rows with duckdb.sql / jq guided by schema.json. Do NOT ingest it whole.',
+    },
   });
 
   lines.push({
@@ -350,13 +372,22 @@ export const buildAgentProtocolMd = (opts) => {
   out.push('Read each of these END-TO-END before any other action. Do not grep, head,');
   out.push('tail, or sample line ranges — full contents into context:');
   out.push('');
-  out.push(`1. \`${xDir}/AGENT-PROTOCOL.md\` (this file)`);
-  out.push(`2. \`${xDir}/README.md\``);
-  out.push(`3. \`${xDir}/repair-index.md\``);
-  out.push(`4. \`${xDir}/${jsonlName}\``);
-  if (has('DESIGN.md')) out.push(`5. \`${xDir}/DESIGN.md\``);
-  if (has(PINCHGRAB_SKILL_PATH)) out.push(`6. \`${xDir}/${PINCHGRAB_SKILL_PATH}\``);
-  if (has(PFD_SKILL_PATH)) out.push(`7. \`${xDir}/${PFD_SKILL_PATH}\``);
+  const readOrder = [
+    `\`${xDir}/AGENT-PROTOCOL.md\` (this file)`,
+    `\`${xDir}/README.md\``,
+    `\`${xDir}/repair-index.md\` — the per-comment digest of the capture stream`,
+  ];
+  if (has('DESIGN.md')) readOrder.push(`\`${xDir}/DESIGN.md\``);
+  if (has(PINCHGRAB_SKILL_PATH)) readOrder.push(`\`${xDir}/${PINCHGRAB_SKILL_PATH}\``);
+  if (has(PFD_SKILL_PATH)) readOrder.push(`\`${xDir}/${PFD_SKILL_PATH}\``);
+  readOrder.forEach((item, i) => out.push(`${i + 1}. ${item}`));
+  out.push('');
+  out.push(`The raw capture stream \`${xDir}/${jsonlName}\` is the source of truth, but`);
+  out.push('it is a DATA file — often multiple MB. Do NOT read it end-to-end (it can');
+  out.push('overflow your context). Read only its leading `manifest` line for counts +');
+  out.push('`exportDiagnostics`, rely on `repair-index.md` for the per-comment extract,');
+  out.push('and QUERY rows on demand with `duckdb.sql`, `jq`, or a targeted line read');
+  out.push('guided by `schema.json`.');
   out.push('');
   out.push('Screenshots (`screenshots/`, indexed by `screenshots.json`) and the');
   out.push('impeccable reference files are read per-comment during the phases below.');
@@ -467,8 +498,13 @@ export const buildAgentProtocolMd = (opts) => {
   out.push(`run under \`recaptures/<runId>/\` (plus a \`recapture-run\` ledger row). It`);
   out.push('exits 0 only when every commented selector still resolves. Read each');
   out.push(`recaptured PNG next to its original in \`${xDir}/screenshots/\` and confirm`);
-  out.push('every comment is visibly resolved; then update the matching');
-  out.push('work-manifest rows to `done`, or `blocked` with a reason.');
+  out.push('every comment is visibly resolved. Some comments have NO baseline element');
+  out.push('screenshot to diff against — page-level comments with no target, and');
+  out.push('selectors flagged `FEEDBACK_PARENT_MISSING_SCREENSHOT` /');
+  out.push("`HOVER_STATE_NO_SCREENSHOT` in the manifest's `exportDiagnostics`. Verify");
+  out.push('those by re-exercising the flow and asserting the DOM/behavior instead,');
+  out.push('and record that evidence. Then update the matching work-manifest rows to');
+  out.push('`done`, or `blocked` with a reason.');
   out.push('');
   out.push('## 5 · Done criteria');
   out.push('');

@@ -157,7 +157,8 @@ export type Entry = {
   //   • captureIndex — same as `n` (capture sequence within session)
   //   • eventIndex   — monotonic position in the JSONL stream
   //   • visualOrder  — top→bottom, left→right rank within the page
-  //   • displayLabel — human-facing label (mirrors `n` today)
+  //   • displayLabel — guaranteed-unique human label: mirrors `n` when
+  //     unique, else `n.k` (the capture counter restarts per session)
   captureIndex?: number;
   eventIndex?: number;
   visualOrder?: number;
@@ -561,6 +562,10 @@ export type ExportManifest = {
     // in this archive. Should always be 0; non-zero means the export
     // got truncated or a parent was deleted between capture + emit.
     orphanedFeedback?: number;
+    // Feedback rows with no parentUid at all — intentionally page-level
+    // comments, not pinned to an element. Distinct from orphanedFeedback
+    // (a dangling parentUid). So: feedback = pinned + pageLevel + orphaned.
+    pageLevelFeedback?: number;
     // Full-page HTML documents bundled under pages/ (opt-in pref).
     pagesHtml?: number;
   };

@@ -2725,7 +2725,11 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
   // Aggressive minify additionally drops fields the selector already
   // implies: ancestors, viewport (one per page), componentRoot when
   // redundant with the selector, and pseudoElements.
-  const slimEntry = (e: Entry, opts: {includeGroup?: boolean; eventIndex?: number; visualOrder?: number; groupUid?: string} = {}): Record<string, any> => {
+  //
+  // Unique display label with a safe fallback, kept out of slimEntry so the
+  // `??` doesn't count against that function's complexity budget.
+  const labelFor = (e: Entry, provided?: string): string => provided ?? String(e.n);
+  const slimEntry = (e: Entry, opts: {includeGroup?: boolean; eventIndex?: number; visualOrder?: number; groupUid?: string; displayLabel?: string} = {}): Record<string, any> => {
     const includeOuter = prefs.includeOuterHTML;
     const includeMatched = prefs.includeMatchedRules;
     const includeStyles = prefs.includeStyles;
@@ -2749,7 +2753,14 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
       tag: e.tag,
       selector: e.selector,
       captureIndex: e.n,
-      displayLabel: String(e.n),
+      // Guaranteed-unique human label. Mirrors `n` when `n` is unique across
+      // the export (the common case — output stays byte-identical), but
+      // disambiguates to `n.k` when the capture-time counter collided (it
+      // restarts each content-script session; see the DUPLICATE_DISPLAY_INDEX
+      // diagnostic). `n`/`captureIndex` stay honest to the capture sequence
+      // and to the on-disk screenshot filenames, which embed `n`. Fallback
+      // lives in `labelFor` so it doesn't add a branch to this hot function.
+      displayLabel: labelFor(e, opts.displayLabel),
     };
     if (opts.eventIndex !== undefined) out.eventIndex = opts.eventIndex;
     if (opts.visualOrder !== undefined) out.visualOrder = opts.visualOrder;
@@ -2930,9 +2941,9 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
     //   • eventIndex   — monotonic position in the JSONL stream
     //   • captureIndex — the original `n` (capture sequence)
     //   • visualOrder  — sort by rect.y asc, rect.x asc
-    //   • displayLabel — the human-facing number shown in the sidebar
-    //                    (currently mirrors captureIndex; can drift if
-    //                    the sidebar adopts a different label scheme).
+    //   • displayLabel — the guaranteed-unique human label: mirrors
+    //                    captureIndex/`n` when unique, else disambiguates
+    //                    to `n.k` (the capture counter restarts per session).
     const visualRank = new Map<string, number>();
     const sels = messages
       .filter((m): m is SelectorMessage => m.type === 'selector')
@@ -2944,6 +2955,31 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
         return ar.x - br.x;
       });
     sels.forEach((m, i) => visualRank.set(m.id, i + 1));
+    // Guaranteed-unique display label per uid. `n` (the capture-time counter)
+    // restarts each content-script session, so an accreted workspace can reuse
+    // a number; disambiguate any collision to `n.k` (stable by message order),
+    // WITHOUT touching `n` — it stays the honest capture label the screenshot
+    // filenames embed. Non-colliding exports get `String(n)` unchanged.
+    const displayLabels = ((): Map<string, string> => {
+      const byN = new Map<number, string[]>();
+      const add = (uid: string, n: number): void => {
+        const l = byN.get(n) ?? [];
+        l.push(uid);
+        byN.set(n, l);
+      };
+      for (const m of messages) {
+        if (m.type !== 'selector') continue;
+        add(m.entry.uid, m.entry.n);
+        for (const g of m.entry.group ?? []) if (g.uid) add(g.uid, g.n ?? m.entry.n);
+      }
+      const labels = new Map<string, string>();
+      for (const [n, uids] of byN) {
+        // Unique n → plain String(n) (byte-identical to the old output);
+        // collision → `n.k` by stream order. forEach avoids index access.
+        uids.forEach((u, i) => labels.set(u, uids.length === 1 ? String(n) : `${n}.${i + 1}`));
+      }
+      return labels;
+    })();
     let pendingSel: SelectorMessage | null = null;
     // We collect both the bundled string array (for v1-friendly readers) and
     // the rich objects (for v2 standalone lines).
@@ -2953,7 +2989,7 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
       if (!pendingSel) return;
       const eventIndex = lines.length + 1;
       const visualOrder = visualRank.get(pendingSel.id);
-      const out: any = slimEntry(pendingSel.entry, {includeGroup: true, eventIndex, visualOrder});
+      const out: any = slimEntry(pendingSel.entry, {includeGroup: true, eventIndex, visualOrder, displayLabel: displayLabels.get(pendingSel.entry.uid)});
       if (pendingFbStrings.length) out.feedback = [...pendingFbStrings];
       lines.push(out as SlimLine);
       // Group flatness (bug #9). Emit each group member as its own
@@ -2964,7 +3000,7 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
       const groupMembers = pendingSel.entry.group ?? [];
       for (const member of groupMembers) {
         const mEvent = lines.length + 1;
-        const memberRow: any = slimEntry(member, {includeGroup: false, eventIndex: mEvent, groupUid: pendingSel.entry.uid});
+        const memberRow: any = slimEntry(member, {includeGroup: false, eventIndex: mEvent, groupUid: pendingSel.entry.uid, displayLabel: member.uid ? displayLabels.get(member.uid) : undefined});
         lines.push(memberRow as SlimLine);
       }
       // Emit each standalone feedback line right after the selector(s).
@@ -3040,10 +3076,16 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
     let nGroupMembers = 0;
     let nFeedbackBearing = 0;
     let nMissingShot = 0;
-    let nElementShots = 0;
-    let nGroupShots = 0;
-    let nPageShots = 0;
+    // Screenshot inventory is counted by distinct file path (per the
+    // `counts` type contract). One page screenshot shared across N
+    // selectors is one file, not N — a plain per-selector counter
+    // double-counted it and made the sub-counts fail to sum to the
+    // number of bundled PNGs.
+    const elementShots = new Set<string>();
+    const groupShots = new Set<string>();
+    const pageShots = new Set<string>();
     let nOrphanedFb = 0;
+    let nPageLevelFb = 0;
     const selectorUids = new Set<string>();
     const feedbackParentSelectorIds = new Set<string>();
     // First pass: collect uids + per-selector feedback presence.
@@ -3052,12 +3094,13 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
         nSel++;
         selectorUids.add(m.entry.uid);
         if (m.entry.group?.length) nGroupMembers += m.entry.group.length;
-        if (m.entry.screenshot?.element) nElementShots++;
-        if (m.entry.screenshot?.group) nGroupShots++;
-        if (m.entry.screenshot?.page) nPageShots++;
+        if (m.entry.screenshot?.element) elementShots.add(m.entry.screenshot.element);
+        if (m.entry.screenshot?.group) groupShots.add(m.entry.screenshot.group);
+        if (m.entry.screenshot?.page) pageShots.add(m.entry.screenshot.page);
       } else if (m.type === 'feedback') {
         nFb++;
         if (m.parentUid) feedbackParentSelectorIds.add(m.parentUid);
+        else nPageLevelFb++;
       } else if (m.type === 'page') nPg++;
     }
     // Second pass: feedback-bearing selectors + orphaned feedback +
@@ -3091,11 +3134,12 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
         pages: nPg,
         feedbackBearingSelectors: nFeedbackBearing,
         groupMembers: nGroupMembers,
-        screenshotsElement: nElementShots,
-        screenshotsGroup: nGroupShots,
-        screenshotsPage: nPageShots,
+        screenshotsElement: elementShots.size,
+        screenshotsGroup: groupShots.size,
+        screenshotsPage: pageShots.size,
         selectorsMissingScreenshot: nMissingShot,
         orphanedFeedback: nOrphanedFb,
+        pageLevelFeedback: nPageLevelFb,
       },
       // Single canonical resolution rule. Every path field in the JSONL
       // (screenshot.element/group/page) is relative to `pathRoot`:
@@ -3187,6 +3231,29 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
           code: 'CONTRAST_BELOW_AA',
           uid: m.entry.uid,
           detail: `text contrast ratio ${m.entry.a11y.contrastRatio ?? '?'} is below WCAG AA`,
+        });
+      }
+    }
+    // Duplicate display index `n`. `n` is the human-facing capture label AND
+    // the screenshot-filename discriminator, but it mirrors the capture-time
+    // counter, which restarts per session — so a workspace that accreted
+    // captures across sessions can label two elements `n2`. Their screenshot
+    // files then differ only by the epoch-ms tail. Flag it rather than let a
+    // receiver silently cross-reference the wrong element.
+    const uidsByDisplayIndex = new Map<number, string[]>();
+    for (const m of messages) {
+      if (m.type !== 'selector') continue;
+      const list = uidsByDisplayIndex.get(m.entry.n) ?? [];
+      list.push(m.entry.uid);
+      uidsByDisplayIndex.set(m.entry.n, list);
+    }
+    for (const [n, uids] of uidsByDisplayIndex) {
+      if (uids.length > 1) {
+        diagnostics.push({
+          severity: 'warn',
+          code: 'DUPLICATE_DISPLAY_INDEX',
+          uid: uids[0],
+          detail: `display index n=${n} is shared by ${uids.length} selectors (${uids.join(', ')}); rows carry a disambiguated \`displayLabel\` (n.k), but the screenshot filenames still embed n and differ only by timestamp — cross-reference by uid`,
         });
       }
     }
@@ -3588,10 +3655,13 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
   const inferFeedbackCategory = (text: string): string => {
     const t = text.toLowerCase();
     if (/\b(typo|copy|wording|label|misspell|grammar|capitaliz)/.test(t)) return 'copy';
+    // Performance/reliability BEFORE the design categories so a "freezes for
+    // 30 seconds" complaint routes to optimize, not a perception framework.
+    if (/\b(slow|freeze|frozen|freezes|hang|hangs|lag|laggy|janky|stutter|unresponsive|spinner|\d+\s*sec|takes (forever|too long))/.test(t)) return 'performance';
     if (/\b(align|spacing|padding|margin|layout|overlap|crowded|cramped|tight|gap)/.test(t)) return 'layout';
     if (/\b(unclear|confusing|what does|what is|don't understand|hard to|nav|navigation)/.test(t)) return 'affordance';
     if (/\b(contrast|color blind|screen reader|aria|focus|keyboard|tab|a11y|accessib)/.test(t)) return 'accessibility';
-    if (/\b(broken|crash|null|undefined|error|404|fail)/.test(t)) return 'state';
+    if (/\b(broken|crash|null|undefined|error|404|fail|unreliable|intermittent)|doesn'?t work|does not work/.test(t)) return 'state';
     if (/\b(ugly|color|gradient|shadow|polish|visual|style)/.test(t)) return 'visual-polish';
     return 'unspecified';
   };
@@ -3610,10 +3680,12 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
     if (!vendored) return [PINCHGRAB];
     switch (inferFeedbackCategory(text)) {
       case 'copy': return [PINCHGRAB, imp('clarify'), PFD];
+      // Performance + reliability are engineering, not perception — no PFD.
+      case 'performance': return [PINCHGRAB, imp('optimize')];
+      case 'state': return [PINCHGRAB, imp('harden')];
       case 'layout': return [PINCHGRAB, imp('layout'), PFD];
       case 'affordance': return [PINCHGRAB, imp('interaction-design'), PFD];
       case 'accessibility': return [PINCHGRAB, imp('audit'), PFD];
-      case 'state': return [PINCHGRAB, PFD];
       case 'visual-polish': return [PINCHGRAB, imp('polish'), PFD];
       default: return [PINCHGRAB, PFD];
     }
@@ -3685,8 +3757,15 @@ import {redactText, redactUrl, redactAttrs} from './redact.mjs';
           out.push(`- **ancestor chain:** ${chain}`);
         }
         if (target.url) out.push(`- **url:** ${target.url}`);
+      } else if (feedback.parentUid) {
+        // parentUid was set but did not resolve to a selector in this
+        // archive — a genuine dangling reference (see the ORPHANED_FEEDBACK
+        // diagnostic and manifest counts.orphanedFeedback). Kept distinct
+        // from the intentionally unpinned, page-level case below so the
+        // wording matches the manifest's definition of "orphaned".
+        out.push(`- **target:** _(parentUid \`${feedback.parentUid}\` has no matching selector in this archive — orphaned reference; see exportDiagnostics)_`);
       } else {
-        out.push(`- **target:** _(no selector — orphaned feedback)_`);
+        out.push(`- **target:** _(page-level comment — not pinned to a specific element)_`);
       }
       const cat = inferFeedbackCategory(feedback.text);
       out.push(`- **suggested category:** ${cat}`);
